@@ -1,0 +1,55 @@
+{
+  "name": "sparcoon",
+  "version": "0.0.1",
+  "description": "",
+  "keywords": [
+    "particles",
+    "three.js",
+    "mobile",
+    "ads",
+    "typescript"
+  ],
+  "author": "jango",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jango-git/sparcoon.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && rollup -c",
+    "prepublishOnly": "npm run build"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "peerDependencies": {
+    "three": ">=0.157.0 <0.180.0",
+    "ferrsign": "^0.0.4"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@types/node": "^25.0.2",
+    "@types/three": "^0.157.0",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^9.26.0",
+    "rollup": "^4.40.2",
+    "rollup-plugin-string": "^3.0.0",
+    "rollup-plugin-typescript2": "^0.36.0",
+    "ts-transformer-minify-privates": "^1.0.0",
+    "typescript": "^5.8.3"
+  }
+}
