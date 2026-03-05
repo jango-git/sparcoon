@@ -9,7 +9,7 @@ import { FXRenderingModule } from "./FXRenderingModule";
  *
  * Samples the texture using particle UV coordinates.
  */
-export class FXTextureRenderingModule extends FXRenderingModule {
+export class FXRenderingTexture extends FXRenderingModule {
   /** @internal */
   public readonly requiredUniforms: Record<string, FXProperty>;
   /** @internal */

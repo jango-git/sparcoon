@@ -1,4 +1,4 @@
-import { Object3D, Vector2 } from "three";
+import { NormalBlending, Object3D, Vector2, type Blending } from "three";
 import type { FXBehaviorModule } from "../behaviorModules/FXBehaviorModule";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle";
 import {
@@ -31,6 +31,7 @@ export interface FXEmitterOptions {
   expectedCapacity: number;
   capacityStep: number;
   automaticallyDestroyModules: boolean;
+  blending: Blending;
 }
 
 const INSTANCES = new Array<FXEmitter>();
@@ -53,13 +54,6 @@ export class FXEmitter extends Object3D {
     super();
     const collectedProperties: Record<string, GLTypeInfo> = {
       builtin: resolveGLSLTypeInfo("Matrix4"),
-      // 0, 1   positionX, positionY
-      // 2, 3   velocityX, velocityY
-      // 4, 5   scaleX, scaleY
-      // 6, 7   rotation, torque
-      // 8, 9   lifetime, age
-      // 10, 11, 12   randomX, randomY, randomZ
-      // 13, 14, 16   reservedX, reservedY, reservedZ
     };
     collectProperties(collectedProperties, spawnSequence, "UIEmitter.constructor.spawnSequence:");
     collectProperties(
@@ -88,6 +82,7 @@ export class FXEmitter extends Object3D {
       collectedProperties,
       options.expectedCapacity ?? EMITTER_DEFAULT_EXPECTED_CAPACITY,
       options.capacityStep ?? EMITTER_DEFAULT_CAPACITY_STEP,
+      options.blending ?? NormalBlending,
     );
 
     this.automaticallyDestroyModules =
@@ -120,6 +115,8 @@ export class FXEmitter extends Object3D {
         module.destroy?.();
       }
     }
+
+    this.removeFromParent();
   }
 
   public burst(count: number): void {

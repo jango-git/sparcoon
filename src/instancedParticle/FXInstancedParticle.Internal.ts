@@ -3,6 +3,7 @@ import {
   Float32BufferAttribute,
   InstancedBufferGeometry,
   ShaderMaterial,
+  type Blending,
 } from "three";
 import { FXColor } from "../color/FXColor";
 import { checkSRGBSupport } from "../miscellaneous/webglCapabilities";
@@ -116,6 +117,7 @@ export function buildParticleVertexShader(
       p_uv = uv;
 
       vec2 transformedPosition = position.xy;
+
       transformedPosition.x *= PARTICLE_SCALE_X;
       transformedPosition.y *= PARTICLE_SCALE_Y;
 
@@ -133,11 +135,9 @@ export function buildParticleVertexShader(
         PARTICLE_POSITION_Z
       );
 
-      vec4 mvCenter = modelViewMatrix * vec4(center, 1.0);
-
-      mvCenter.xy += transformedPosition;
-
-      gl_Position = projectionMatrix * mvCenter;
+      vec4 modelViewCenter = modelViewMatrix * vec4(center, 1.0);
+      modelViewCenter.xy += transformedPosition;
+      gl_Position = projectionMatrix * modelViewCenter;
     }
   `;
 }
@@ -227,6 +227,7 @@ export function buildParticleMaterial(
   sources: string[],
   uniformProperties: Record<string, GLProperty>,
   varyingProperties: Record<string, GLTypeInfo>,
+  blending: Blending,
 ): ShaderMaterial {
   const uniforms: Record<string, { value: unknown }> = {};
 
@@ -260,5 +261,6 @@ export function buildParticleMaterial(
     transparent: true,
     depthWrite: false,
     depthTest: true,
+    blending,
   });
 }

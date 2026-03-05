@@ -1,4 +1,4 @@
-import type { InstancedBufferGeometry, ShaderMaterial, Vector2 } from "three";
+import type { Blending, InstancedBufferGeometry, ShaderMaterial, Vector2 } from "three";
 import { InstancedBufferAttribute, Mesh, StreamDrawUsage } from "three";
 import { BUILTIN_OFFSET_AGE, BUILTIN_OFFSET_LIFETIME } from "../miscellaneous/miscellaneous";
 import { buildParticleMaterial, INSTANCED_PARTICLE_GEOMETRY } from "./FXInstancedParticle.Internal";
@@ -17,9 +17,10 @@ export class FXInstancedParticle extends Mesh {
     varyings: Record<string, GLTypeInfo>,
     expectedCapacity: number,
     private readonly capacityStep: number,
+    blending: Blending,
   ) {
     const instancedGeometry = INSTANCED_PARTICLE_GEOMETRY.clone();
-    const shaderMaterial = buildParticleMaterial(sources, uniforms, varyings);
+    const shaderMaterial = buildParticleMaterial(sources, uniforms, varyings, blending);
 
     super(instancedGeometry, shaderMaterial);
 

@@ -1,7 +1,6 @@
 import type { IUniform, ShaderMaterial } from "three";
 import { Matrix3, Matrix4, Texture, Vector2, Vector3, Vector4 } from "three";
 import { FXColor } from "../color/FXColor";
-import type { FXTransparencyMode } from "../miscellaneous/FXTransparencyMode";
 
 export type FXProperty =
   | Texture
@@ -53,7 +52,6 @@ export interface PlaneData {
   properties: Record<string, GLProperty>;
   transform: Matrix4;
   visibility: boolean;
-  transparency: FXTransparencyMode;
 }
 
 const GLSL_TYPE_INFO_FLOAT: GLTypeInfo = Object.freeze({

@@ -5,10 +5,12 @@ export { FXBehaviorTorqueDamping } from "./behaviorModules/FXBehaviorTorqueDampi
 export { FXBehaviorTorqueNoise } from "./behaviorModules/FXBehaviorTorqueNoise";
 export { FXBehaviorVelocityDamping } from "./behaviorModules/FXBehaviorVelocityDamping";
 export { FXBehaviorVelocityNoise } from "./behaviorModules/FXBehaviorVelocityNoise";
+export { FXColor } from "./color/FXColor";
 export { FXEmitter } from "./elements/FXEmitter";
+export { FXRenderingAnimatedTexture } from "./renderingModules/FXRenderingAnimatedTexture";
 export { FXRenderingColorOverLife } from "./renderingModules/FXRenderingColorOverLife";
 export { FXRenderingColorOverVelocity } from "./renderingModules/FXRenderingColorOverVelocity";
-export { FXTextureRenderingModule } from "./renderingModules/FXRenderingTexture";
+export { FXRenderingTexture } from "./renderingModules/FXRenderingTexture";
 export { FXSpawnBox } from "./spawnModules/FXSpawnBox";
 export { FXSpawnOffset } from "./spawnModules/FXSpawnOffset";
 export { FXSpawnRandomLifetime } from "./spawnModules/FXSpawnRandomLifetime";
