@@ -25,8 +25,8 @@ export class FXSpawnRandomRotation extends FXSpawnModule<{ builtin: "Matrix4" }>
   constructor(rotation: FXRangeConfig = { min: -Math.PI, max: Math.PI }) {
     super();
     this.rotationInternal = resolveFXRangeConfig(rotation);
-    assertValidNumber(this.rotationInternal.min, "UISpawnRandomRotation.constructor.rotation.min");
-    assertValidNumber(this.rotationInternal.max, "UISpawnRandomRotation.constructor.rotation.max");
+    assertValidNumber(this.rotationInternal.min, "FXSpawnRandomRotation.constructor.rotation.min");
+    assertValidNumber(this.rotationInternal.max, "FXSpawnRandomRotation.constructor.rotation.max");
   }
 
   /** Rotation range in radians */
@@ -37,8 +37,8 @@ export class FXSpawnRandomRotation extends FXSpawnModule<{ builtin: "Matrix4" }>
   /** Rotation range in radians */
   public set rotation(value: FXRangeConfig) {
     this.rotationInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.rotationInternal.min, "UISpawnRandomRotation.rotation.min");
-    assertValidNumber(this.rotationInternal.max, "UISpawnRandomRotation.rotation.max");
+    assertValidNumber(this.rotationInternal.min, "FXSpawnRandomRotation.rotation.min");
+    assertValidNumber(this.rotationInternal.max, "FXSpawnRandomRotation.rotation.max");
   }
 
   /** @internal */

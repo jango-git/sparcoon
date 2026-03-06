@@ -34,21 +34,21 @@ export class FXBehaviorTorqueNoise extends FXBehaviorModule<{ builtin: "Matrix4"
     this.scaleInternal = resolveFXRangeConfig(scale);
     assertValidPositiveNumber(
       this.scaleInternal.min,
-      `UIBehaviorTorqueNoise.constructor.scale.min`,
+      `FXBehaviorTorqueNoise.constructor.scale.min`,
     );
     assertValidPositiveNumber(
       this.scaleInternal.max,
-      `UIBehaviorTorqueNoise.constructor.scale.max`,
+      `FXBehaviorTorqueNoise.constructor.scale.max`,
     );
 
     this.strengthInternal = resolveFXRangeConfig(strength);
     assertValidNonNegativeNumber(
       this.strengthInternal.min,
-      `UIBehaviorTorqueNoise.constructor.strength.min`,
+      `FXBehaviorTorqueNoise.constructor.strength.min`,
     );
     assertValidNonNegativeNumber(
       this.strengthInternal.max,
-      `UIBehaviorTorqueNoise.constructor.strength.max`,
+      `FXBehaviorTorqueNoise.constructor.strength.max`,
     );
   }
 
@@ -65,15 +65,15 @@ export class FXBehaviorTorqueNoise extends FXBehaviorModule<{ builtin: "Matrix4"
   /** Noise frequency range */
   public set scale(value: FXRangeConfig) {
     this.scaleInternal = resolveFXRangeConfig(value);
-    assertValidPositiveNumber(this.scaleInternal.min, `UIBehaviorTorqueNoise.scale.min`);
-    assertValidPositiveNumber(this.scaleInternal.max, `UIBehaviorTorqueNoise.scale.max`);
+    assertValidPositiveNumber(this.scaleInternal.min, `FXBehaviorTorqueNoise.scale.min`);
+    assertValidPositiveNumber(this.scaleInternal.max, `FXBehaviorTorqueNoise.scale.max`);
   }
 
   /** Force multiplier range */
   public set strength(value: FXRangeConfig) {
     this.strengthInternal = resolveFXRangeConfig(value);
-    assertValidNonNegativeNumber(this.strengthInternal.min, `UIBehaviorTorqueNoise.strength.min`);
-    assertValidNonNegativeNumber(this.strengthInternal.max, `UIBehaviorTorqueNoise.strength.max`);
+    assertValidNonNegativeNumber(this.strengthInternal.min, `FXBehaviorTorqueNoise.strength.min`);
+    assertValidNonNegativeNumber(this.strengthInternal.max, `FXBehaviorTorqueNoise.strength.max`);
   }
 
   /** @internal */

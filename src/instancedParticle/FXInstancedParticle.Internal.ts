@@ -214,7 +214,7 @@ export function buildParticleFragmentShader(
         discard;
       }
       #ifdef USE_ALPHAHASH
-        if (diffuseColor.a < getAlphaHashThreshold(p_position)) {
+        if (diffuseColor.a < getAlphaHashThreshold(vec3(p_builtin[0][0], p_builtin[0][1], p_builtin[0][2]))) {
           discard;
         }
       #endif
@@ -228,6 +228,7 @@ export function buildParticleMaterial(
   uniformProperties: Record<string, GLProperty>,
   varyingProperties: Record<string, GLTypeInfo>,
   blending: Blending,
+  useAlphaHashing: boolean,
 ): ShaderMaterial {
   const uniforms: Record<string, { value: unknown }> = {};
 
@@ -261,6 +262,7 @@ export function buildParticleMaterial(
     transparent: true,
     depthWrite: false,
     depthTest: true,
+    alphaHash: useAlphaHashing,
     blending,
   });
 }

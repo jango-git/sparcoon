@@ -44,25 +44,25 @@ export class FXBehaviorPointGravity extends FXBehaviorModule<{ builtin: "Matrix4
   ) {
     super();
     this.centerInternal = resolveFXVector2Config(center);
-    assertValidNumber(this.centerInternal.x, "UIBehaviorPointGravity.constructor.center.x");
-    assertValidNumber(this.centerInternal.y, "UIBehaviorPointGravity.constructor.center.y");
+    assertValidNumber(this.centerInternal.x, "FXBehaviorPointGravity.constructor.center.x");
+    assertValidNumber(this.centerInternal.y, "FXBehaviorPointGravity.constructor.center.y");
 
     this.strengthInternal = resolveFXRangeConfig(strength);
-    assertValidNumber(this.strengthInternal.min, "UIBehaviorPointGravity.constructor.strength.min");
-    assertValidNumber(this.strengthInternal.max, "UIBehaviorPointGravity.constructor.strength.max");
+    assertValidNumber(this.strengthInternal.min, "FXBehaviorPointGravity.constructor.strength.min");
+    assertValidNumber(this.strengthInternal.max, "FXBehaviorPointGravity.constructor.strength.max");
 
     this.exponentInternal = resolveFXRangeConfig(exponent);
-    assertValidNumber(this.exponentInternal.min, "UIBehaviorPointGravity.constructor.exponent.min");
-    assertValidNumber(this.exponentInternal.max, "UIBehaviorPointGravity.constructor.exponent.max");
+    assertValidNumber(this.exponentInternal.min, "FXBehaviorPointGravity.constructor.exponent.min");
+    assertValidNumber(this.exponentInternal.max, "FXBehaviorPointGravity.constructor.exponent.max");
 
     this.thresholdInternal = resolveFXRangeConfig(threshold);
     assertValidNumber(
       this.thresholdInternal.min,
-      "UIBehaviorPointGravity.constructor.threshold.min",
+      "FXBehaviorPointGravity.constructor.threshold.min",
     );
     assertValidNumber(
       this.thresholdInternal.max,
-      "UIBehaviorPointGravity.constructor.threshold.max",
+      "FXBehaviorPointGravity.constructor.threshold.max",
     );
   }
 
@@ -89,29 +89,29 @@ export class FXBehaviorPointGravity extends FXBehaviorModule<{ builtin: "Matrix4
   /** Gravity center position */
   public set center(value: FXVector3Config) {
     this.centerInternal = resolveFXVector2Config(value);
-    assertValidNumber(this.centerInternal.x, "UIBehaviorPointGravity.center.x");
-    assertValidNumber(this.centerInternal.y, "UIBehaviorPointGravity.center.y");
+    assertValidNumber(this.centerInternal.x, "FXBehaviorPointGravity.center.x");
+    assertValidNumber(this.centerInternal.y, "FXBehaviorPointGravity.center.y");
   }
 
   /** Force multiplier range */
   public set strength(value: FXRangeConfig) {
     this.strengthInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.strengthInternal.min, "UIBehaviorPointGravity.strength.min");
-    assertValidNumber(this.strengthInternal.max, "UIBehaviorPointGravity.strength.max");
+    assertValidNumber(this.strengthInternal.min, "FXBehaviorPointGravity.strength.min");
+    assertValidNumber(this.strengthInternal.max, "FXBehaviorPointGravity.strength.max");
   }
 
   /** Distance power exponent range */
   public set exponent(value: FXRangeConfig) {
     this.exponentInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.exponentInternal.min, "UIBehaviorPointGravity.exponent.min");
-    assertValidNumber(this.exponentInternal.max, "UIBehaviorPointGravity.exponent.max");
+    assertValidNumber(this.exponentInternal.min, "FXBehaviorPointGravity.exponent.min");
+    assertValidNumber(this.exponentInternal.max, "FXBehaviorPointGravity.exponent.max");
   }
 
   /** Minimum distance range */
   public set threshold(value: FXRangeConfig) {
     this.thresholdInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.thresholdInternal.min, "UIBehaviorPointGravity.threshold.min");
-    assertValidNumber(this.thresholdInternal.max, "UIBehaviorPointGravity.threshold.max");
+    assertValidNumber(this.thresholdInternal.min, "FXBehaviorPointGravity.threshold.min");
+    assertValidNumber(this.thresholdInternal.max, "FXBehaviorPointGravity.threshold.max");
   }
 
   /** @internal */

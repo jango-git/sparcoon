@@ -1,8 +1,8 @@
-import type { Blending, InstancedBufferGeometry, ShaderMaterial, Vector2 } from "three";
+import type { Blending, InstancedBufferGeometry, ShaderMaterial } from "three";
 import { InstancedBufferAttribute, Mesh, StreamDrawUsage } from "three";
 import { BUILTIN_OFFSET_AGE, BUILTIN_OFFSET_LIFETIME } from "../miscellaneous/miscellaneous";
 import { buildParticleMaterial, INSTANCED_PARTICLE_GEOMETRY } from "./FXInstancedParticle.Internal";
-import { resolvePropertyUniform, type GLProperty, type GLTypeInfo } from "./shared";
+import type { GLProperty, GLTypeInfo } from "./shared";
 
 export class FXInstancedParticle extends Mesh {
   public readonly propertyBuffers: Record<string, InstancedBufferAttribute> = {};
@@ -18,16 +18,20 @@ export class FXInstancedParticle extends Mesh {
     expectedCapacity: number,
     private readonly capacityStep: number,
     blending: Blending,
+    useAlphaHashing: boolean,
   ) {
     const instancedGeometry = INSTANCED_PARTICLE_GEOMETRY.clone();
-    const shaderMaterial = buildParticleMaterial(sources, uniforms, varyings, blending);
+    const shaderMaterial = buildParticleMaterial(
+      sources,
+      uniforms,
+      varyings,
+      blending,
+      useAlphaHashing,
+    );
 
     super(instancedGeometry, shaderMaterial);
 
     this.frustumCulled = false;
-    this.matrixAutoUpdate = false;
-    this.matrixWorldAutoUpdate = false;
-
     this.instancedGeometry = instancedGeometry;
     this.instancedGeometry.instanceCount = 0;
 
@@ -57,11 +61,6 @@ export class FXInstancedParticle extends Mesh {
     const currentInstanceCount = this.instancedGeometry.instanceCount;
     this.ensureCapacity(currentInstanceCount + count);
     this.instancedGeometry.instanceCount += count;
-  }
-
-  public setOrigin(x: number, y: number): void {
-    const uniform = resolvePropertyUniform("origin", this.shaderMaterial);
-    (uniform.value as Vector2).set(x, y);
   }
 
   public removeDeadParticles(): void {

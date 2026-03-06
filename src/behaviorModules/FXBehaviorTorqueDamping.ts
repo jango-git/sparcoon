@@ -29,11 +29,11 @@ export class FXBehaviorTorqueDamping extends FXBehaviorModule<{
     this.dampingInternal = resolveFXRangeConfig(damping);
     assertValidNonNegativeNumber(
       this.dampingInternal.min,
-      `UIBehaviorTorqueDamping.constructor.damping.min`,
+      `FXBehaviorTorqueDamping.constructor.damping.min`,
     );
     assertValidNonNegativeNumber(
       this.dampingInternal.max,
-      `UIBehaviorTorqueDamping.constructor.damping.max`,
+      `FXBehaviorTorqueDamping.constructor.damping.max`,
     );
   }
 
@@ -45,8 +45,8 @@ export class FXBehaviorTorqueDamping extends FXBehaviorModule<{
   /** Damping coefficient range (0-1) */
   public set damping(value: FXRangeConfig) {
     this.dampingInternal = resolveFXRangeConfig(value);
-    assertValidNonNegativeNumber(this.dampingInternal.min, `UIBehaviorTorqueDamping.damping.min`);
-    assertValidNonNegativeNumber(this.dampingInternal.max, `UIBehaviorTorqueDamping.damping.max`);
+    assertValidNonNegativeNumber(this.dampingInternal.min, `FXBehaviorTorqueDamping.damping.min`);
+    assertValidNonNegativeNumber(this.dampingInternal.max, `FXBehaviorTorqueDamping.damping.max`);
   }
 
   /** @internal */

@@ -33,12 +33,12 @@ export class FXSpawnBox extends FXSpawnModule<{ builtin: "Matrix4" }> {
     super();
     this.minInternal = resolveFXVector2Config(min);
     this.maxInternal = resolveFXVector2Config(max);
-    assertValidNumber(this.minInternal.x, "UISpawnRectangle.constructor.min.x");
-    assertValidNumber(this.minInternal.y, "UISpawnRectangle.constructor.min.y");
-    assertValidNumber(this.minInternal.z, "UISpawnRectangle.constructor.min.z");
-    assertValidNumber(this.maxInternal.x, "UISpawnRectangle.constructor.max.x");
-    assertValidNumber(this.maxInternal.y, "UISpawnRectangle.constructor.max.y");
-    assertValidNumber(this.maxInternal.z, "UISpawnRectangle.constructor.max.z");
+    assertValidNumber(this.minInternal.x, "FXSpawnRectangle.constructor.min.x");
+    assertValidNumber(this.minInternal.y, "FXSpawnRectangle.constructor.min.y");
+    assertValidNumber(this.minInternal.z, "FXSpawnRectangle.constructor.min.z");
+    assertValidNumber(this.maxInternal.x, "FXSpawnRectangle.constructor.max.x");
+    assertValidNumber(this.maxInternal.y, "FXSpawnRectangle.constructor.max.y");
+    assertValidNumber(this.maxInternal.z, "FXSpawnRectangle.constructor.max.z");
   }
 
   /** Bottom-left corner of spawn area */
@@ -54,17 +54,17 @@ export class FXSpawnBox extends FXSpawnModule<{ builtin: "Matrix4" }> {
   /** Bottom-left corner of spawn area */
   public set min(value: FXVector3Config) {
     this.minInternal = resolveFXVector2Config(value);
-    assertValidNumber(this.minInternal.x, "UISpawnRectangle.min.x");
-    assertValidNumber(this.minInternal.y, "UISpawnRectangle.min.y");
-    assertValidNumber(this.minInternal.z, "UISpawnRectangle.min.z");
+    assertValidNumber(this.minInternal.x, "FXSpawnRectangle.min.x");
+    assertValidNumber(this.minInternal.y, "FXSpawnRectangle.min.y");
+    assertValidNumber(this.minInternal.z, "FXSpawnRectangle.min.z");
   }
 
   /** Top-right corner of spawn area */
   public set max(value: FXVector3Config) {
     this.maxInternal = resolveFXVector2Config(value);
-    assertValidNumber(this.maxInternal.x, "UISpawnRectangle.max.x");
-    assertValidNumber(this.maxInternal.y, "UISpawnRectangle.max.y");
-    assertValidNumber(this.maxInternal.z, "UISpawnRectangle.max.z");
+    assertValidNumber(this.maxInternal.x, "FXSpawnRectangle.max.x");
+    assertValidNumber(this.maxInternal.y, "FXSpawnRectangle.max.y");
+    assertValidNumber(this.maxInternal.z, "FXSpawnRectangle.max.z");
   }
 
   /** @internal */

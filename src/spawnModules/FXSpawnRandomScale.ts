@@ -31,9 +31,9 @@ export class FXSpawnRandomScale extends FXSpawnModule<{ builtin: "Matrix4" }> {
     super();
     this.scaleInternal = resolveFXRangeConfig(scale);
     this.aspectInternal = resolveAspect(aspect);
-    assertValidPositiveNumber(this.scaleInternal.min, "UISpawnRandomScale.constructor.scale.min");
-    assertValidPositiveNumber(this.scaleInternal.max, "UISpawnRandomScale.constructor.scale.max");
-    assertValidPositiveNumber(this.aspectInternal, "UISpawnRandomScale.constructor.aspect");
+    assertValidPositiveNumber(this.scaleInternal.min, "FXSpawnRandomScale.constructor.scale.min");
+    assertValidPositiveNumber(this.scaleInternal.max, "FXSpawnRandomScale.constructor.scale.max");
+    assertValidPositiveNumber(this.aspectInternal, "FXSpawnRandomScale.constructor.aspect");
   }
 
   /** Base scale range */
@@ -49,14 +49,14 @@ export class FXSpawnRandomScale extends FXSpawnModule<{ builtin: "Matrix4" }> {
   /** Base scale range */
   public set scale(value: FXRangeConfig) {
     this.scaleInternal = resolveFXRangeConfig(value);
-    assertValidPositiveNumber(this.scaleInternal.min, "UISpawnRandomScale.scale.min");
-    assertValidPositiveNumber(this.scaleInternal.max, "UISpawnRandomScale.scale.max");
+    assertValidPositiveNumber(this.scaleInternal.min, "FXSpawnRandomScale.scale.min");
+    assertValidPositiveNumber(this.scaleInternal.max, "FXSpawnRandomScale.scale.max");
   }
 
   /** Width/height aspect ratio */
   public set aspect(value: FXAspectConfig) {
     this.aspectInternal = resolveAspect(value);
-    assertValidPositiveNumber(this.aspectInternal, "UISpawnRandomScale.aspect");
+    assertValidPositiveNumber(this.aspectInternal, "FXSpawnRandomScale.aspect");
   }
 
   /** @internal */

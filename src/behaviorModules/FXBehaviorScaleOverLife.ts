@@ -34,7 +34,7 @@ export class FXBehaviorScaleOverLife extends FXBehaviorModule<{ builtin: "Matrix
 
     if (scales.length < 2) {
       throw new Error(
-        "UIBehaviorScaleOverLife.scales: the number of scale anchors must be more than two",
+        "FXBehaviorScaleOverLife.scales: the number of scale anchors must be more than two",
       );
     }
 
@@ -42,17 +42,17 @@ export class FXBehaviorScaleOverLife extends FXBehaviorModule<{ builtin: "Matrix
       const scale = resolveFXRangeConfig(scales[i]);
       assertValidNonNegativeNumber(
         scale.min,
-        `UIBehaviorScaleOverLife.constructor.scales[${i}].min`,
+        `FXBehaviorScaleOverLife.constructor.scales[${i}].min`,
       );
       assertValidNonNegativeNumber(
         scale.max,
-        `UIBehaviorScaleOverLife.constructor.scales[${i}].max`,
+        `FXBehaviorScaleOverLife.constructor.scales[${i}].max`,
       );
       this.scales.push(scale);
     }
 
     this.aspectInternal = resolveAspect(aspect);
-    assertValidPositiveNumber(this.aspectInternal, "UIBehaviorScaleOverLife.constructor.aspect");
+    assertValidPositiveNumber(this.aspectInternal, "FXBehaviorScaleOverLife.constructor.aspect");
   }
 
   /** Width/height aspect ratio */
@@ -63,7 +63,7 @@ export class FXBehaviorScaleOverLife extends FXBehaviorModule<{ builtin: "Matrix
   /** Width/height aspect ratio */
   public set aspect(value: FXAspectConfig) {
     this.aspectInternal = resolveAspect(value);
-    assertValidPositiveNumber(this.aspectInternal, "UIBehaviorScaleOverLife.aspect");
+    assertValidPositiveNumber(this.aspectInternal, "FXBehaviorScaleOverLife.aspect");
   }
 
   /** @internal */

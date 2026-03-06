@@ -27,8 +27,8 @@ export class FXSpawnRandomTorque extends FXSpawnModule<{
   constructor(torque: FXRangeConfig = { min: -Math.PI, max: Math.PI }) {
     super();
     this.torqueInternal = resolveFXRangeConfig(torque);
-    assertValidNumber(this.torqueInternal.min, "UISpawnRandomTorque.constructor.torque.min");
-    assertValidNumber(this.torqueInternal.max, "UISpawnRandomTorque.constructor.torque.max");
+    assertValidNumber(this.torqueInternal.min, "FXSpawnRandomTorque.constructor.torque.min");
+    assertValidNumber(this.torqueInternal.max, "FXSpawnRandomTorque.constructor.torque.max");
   }
 
   /** Angular velocity range in radians/second */
@@ -39,8 +39,8 @@ export class FXSpawnRandomTorque extends FXSpawnModule<{
   /** Angular velocity range in radians/second */
   public set torque(value: FXRangeConfig) {
     this.torqueInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.torqueInternal.min, "UISpawnRandomTorque.torque.min");
-    assertValidNumber(this.torqueInternal.max, "UISpawnRandomTorque.torque.max");
+    assertValidNumber(this.torqueInternal.min, "FXSpawnRandomTorque.torque.min");
+    assertValidNumber(this.torqueInternal.max, "FXSpawnRandomTorque.torque.max");
   }
 
   /** @internal */

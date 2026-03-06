@@ -36,21 +36,21 @@ export class FXBehaviorVelocityNoise extends FXBehaviorModule<{ builtin: "Matrix
     this.scaleInternal = resolveFXRangeConfig(scale);
     assertValidPositiveNumber(
       this.scaleInternal.min,
-      `UIBehaviorVelocityNoise.constructor.scale.min`,
+      `FXBehaviorVelocityNoise.constructor.scale.min`,
     );
     assertValidPositiveNumber(
       this.scaleInternal.max,
-      `UIBehaviorVelocityNoise.constructor.scale.max`,
+      `FXBehaviorVelocityNoise.constructor.scale.max`,
     );
 
     this.strengthInternal = resolveFXRangeConfig(strength);
     assertValidNonNegativeNumber(
       this.strengthInternal.min,
-      `UIBehaviorVelocityNoise.constructor.strength.min`,
+      `FXBehaviorVelocityNoise.constructor.strength.min`,
     );
     assertValidNonNegativeNumber(
       this.strengthInternal.max,
-      `UIBehaviorVelocityNoise.constructor.strength.max`,
+      `FXBehaviorVelocityNoise.constructor.strength.max`,
     );
   }
 
@@ -67,15 +67,15 @@ export class FXBehaviorVelocityNoise extends FXBehaviorModule<{ builtin: "Matrix
   /** Noise frequency range */
   public set scale(value: FXRangeConfig) {
     this.scaleInternal = resolveFXRangeConfig(value);
-    assertValidPositiveNumber(this.scaleInternal.min, `UIBehaviorVelocityNoise.scale.min`);
-    assertValidPositiveNumber(this.scaleInternal.max, `UIBehaviorVelocityNoise.scale.max`);
+    assertValidPositiveNumber(this.scaleInternal.min, `FXBehaviorVelocityNoise.scale.min`);
+    assertValidPositiveNumber(this.scaleInternal.max, `FXBehaviorVelocityNoise.scale.max`);
   }
 
   /** Force multiplier range */
   public set strength(value: FXRangeConfig) {
     this.strengthInternal = resolveFXRangeConfig(value);
-    assertValidNonNegativeNumber(this.strengthInternal.min, `UIBehaviorVelocityNoise.strength.min`);
-    assertValidNonNegativeNumber(this.strengthInternal.max, `UIBehaviorVelocityNoise.strength.max`);
+    assertValidNonNegativeNumber(this.strengthInternal.min, `FXBehaviorVelocityNoise.strength.min`);
+    assertValidNonNegativeNumber(this.strengthInternal.max, `FXBehaviorVelocityNoise.strength.max`);
   }
 
   /** @internal */

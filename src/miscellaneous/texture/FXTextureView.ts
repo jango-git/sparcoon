@@ -228,35 +228,35 @@ export class FXTextureView {
   private setFromAtlasConfig(config: FXTextureAtlasConfig): void {
     assertValidPositiveNumber(
       config.sourceSize.w,
-      "UITextureView.setFromAtlasConfig.config.sourceSize.w",
+      "FXTextureView.setFromAtlasConfig.config.sourceSize.w",
     );
     assertValidPositiveNumber(
       config.sourceSize.h,
-      "UITextureView.setFromAtlasConfig.config.sourceSize.h",
+      "FXTextureView.setFromAtlasConfig.config.sourceSize.h",
     );
-    assertValidNonNegativeNumber(config.frame.x, "UITextureView.setFromAtlasConfig.config.frame.x");
-    assertValidNonNegativeNumber(config.frame.y, "UITextureView.setFromAtlasConfig.config.frame.y");
-    assertValidPositiveNumber(config.frame.w, "UITextureView.setFromAtlasConfig.config.frame.w");
-    assertValidPositiveNumber(config.frame.h, "UITextureView.setFromAtlasConfig.config.frame.h");
+    assertValidNonNegativeNumber(config.frame.x, "FXTextureView.setFromAtlasConfig.config.frame.x");
+    assertValidNonNegativeNumber(config.frame.y, "FXTextureView.setFromAtlasConfig.config.frame.y");
+    assertValidPositiveNumber(config.frame.w, "FXTextureView.setFromAtlasConfig.config.frame.w");
+    assertValidPositiveNumber(config.frame.h, "FXTextureView.setFromAtlasConfig.config.frame.h");
     assertValidNonNegativeNumber(
       config.spriteSourceSize.x,
-      "UITextureView.setFromAtlasConfig.config.spriteSourceSize.x",
+      "FXTextureView.setFromAtlasConfig.config.spriteSourceSize.x",
     );
     assertValidNonNegativeNumber(
       config.spriteSourceSize.y,
-      "UITextureView.setFromAtlasConfig.config.spriteSourceSize.y",
+      "FXTextureView.setFromAtlasConfig.config.spriteSourceSize.y",
     );
     assertValidPositiveNumber(
       config.spriteSourceSize.w,
-      "UITextureView.setFromAtlasConfig.config.spriteSourceSize.w",
+      "FXTextureView.setFromAtlasConfig.config.spriteSourceSize.w",
     );
     assertValidPositiveNumber(
       config.spriteSourceSize.h,
-      "UITextureView.setFromAtlasConfig.config.spriteSourceSize.h",
+      "FXTextureView.setFromAtlasConfig.config.spriteSourceSize.h",
     );
 
     if (config.scale !== undefined) {
-      assertValidPositiveNumber(config.scale, "UITextureView.setFromAtlasConfig.config.scale");
+      assertValidPositiveNumber(config.scale, "FXTextureView.setFromAtlasConfig.config.scale");
     }
 
     this.sourceWidth = config.sourceSize.w;

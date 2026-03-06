@@ -305,7 +305,7 @@ export class FXColor {
 
   /** Red component (0 to 1) */
   public set r(value: number) {
-    assertValidNumber(value, "UIColor.r");
+    assertValidNumber(value, "FXColor.r");
     value = MathUtils.clamp(value, 0, 1);
     this.ensureRGBUpdatedFromHSL();
     if (value !== this.rInternal) {
@@ -317,7 +317,7 @@ export class FXColor {
 
   /** Green component (0 to 1) */
   public set g(value: number) {
-    assertValidNumber(value, "UIColor.g");
+    assertValidNumber(value, "FXColor.g");
     value = MathUtils.clamp(value, 0, 1);
     this.ensureRGBUpdatedFromHSL();
     if (value !== this.gInternal) {
@@ -329,7 +329,7 @@ export class FXColor {
 
   /** Blue component (0 to 1) */
   public set b(value: number) {
-    assertValidNumber(value, "UIColor.b");
+    assertValidNumber(value, "FXColor.b");
     value = MathUtils.clamp(value, 0, 1);
     this.ensureRGBUpdatedFromHSL();
     if (value !== this.bInternal) {
@@ -341,7 +341,7 @@ export class FXColor {
 
   /** Alpha component (0 to 1) */
   public set a(value: number) {
-    assertValidNumber(value, "UIColor.a");
+    assertValidNumber(value, "FXColor.a");
     value = MathUtils.clamp(value, 0, 1);
     if (value !== this.aInternal) {
       this.aInternal = value;
@@ -351,7 +351,7 @@ export class FXColor {
 
   /** Hue component (0 to 360) */
   public set hue(value: number) {
-    assertValidNumber(value, "UIColor.hue");
+    assertValidNumber(value, "FXColor.hue");
     value = MathUtils.clamp(value, 0, 360);
     this.ensureHSLUpdatedFromRGB();
     if (value !== this.hInternal) {
@@ -363,7 +363,7 @@ export class FXColor {
 
   /** Saturation component (0 to 1) */
   public set saturation(value: number) {
-    assertValidNumber(value, "UIColor.saturation");
+    assertValidNumber(value, "FXColor.saturation");
     value = MathUtils.clamp(value, 0, 1);
     this.ensureHSLUpdatedFromRGB();
     if (value !== this.sInternal) {
@@ -375,7 +375,7 @@ export class FXColor {
 
   /** Lightness component (0 to 1) */
   public set lightness(value: number) {
-    assertValidNumber(value, "UIColor.lightness");
+    assertValidNumber(value, "FXColor.lightness");
     value = MathUtils.clamp(value, 0, 1);
     this.ensureHSLUpdatedFromRGB();
     if (value !== this.lInternal) {
@@ -463,15 +463,15 @@ export class FXColor {
       return this.setHexRGB(firstArgument, a as number);
     }
 
-    throw new Error("UIColor.set: cannot create color from provided arguments");
+    throw new Error("FXColor.set: cannot create color from provided arguments");
   }
 
   /** Sets RGBA components directly */
   public setRGBA(r: number, g: number, b: number, a: number = this.aInternal): this {
-    assertValidNumber(r, "UIColor.setRGBA.r");
-    assertValidNumber(g, "UIColor.setRGBA.g");
-    assertValidNumber(b, "UIColor.setRGBA.b");
-    assertValidNumber(a, "UIColor.setRGBA.a");
+    assertValidNumber(r, "FXColor.setRGBA.r");
+    assertValidNumber(g, "FXColor.setRGBA.g");
+    assertValidNumber(b, "FXColor.setRGBA.b");
+    assertValidNumber(a, "FXColor.setRGBA.a");
     r = MathUtils.clamp(r, 0, 1);
     g = MathUtils.clamp(g, 0, 1);
     b = MathUtils.clamp(b, 0, 1);
@@ -528,7 +528,7 @@ export class FXColor {
 
   /** Sets from 32-bit hex RGBA (RRGGBBAA) */
   public setHexRGBA(hex: number): this {
-    assertValidNumber(hex, "UIColor.setHexRGBA.hex");
+    assertValidNumber(hex, "FXColor.setHexRGBA.hex");
     this.ensureRGBUpdatedFromHSL();
     const r = ((hex >> 16) & 0xff) / 255;
     const g = ((hex >> 8) & 0xff) / 255;
@@ -552,8 +552,8 @@ export class FXColor {
 
   /** Sets from 24-bit hex RGB (RRGGBB) */
   public setHexRGB(hex: number, a = this.aInternal): this {
-    assertValidNumber(hex, "UIColor.setHexRGB.hex");
-    assertValidNumber(a, "UIColor.setHexRGB.a");
+    assertValidNumber(hex, "FXColor.setHexRGB.hex");
+    assertValidNumber(a, "FXColor.setHexRGB.a");
     a = MathUtils.clamp(a, 0, 1);
     this.ensureRGBUpdatedFromHSL();
     const r = ((hex >> 16) & 0xff) / 255;
@@ -584,7 +584,7 @@ export class FXColor {
   public setHexString(hexString: string): this {
     if (!hexString.startsWith("#")) {
       throw new Error(
-        `UIColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
+        `FXColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
       );
     }
 
@@ -594,7 +594,7 @@ export class FXColor {
       const hexNumber = parseInt(hex, 16);
       if (isNaN(hexNumber)) {
         throw new Error(
-          `UIColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
+          `FXColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
         );
       }
       return this.setHexRGB(hexNumber);
@@ -602,23 +602,23 @@ export class FXColor {
       const hexNumber = parseInt(hex, 16);
       if (isNaN(hexNumber)) {
         throw new Error(
-          `UIColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
+          `FXColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
         );
       }
       return this.setHexRGBA(hexNumber);
     } else {
       throw new Error(
-        `UIColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
+        `FXColor.setHexString.hexString: invalid hex string format. expected format: "#ffffff" or "#ffffffff"`,
       );
     }
   }
 
   /** Sets from HSL values */
   public setHSL(h: number, s: number, l: number, a = this.aInternal): this {
-    assertValidNumber(h, "UIColor.setHSL.h");
-    assertValidNumber(s, "UIColor.setHSL.s");
-    assertValidNumber(l, "UIColor.setHSL.l");
-    assertValidNumber(a, "UIColor.setHSL.a");
+    assertValidNumber(h, "FXColor.setHSL.h");
+    assertValidNumber(s, "FXColor.setHSL.s");
+    assertValidNumber(l, "FXColor.setHSL.l");
+    assertValidNumber(a, "FXColor.setHSL.a");
     h = MathUtils.clamp(h, 0, 360);
     s = MathUtils.clamp(s, 0, 1);
     l = MathUtils.clamp(l, 0, 1);
@@ -646,13 +646,13 @@ export class FXColor {
    * @throws If color name unknown
    */
   public setColorName(colorName: FXColorName, a = this.aInternal): this {
-    assertValidNumber(a, "UIColor.setColorName.a");
+    assertValidNumber(a, "FXColor.setColorName.a");
     a = MathUtils.clamp(a, 0, 1);
     const normalizedName = colorName.toLowerCase().trim();
     const hex = COLORS[normalizedName];
 
     if (hex === undefined) {
-      throw new Error(`UIColor.setColorName.colorName: unknown color name`);
+      throw new Error(`FXColor.setColorName.colorName: unknown color name`);
     }
 
     return this.setHexRGB(hex, a);
@@ -660,10 +660,10 @@ export class FXColor {
 
   /** Sets from linear (GLSL) color space */
   public setGLSLColor(r: number, g: number, b: number, a = this.aInternal): this {
-    assertValidNumber(r, "UIColor.setGLSLColor.r");
-    assertValidNumber(g, "UIColor.setGLSLColor.g");
-    assertValidNumber(b, "UIColor.setGLSLColor.b");
-    assertValidNumber(a, "UIColor.setGLSLColor.a");
+    assertValidNumber(r, "FXColor.setGLSLColor.r");
+    assertValidNumber(g, "FXColor.setGLSLColor.g");
+    assertValidNumber(b, "FXColor.setGLSLColor.b");
+    assertValidNumber(a, "FXColor.setGLSLColor.a");
     a = MathUtils.clamp(a, 0, 1);
     this.ensureRGBUpdatedFromHSL();
 
@@ -690,7 +690,7 @@ export class FXColor {
 
   /** Sets from Three.js Color */
   public setThreeColor(threeColor: Color, a = this.aInternal): this {
-    assertValidNumber(a, "UIColor.setThreeColor.a");
+    assertValidNumber(a, "FXColor.setThreeColor.a");
     a = MathUtils.clamp(a, 0, 1);
     this.ensureRGBUpdatedFromHSL();
     if (

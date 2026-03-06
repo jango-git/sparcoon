@@ -27,11 +27,11 @@ export class FXBehaviorDirectionalGravity extends FXBehaviorModule<{ builtin: "M
     this.directionInternal = resolveFXVector2Config(direction);
     assertValidNumber(
       this.directionInternal.x,
-      "UIBehaviorDirectionalGravity.constructor.direction.x",
+      "FXBehaviorDirectionalGravity.constructor.direction.x",
     );
     assertValidNumber(
       this.directionInternal.y,
-      "UIBehaviorDirectionalGravity.constructor.direction.y",
+      "FXBehaviorDirectionalGravity.constructor.direction.y",
     );
   }
 
@@ -43,8 +43,8 @@ export class FXBehaviorDirectionalGravity extends FXBehaviorModule<{ builtin: "M
   /** Acceleration vector in units/second² */
   public set direction(value: FXVector3Config) {
     this.directionInternal = resolveFXVector2Config(value);
-    assertValidNumber(this.directionInternal.x, "UIBehaviorDirectionalGravity.direction.x");
-    assertValidNumber(this.directionInternal.y, "UIBehaviorDirectionalGravity.direction.y");
+    assertValidNumber(this.directionInternal.x, "FXBehaviorDirectionalGravity.direction.x");
+    assertValidNumber(this.directionInternal.y, "FXBehaviorDirectionalGravity.direction.y");
   }
 
   /** @internal */

@@ -27,11 +27,11 @@ export class FXSpawnRandomLifetime extends FXSpawnModule<{ builtin: "Matrix4" }>
     this.lifetimeInternal = resolveFXRangeConfig(lifetime);
     assertValidPositiveNumber(
       this.lifetimeInternal.min,
-      "UISpawnRandomLifetime.constructor.lifetime.min",
+      "FXSpawnRandomLifetime.constructor.lifetime.min",
     );
     assertValidPositiveNumber(
       this.lifetimeInternal.max,
-      "UISpawnRandomLifetime.constructor.lifetime.max",
+      "FXSpawnRandomLifetime.constructor.lifetime.max",
     );
   }
 
@@ -43,8 +43,8 @@ export class FXSpawnRandomLifetime extends FXSpawnModule<{ builtin: "Matrix4" }>
   /** Lifetime range in seconds */
   public set lifetime(value: FXRangeConfig) {
     this.lifetimeInternal = resolveFXRangeConfig(value);
-    assertValidPositiveNumber(this.lifetimeInternal.min, "UISpawnRandomLifetime.lifetime.min");
-    assertValidPositiveNumber(this.lifetimeInternal.max, "UISpawnRandomLifetime.lifetime.max");
+    assertValidPositiveNumber(this.lifetimeInternal.min, "FXSpawnRandomLifetime.lifetime.min");
+    assertValidPositiveNumber(this.lifetimeInternal.max, "FXSpawnRandomLifetime.lifetime.max");
   }
 
   /** @internal */
