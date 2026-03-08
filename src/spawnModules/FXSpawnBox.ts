@@ -6,13 +6,13 @@ import {
   BUILTIN_OFFSET_POSITION_X,
   BUILTIN_OFFSET_POSITION_Y,
   BUILTIN_OFFSET_POSITION_Z,
-  resolveFXVector2Config,
+  resolveFXVector3Config,
   type FXVector3Config,
 } from "../miscellaneous/miscellaneous";
 import { FXSpawnModule } from "./FXSpawnModule";
 
 /**
- * Spawns particles at random positions within a rectangle.
+ * Spawns particles at random positions within an axis-aligned bounding box.
  *
  * Position is chosen uniformly within the bounds defined by min and max.
  */
@@ -23,48 +23,48 @@ export class FXSpawnBox extends FXSpawnModule<{ builtin: "Matrix4" }> {
   private maxInternal: Vector3Like;
 
   /**
-   * @param min - Bottom-left corner of spawn area
-   * @param max - Top-right corner of spawn area
+   * @param min - Minimum corner of the spawn box
+   * @param max - Maximum corner of the spawn box
    */
   constructor(
     min: FXVector3Config = { x: -1, y: -1, z: -1 },
     max: FXVector3Config = { x: 1, y: 1, z: 1 },
   ) {
     super();
-    this.minInternal = resolveFXVector2Config(min);
-    this.maxInternal = resolveFXVector2Config(max);
-    assertValidNumber(this.minInternal.x, "FXSpawnRectangle.constructor.min.x");
-    assertValidNumber(this.minInternal.y, "FXSpawnRectangle.constructor.min.y");
-    assertValidNumber(this.minInternal.z, "FXSpawnRectangle.constructor.min.z");
-    assertValidNumber(this.maxInternal.x, "FXSpawnRectangle.constructor.max.x");
-    assertValidNumber(this.maxInternal.y, "FXSpawnRectangle.constructor.max.y");
-    assertValidNumber(this.maxInternal.z, "FXSpawnRectangle.constructor.max.z");
+    this.minInternal = resolveFXVector3Config(min);
+    this.maxInternal = resolveFXVector3Config(max);
+    assertValidNumber(this.minInternal.x, "FXSpawnBox.constructor.min.x");
+    assertValidNumber(this.minInternal.y, "FXSpawnBox.constructor.min.y");
+    assertValidNumber(this.minInternal.z, "FXSpawnBox.constructor.min.z");
+    assertValidNumber(this.maxInternal.x, "FXSpawnBox.constructor.max.x");
+    assertValidNumber(this.maxInternal.y, "FXSpawnBox.constructor.max.y");
+    assertValidNumber(this.maxInternal.z, "FXSpawnBox.constructor.max.z");
   }
 
-  /** Bottom-left corner of spawn area */
+  /** Minimum corner of the spawn box */
   public get min(): Vector3Like {
     return this.minInternal;
   }
 
-  /** Top-right corner of spawn area */
+  /** Maximum corner of the spawn box */
   public get max(): Vector3Like {
     return this.maxInternal;
   }
 
-  /** Bottom-left corner of spawn area */
+  /** Minimum corner of the spawn box */
   public set min(value: FXVector3Config) {
-    this.minInternal = resolveFXVector2Config(value);
-    assertValidNumber(this.minInternal.x, "FXSpawnRectangle.min.x");
-    assertValidNumber(this.minInternal.y, "FXSpawnRectangle.min.y");
-    assertValidNumber(this.minInternal.z, "FXSpawnRectangle.min.z");
+    this.minInternal = resolveFXVector3Config(value);
+    assertValidNumber(this.minInternal.x, "FXSpawnBox.min.x");
+    assertValidNumber(this.minInternal.y, "FXSpawnBox.min.y");
+    assertValidNumber(this.minInternal.z, "FXSpawnBox.min.z");
   }
 
-  /** Top-right corner of spawn area */
+  /** Maximum corner of the spawn box */
   public set max(value: FXVector3Config) {
-    this.maxInternal = resolveFXVector2Config(value);
-    assertValidNumber(this.maxInternal.x, "FXSpawnRectangle.max.x");
-    assertValidNumber(this.maxInternal.y, "FXSpawnRectangle.max.y");
-    assertValidNumber(this.maxInternal.z, "FXSpawnRectangle.max.z");
+    this.maxInternal = resolveFXVector3Config(value);
+    assertValidNumber(this.maxInternal.x, "FXSpawnBox.max.x");
+    assertValidNumber(this.maxInternal.y, "FXSpawnBox.max.y");
+    assertValidNumber(this.maxInternal.z, "FXSpawnBox.max.z");
   }
 
   /** @internal */

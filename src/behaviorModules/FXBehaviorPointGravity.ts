@@ -4,13 +4,15 @@ import type { Vector3Like } from "../miscellaneous/math";
 import {
   BUILTIN_OFFSET_POSITION_X,
   BUILTIN_OFFSET_POSITION_Y,
+  BUILTIN_OFFSET_POSITION_Z,
   BUILTIN_OFFSET_RANDOM_A,
   BUILTIN_OFFSET_RANDOM_B,
   BUILTIN_OFFSET_RANDOM_C,
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
+  BUILTIN_OFFSET_VELOCITY_Z,
   resolveFXRangeConfig,
-  resolveFXVector2Config,
+  resolveFXVector3Config,
   type FXRange,
   type FXRangeConfig,
   type FXVector3Config,
@@ -43,9 +45,10 @@ export class FXBehaviorPointGravity extends FXBehaviorModule<{ builtin: "Matrix4
     threshold: FXRangeConfig = 1,
   ) {
     super();
-    this.centerInternal = resolveFXVector2Config(center);
+    this.centerInternal = resolveFXVector3Config(center);
     assertValidNumber(this.centerInternal.x, "FXBehaviorPointGravity.constructor.center.x");
     assertValidNumber(this.centerInternal.y, "FXBehaviorPointGravity.constructor.center.y");
+    assertValidNumber(this.centerInternal.z, "FXBehaviorPointGravity.constructor.center.z");
 
     this.strengthInternal = resolveFXRangeConfig(strength);
     assertValidNumber(this.strengthInternal.min, "FXBehaviorPointGravity.constructor.strength.min");
@@ -88,9 +91,10 @@ export class FXBehaviorPointGravity extends FXBehaviorModule<{ builtin: "Matrix4
 
   /** Gravity center position */
   public set center(value: FXVector3Config) {
-    this.centerInternal = resolveFXVector2Config(value);
+    this.centerInternal = resolveFXVector3Config(value);
     assertValidNumber(this.centerInternal.x, "FXBehaviorPointGravity.center.x");
     assertValidNumber(this.centerInternal.y, "FXBehaviorPointGravity.center.y");
+    assertValidNumber(this.centerInternal.z, "FXBehaviorPointGravity.center.z");
   }
 
   /** Force multiplier range */
@@ -128,13 +132,14 @@ export class FXBehaviorPointGravity extends FXBehaviorModule<{ builtin: "Matrix4
 
       const dx = this.centerInternal.x - array[itemOffset + BUILTIN_OFFSET_POSITION_X];
       const dy = this.centerInternal.y - array[itemOffset + BUILTIN_OFFSET_POSITION_Y];
+      const dz = this.centerInternal.z - array[itemOffset + BUILTIN_OFFSET_POSITION_Z];
 
       // Constant over the life of a particle but different for each particle
       const thresholdT = array[itemOffset + BUILTIN_OFFSET_RANDOM_A];
       const threshold = MathUtils.lerp(this.threshold.min, this.threshold.max, thresholdT);
 
       const thresholdSquared = threshold * threshold;
-      const distanceSquared = dx * dx + dy * dy;
+      const distanceSquared = dx * dx + dy * dy + dz * dz;
       if (distanceSquared < thresholdSquared) {
         continue;
       }
@@ -160,12 +165,15 @@ export class FXBehaviorPointGravity extends FXBehaviorModule<{ builtin: "Matrix4
 
       const directionX = dx / distance;
       const directionY = dy / distance;
+      const directionZ = dz / distance;
 
       const accelerationX = directionX * forceMagnitude;
       const accelerationY = directionY * forceMagnitude;
+      const accelerationZ = directionZ * forceMagnitude;
 
       array[itemOffset + BUILTIN_OFFSET_VELOCITY_X] += accelerationX * deltaTime;
       array[itemOffset + BUILTIN_OFFSET_VELOCITY_Y] += accelerationY * deltaTime;
+      array[itemOffset + BUILTIN_OFFSET_VELOCITY_Z] += accelerationZ * deltaTime;
     }
 
     builtin.needsUpdate = true;

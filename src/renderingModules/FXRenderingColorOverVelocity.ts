@@ -28,11 +28,11 @@ export class FXRenderingColorOverVelocity extends FXRenderingModule {
     super();
 
     if (colors.length === 0) {
-      throw new Error("UIRenderingColorOverVelocity: colors array cannot be empty");
+      throw new Error("FXRenderingColorOverVelocity: colors array cannot be empty");
     }
 
     if (maxVelocity <= 0) {
-      throw new Error("UIRenderingColorOverVelocity: maxVelocity must be greater than 0");
+      throw new Error("FXRenderingColorOverVelocity: maxVelocity must be greater than 0");
     }
 
     this.source = source.replace(

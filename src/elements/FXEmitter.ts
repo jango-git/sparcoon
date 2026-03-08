@@ -10,6 +10,7 @@ import {
   BUILTIN_OFFSET_AGE,
   BUILTIN_OFFSET_POSITION_X,
   BUILTIN_OFFSET_POSITION_Y,
+  BUILTIN_OFFSET_POSITION_Z,
   BUILTIN_OFFSET_RANDOM_A,
   BUILTIN_OFFSET_RANDOM_B,
   BUILTIN_OFFSET_RANDOM_C,
@@ -17,6 +18,7 @@ import {
   BUILTIN_OFFSET_TORQUE,
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
+  BUILTIN_OFFSET_VELOCITY_Z,
 } from "../miscellaneous/miscellaneous";
 import type { FXRenderingModule } from "../renderingModules/FXRenderingModule";
 import type { FXSpawnModule } from "../spawnModules/FXSpawnModule";
@@ -56,23 +58,23 @@ export class FXEmitter extends Object3D {
     const collectedProperties: Record<string, GLTypeInfo> = {
       builtin: resolveGLSLTypeInfo("Matrix4"),
     };
-    collectProperties(collectedProperties, spawnSequence, "UIEmitter.constructor.spawnSequence:");
+    collectProperties(collectedProperties, spawnSequence, "FXEmitter.constructor.spawnSequence:");
     collectProperties(
       collectedProperties,
       behaviorSequence,
-      "UIEmitter.constructor.behaviorSequence",
+      "FXEmitter.constructor.behaviorSequence",
     );
     collectProperties(
       collectedProperties,
       renderingSequence,
-      "UIEmitter.constructor.renderingSequence",
+      "FXEmitter.constructor.renderingSequence",
     );
 
     const collectedUniforms: Record<string, GLProperty> = {};
     collectUniforms(
       collectedUniforms,
       renderingSequence,
-      "UIEmitter.constructor.renderingSequence",
+      "FXEmitter.constructor.renderingSequence",
     );
 
     this.mesh = new FXInstancedParticle(
@@ -212,6 +214,8 @@ export class FXEmitter extends Object3D {
           array[itemOffset + BUILTIN_OFFSET_VELOCITY_X] * deltaTime;
         array[itemOffset + BUILTIN_OFFSET_POSITION_Y] +=
           array[itemOffset + BUILTIN_OFFSET_VELOCITY_Y] * deltaTime;
+        array[itemOffset + BUILTIN_OFFSET_POSITION_Z] +=
+          array[itemOffset + BUILTIN_OFFSET_VELOCITY_Z] * deltaTime;
       }
 
       builtin.needsUpdate = true;

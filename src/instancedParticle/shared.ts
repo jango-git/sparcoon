@@ -14,7 +14,7 @@ export type FXProperty =
 
 export type FXPropertyName =
   | "Texture"
-  | "UIColor"
+  | "FXColor"
   | "Vector2"
   | "Vector3"
   | "Vector4"
@@ -45,13 +45,6 @@ export interface GLTypeInfo {
 export interface GLProperty {
   value: FXProperty;
   glslTypeInfo: GLTypeInfo;
-}
-
-export interface PlaneData {
-  source: string;
-  properties: Record<string, GLProperty>;
-  transform: Matrix4;
-  visibility: boolean;
 }
 
 const GLSL_TYPE_INFO_FLOAT: GLTypeInfo = Object.freeze({
@@ -105,7 +98,7 @@ export function resolveGLSLTypeInfo(
         return GLSL_TYPE_INFO_FLOAT;
       case "Texture":
         return GLSL_TYPE_INFO_SAMPLER2D;
-      case "UIColor":
+      case "FXColor":
         return GLSL_TYPE_INFO_VEC4;
       case "Vector2":
         return GLSL_TYPE_INFO_VEC2;

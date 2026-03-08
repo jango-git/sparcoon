@@ -1,12 +1,15 @@
 {
   "name": "sparcoon",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "",
   "keywords": [
     "particles",
+    "particle-system",
     "three.js",
-    "mobile",
-    "ads",
+    "3d",
+    "webgl",
+    "instanced",
+    "billboard",
     "typescript"
   ],
   "author": "jango",

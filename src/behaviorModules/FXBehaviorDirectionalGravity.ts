@@ -4,7 +4,8 @@ import type { Vector3Like } from "../miscellaneous/math";
 import {
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
-  resolveFXVector2Config,
+  BUILTIN_OFFSET_VELOCITY_Z,
+  resolveFXVector3Config,
   type FXVector3Config,
 } from "../miscellaneous/miscellaneous";
 import { FXBehaviorModule } from "./FXBehaviorModule";
@@ -24,7 +25,7 @@ export class FXBehaviorDirectionalGravity extends FXBehaviorModule<{ builtin: "M
    */
   constructor(direction: Vector3Like) {
     super();
-    this.directionInternal = resolveFXVector2Config(direction);
+    this.directionInternal = resolveFXVector3Config(direction);
     assertValidNumber(
       this.directionInternal.x,
       "FXBehaviorDirectionalGravity.constructor.direction.x",
@@ -32,6 +33,10 @@ export class FXBehaviorDirectionalGravity extends FXBehaviorModule<{ builtin: "M
     assertValidNumber(
       this.directionInternal.y,
       "FXBehaviorDirectionalGravity.constructor.direction.y",
+    );
+    assertValidNumber(
+      this.directionInternal.z,
+      "FXBehaviorDirectionalGravity.constructor.direction.z",
     );
   }
 
@@ -42,9 +47,10 @@ export class FXBehaviorDirectionalGravity extends FXBehaviorModule<{ builtin: "M
 
   /** Acceleration vector in units/second² */
   public set direction(value: FXVector3Config) {
-    this.directionInternal = resolveFXVector2Config(value);
+    this.directionInternal = resolveFXVector3Config(value);
     assertValidNumber(this.directionInternal.x, "FXBehaviorDirectionalGravity.direction.x");
     assertValidNumber(this.directionInternal.y, "FXBehaviorDirectionalGravity.direction.y");
+    assertValidNumber(this.directionInternal.z, "FXBehaviorDirectionalGravity.direction.z");
   }
 
   /** @internal */
@@ -58,11 +64,13 @@ export class FXBehaviorDirectionalGravity extends FXBehaviorModule<{ builtin: "M
 
     const offsetX = this.directionInternal.x * deltaTime;
     const offsetY = this.directionInternal.y * deltaTime;
+    const offsetZ = this.directionInternal.z * deltaTime;
 
     for (let i = 0; i < instanceCount; i++) {
       const itemOffset = i * itemSize;
       array[itemOffset + BUILTIN_OFFSET_VELOCITY_X] += offsetX;
       array[itemOffset + BUILTIN_OFFSET_VELOCITY_Y] += offsetY;
+      array[itemOffset + BUILTIN_OFFSET_VELOCITY_Z] += offsetZ;
     }
 
     builtin.needsUpdate = true;

@@ -6,7 +6,7 @@ import {
   BUILTIN_OFFSET_POSITION_X,
   BUILTIN_OFFSET_POSITION_Y,
   BUILTIN_OFFSET_POSITION_Z,
-  resolveFXVector2Config,
+  resolveFXVector3Config,
 } from "../miscellaneous/miscellaneous";
 import { FXSpawnModule } from "./FXSpawnModule";
 
@@ -25,7 +25,7 @@ export class FXSpawnOffset extends FXSpawnModule<{ builtin: "Matrix4" }> {
    */
   constructor(offset: FXVector3Config = { x: 0, y: 0, z: 0 }) {
     super();
-    this.offsetInternal = resolveFXVector2Config(offset);
+    this.offsetInternal = resolveFXVector3Config(offset);
     assertValidNumber(this.offsetInternal.x, "FXSpawnOffset.constructor.offset.x");
     assertValidNumber(this.offsetInternal.y, "FXSpawnOffset.constructor.offset.y");
     assertValidNumber(this.offsetInternal.z, "FXSpawnOffset.constructor.offset.z");
@@ -38,7 +38,7 @@ export class FXSpawnOffset extends FXSpawnModule<{ builtin: "Matrix4" }> {
 
   /** Particle position offset */
   public set offset(value: FXVector3Config) {
-    this.offsetInternal = resolveFXVector2Config(value);
+    this.offsetInternal = resolveFXVector3Config(value);
     assertValidNumber(this.offsetInternal.x, "FXSpawnOffset.offset.x");
     assertValidNumber(this.offsetInternal.y, "FXSpawnOffset.offset.y");
     assertValidNumber(this.offsetInternal.z, "FXSpawnOffset.offset.z");

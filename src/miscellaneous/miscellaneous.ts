@@ -34,7 +34,7 @@ export function resolveFXRangeConfig(config: FXRangeConfig): FXRange {
   return config;
 }
 
-export function resolveFXVector2Config(config: FXVector3Config): Vector3Like {
+export function resolveFXVector3Config(config: FXVector3Config): Vector3Like {
   if (typeof config === "number") {
     return { x: config, y: config, z: config };
   }

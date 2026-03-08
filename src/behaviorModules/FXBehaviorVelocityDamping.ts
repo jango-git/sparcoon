@@ -5,6 +5,7 @@ import {
   BUILTIN_OFFSET_RANDOM_B,
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
+  BUILTIN_OFFSET_VELOCITY_Z,
   resolveFXRangeConfig,
   type FXRange,
   type FXRangeConfig,
@@ -70,6 +71,7 @@ export class FXBehaviorVelocityDamping extends FXBehaviorModule<{ builtin: "Matr
 
       array[itemOffset + BUILTIN_OFFSET_VELOCITY_X] *= dampingFactor;
       array[itemOffset + BUILTIN_OFFSET_VELOCITY_Y] *= dampingFactor;
+      array[itemOffset + BUILTIN_OFFSET_VELOCITY_Z] *= dampingFactor;
     }
 
     builtin.needsUpdate = true;
