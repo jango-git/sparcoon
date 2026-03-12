@@ -58,11 +58,6 @@ export function resolveAspect(config: number | FXTextureConfig): number {
   return config.sourceSize.w / config.sourceSize.h;
 }
 
-export function generateNoise3D(x: number, y: number, z: number): number {
-  const noise = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453123;
-  return (noise - Math.floor(noise)) * 2 - 1;
-}
-
 export function buildGradientTexture(colors: FXColor[]): DataTexture {
   const width = colors.length;
   const height = 1;

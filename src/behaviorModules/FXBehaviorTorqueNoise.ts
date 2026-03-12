@@ -1,5 +1,8 @@
-import { MathUtils, type InstancedBufferAttribute } from "three";
+import { makeNoise3D } from "fast-simplex-noise";
+import type { InstancedBufferAttribute } from "three";
+import { MathUtils } from "three";
 import { assertValidNonNegativeNumber, assertValidPositiveNumber } from "../miscellaneous/asserts";
+import type { FXRange, FXRangeConfig } from "../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_POSITION_X,
   BUILTIN_OFFSET_POSITION_Y,
@@ -7,12 +10,11 @@ import {
   BUILTIN_OFFSET_RANDOM_A,
   BUILTIN_OFFSET_RANDOM_C,
   BUILTIN_OFFSET_TORQUE,
-  generateNoise3D,
   resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../miscellaneous/miscellaneous";
 import { FXBehaviorModule } from "./FXBehaviorModule";
+
+const generateNoise3D = makeNoise3D();
 
 /**
  * Applies noise-based angular acceleration to particles.
@@ -91,7 +93,6 @@ export class FXBehaviorTorqueNoise extends FXBehaviorModule<{ builtin: "Matrix4"
       // Constant over the life of a particle but different for each particle
       const scaleT = array[itemOffset + BUILTIN_OFFSET_RANDOM_C];
       const scale = MathUtils.lerp(this.scaleInternal.min, this.scaleInternal.max, scaleT);
-
       const noise = generateNoise3D(
         array[itemOffset + BUILTIN_OFFSET_POSITION_X] * scale,
         array[itemOffset + BUILTIN_OFFSET_POSITION_Y] * scale,

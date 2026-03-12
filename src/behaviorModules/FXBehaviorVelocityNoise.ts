@@ -1,5 +1,8 @@
-import { MathUtils, type InstancedBufferAttribute } from "three";
+import { makeNoise3D } from "fast-simplex-noise";
+import type { InstancedBufferAttribute } from "three";
+import { MathUtils } from "three";
 import { assertValidNonNegativeNumber, assertValidPositiveNumber } from "../miscellaneous/asserts";
+import type { FXRange, FXRangeConfig } from "../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_POSITION_X,
   BUILTIN_OFFSET_POSITION_Y,
@@ -9,12 +12,13 @@ import {
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
   BUILTIN_OFFSET_VELOCITY_Z,
-  generateNoise3D,
   resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../miscellaneous/miscellaneous";
 import { FXBehaviorModule } from "./FXBehaviorModule";
+
+const generateNoise3D0 = makeNoise3D();
+const generateNoise3D1 = makeNoise3D();
+const generateNoise3D2 = makeNoise3D();
 
 /**
  * Applies noise-based acceleration to particles.
@@ -98,9 +102,9 @@ export class FXBehaviorVelocityNoise extends FXBehaviorModule<{ builtin: "Matrix
       const scaleT = array[itemOffset + BUILTIN_OFFSET_RANDOM_C];
       const scale = MathUtils.lerp(this.scaleInternal.min, this.scaleInternal.max, scaleT);
 
-      const noiseX = generateNoise3D(x * scale, y * scale, z * scale);
-      const noiseY = generateNoise3D((x + 100) * scale, (y + 100) * scale, (z + 100) * scale);
-      const noiseZ = generateNoise3D((x - 200) * scale, (y - 200) * scale, (z - 200) * scale);
+      const noiseX = generateNoise3D0(x * scale, y * scale, z * scale);
+      const noiseY = generateNoise3D1(x * scale, y * scale, z * scale);
+      const noiseZ = generateNoise3D2(x * scale, y * scale, z * scale);
 
       // Constant over the life of a particle but different for each particle
       const strengthT = array[itemOffset + BUILTIN_OFFSET_RANDOM_A];
