@@ -1,0 +1,127 @@
+import { makeNoise3D } from "fast-simplex-noise";
+import type { InstancedBufferAttribute } from "three";
+import { MathUtils } from "three";
+import {
+  assertValidNonNegativeNumber,
+  assertValidPositiveNumber,
+} from "../../miscellaneous/asserts";
+import type { FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
+import {
+  BUILTIN_OFFSET_POSITION_X,
+  BUILTIN_OFFSET_POSITION_Y,
+  BUILTIN_OFFSET_POSITION_Z,
+  BUILTIN_OFFSET_RANDOM_A,
+  BUILTIN_OFFSET_RANDOM_C,
+  BUILTIN_OFFSET_VELOCITY_X,
+  BUILTIN_OFFSET_VELOCITY_Y,
+  BUILTIN_OFFSET_VELOCITY_Z,
+  resolveFXRangeConfig,
+} from "../../miscellaneous/miscellaneous";
+import { FXBehaviorModule } from "./FXBehaviorModule";
+
+const generateNoise3D0 = makeNoise3D();
+const generateNoise3D1 = makeNoise3D();
+const generateNoise3D2 = makeNoise3D();
+
+/**
+ * Applies noise-based acceleration to particles.
+ *
+ * Uses 2D noise based on particle position. Higher scale means finer noise detail.
+ */
+export class FXBehaviorVelocityNoise extends FXBehaviorModule<{ builtin: "Matrix4" }> {
+  /** @internal */
+  public readonly requiredProperties = { builtin: "Matrix4" } as const;
+  private scaleInternal: FXRange;
+  private strengthInternal: FXRange;
+
+  /**
+   * @param scale - Noise frequency range. Accepts number, tuple, or range object
+   * @param strength - Force multiplier range. Accepts number, tuple, or range object
+   */
+  constructor(scale = 100, strength = 500) {
+    super();
+    this.scaleInternal = resolveFXRangeConfig(scale);
+    assertValidPositiveNumber(
+      this.scaleInternal.min,
+      `FXBehaviorVelocityNoise.constructor.scale.min`,
+    );
+    assertValidPositiveNumber(
+      this.scaleInternal.max,
+      `FXBehaviorVelocityNoise.constructor.scale.max`,
+    );
+
+    this.strengthInternal = resolveFXRangeConfig(strength);
+    assertValidNonNegativeNumber(
+      this.strengthInternal.min,
+      `FXBehaviorVelocityNoise.constructor.strength.min`,
+    );
+    assertValidNonNegativeNumber(
+      this.strengthInternal.max,
+      `FXBehaviorVelocityNoise.constructor.strength.max`,
+    );
+  }
+
+  /** Noise frequency range */
+  public get scale(): FXRange {
+    return this.scaleInternal;
+  }
+
+  /** Force multiplier range */
+  public get strength(): FXRange {
+    return this.strengthInternal;
+  }
+
+  /** Noise frequency range */
+  public set scale(value: FXRangeConfig) {
+    this.scaleInternal = resolveFXRangeConfig(value);
+    assertValidPositiveNumber(this.scaleInternal.min, `FXBehaviorVelocityNoise.scale.min`);
+    assertValidPositiveNumber(this.scaleInternal.max, `FXBehaviorVelocityNoise.scale.max`);
+  }
+
+  /** Force multiplier range */
+  public set strength(value: FXRangeConfig) {
+    this.strengthInternal = resolveFXRangeConfig(value);
+    assertValidNonNegativeNumber(this.strengthInternal.min, `FXBehaviorVelocityNoise.strength.min`);
+    assertValidNonNegativeNumber(this.strengthInternal.max, `FXBehaviorVelocityNoise.strength.max`);
+  }
+
+  /** @internal */
+  public update(
+    properties: { builtin: InstancedBufferAttribute },
+    instanceCount: number,
+    deltaTime: number,
+  ): void {
+    const { builtin } = properties;
+    const { array, itemSize } = builtin;
+
+    for (let i = 0; i < instanceCount; i++) {
+      const itemOffset = i * itemSize;
+
+      const x = array[itemOffset + BUILTIN_OFFSET_POSITION_X];
+      const y = array[itemOffset + BUILTIN_OFFSET_POSITION_Y];
+      const z = array[itemOffset + BUILTIN_OFFSET_POSITION_Z];
+
+      // Constant over the life of a particle but different for each particle
+      const scaleT = array[itemOffset + BUILTIN_OFFSET_RANDOM_C];
+      const scale = MathUtils.lerp(this.scaleInternal.min, this.scaleInternal.max, scaleT);
+
+      const noiseX = generateNoise3D0(x * scale, y * scale, z * scale);
+      const noiseY = generateNoise3D1(x * scale, y * scale, z * scale);
+      const noiseZ = generateNoise3D2(x * scale, y * scale, z * scale);
+
+      // Constant over the life of a particle but different for each particle
+      const strengthT = array[itemOffset + BUILTIN_OFFSET_RANDOM_A];
+      const strength = MathUtils.lerp(
+        this.strengthInternal.min,
+        this.strengthInternal.max,
+        strengthT,
+      );
+
+      array[itemOffset + BUILTIN_OFFSET_VELOCITY_X] += noiseX * strength * deltaTime;
+      array[itemOffset + BUILTIN_OFFSET_VELOCITY_Y] += noiseY * strength * deltaTime;
+      array[itemOffset + BUILTIN_OFFSET_VELOCITY_Z] += noiseZ * strength * deltaTime;
+    }
+
+    builtin.needsUpdate = true;
+  }
+}

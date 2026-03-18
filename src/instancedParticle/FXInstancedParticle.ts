@@ -1,11 +1,8 @@
-import type { Blending, InstancedBufferGeometry, Material } from "three";
+import type { InstancedBufferGeometry, Material } from "three";
 import { InstancedBufferAttribute, Mesh, StreamDrawUsage } from "three";
 import { BUILTIN_OFFSET_AGE, BUILTIN_OFFSET_LIFETIME } from "../miscellaneous/miscellaneous";
-import { buildParticleMaterial, INSTANCED_PARTICLE_GEOMETRY } from "./FXInstancedParticle.Internal";
-import { buildParticleLambertMaterial } from "./FXParticleLambertMaterial";
-import { FXParticleNormalsMode } from "./FXParticleNormalsMode";
-import { FXParticleRenderingMode } from "./FXParticleRenderingMode";
-import type { GLProperty, GLTypeInfo } from "./shared";
+import { INSTANCED_PARTICLE_GEOMETRY } from "./FXInstancedParticle.Internal";
+import type { GLTypeInfo } from "./shared";
 
 export class FXInstancedParticle extends Mesh {
   public readonly propertyBuffers: Record<string, InstancedBufferAttribute> = {};
@@ -15,29 +12,20 @@ export class FXInstancedParticle extends Mesh {
   private capacity: number;
 
   constructor(
-    sources: string[],
-    uniforms: Record<string, GLProperty>,
     varyings: Record<string, GLTypeInfo>,
     expectedCapacity: number,
     private readonly capacityStep: number,
-    blending: Blending,
-    useAlphaHashing: boolean,
-    renderingMode: FXParticleRenderingMode,
-    normalsMode: FXParticleNormalsMode,
+    material: Material,
   ) {
     const instancedGeometry = INSTANCED_PARTICLE_GEOMETRY.clone();
-    const particleMaterial =
-      renderingMode === FXParticleRenderingMode.Lambert
-        ? buildParticleLambertMaterial(sources, uniforms, varyings, blending, useAlphaHashing, normalsMode)
-        : buildParticleMaterial(sources, uniforms, varyings, blending, useAlphaHashing);
 
-    super(instancedGeometry, particleMaterial);
+    super(instancedGeometry, material);
 
     this.frustumCulled = false;
     this.instancedGeometry = instancedGeometry;
     this.instancedGeometry.instanceCount = 0;
 
-    this.particleMaterial = particleMaterial;
+    this.particleMaterial = material;
     this.capacity = Math.max(
       Math.ceil(expectedCapacity / this.capacityStep) * this.capacityStep,
       this.capacityStep,

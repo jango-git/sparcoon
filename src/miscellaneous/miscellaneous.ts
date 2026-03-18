@@ -9,9 +9,9 @@ import {
   UnsignedByteType,
   UVMapping,
 } from "three";
-import type { FXColor } from "../color/FXColor";
 import type { Vector3Like } from "../miscellaneous/math";
 import type { FXTextureConfig } from "../miscellaneous/texture/FXTextureView.Internal";
+import type { FXColor } from "./color/FXColor";
 
 export interface FXRange {
   min: number;
