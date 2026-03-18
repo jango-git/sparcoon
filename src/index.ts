@@ -6,7 +6,7 @@ export { FXBehaviorTorqueNoise } from "./behaviorModules/FXBehaviorTorqueNoise";
 export { FXBehaviorVelocityDamping } from "./behaviorModules/FXBehaviorVelocityDamping";
 export { FXBehaviorVelocityNoise } from "./behaviorModules/FXBehaviorVelocityNoise";
 export { FXColor } from "./color/FXColor";
-export { FXEmitter } from "./elements/FXEmitter";
+export { FXEmitter, FXParticleNormalsMode, FXParticleRenderingMode } from "./elements/FXEmitter";
 export { FXRenderingAnimatedTexture } from "./renderingModules/FXRenderingAnimatedTexture";
 export { FXRenderingColorOverLife } from "./renderingModules/FXRenderingColorOverLife";
 export { FXRenderingColorOverVelocity } from "./renderingModules/FXRenderingColorOverVelocity";

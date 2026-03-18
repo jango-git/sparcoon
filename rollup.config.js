@@ -26,8 +26,9 @@ export default {
             code: code
               .replace(/\/\*[\s\S]*?\*\//g, "")
               .replace(/\/\/[^\n]*/g, "")
-              .replace(/\s*([{}(),=;+\-*/<>])\s*/g, "$1")
-              .replace(/\s+/g, " ")
+              .replace(/[ \t]*([{}(),=;+\-*/<>])[ \t]*/g, "$1")
+              .replace(/[ \t]+/g, " ")
+              .replace(/\n\s*\n/g, "\n")
               .trim(),
             map: null,
           };

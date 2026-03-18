@@ -1,14 +1,17 @@
-import type { Blending, InstancedBufferGeometry, ShaderMaterial } from "three";
+import type { Blending, InstancedBufferGeometry, Material } from "three";
 import { InstancedBufferAttribute, Mesh, StreamDrawUsage } from "three";
 import { BUILTIN_OFFSET_AGE, BUILTIN_OFFSET_LIFETIME } from "../miscellaneous/miscellaneous";
 import { buildParticleMaterial, INSTANCED_PARTICLE_GEOMETRY } from "./FXInstancedParticle.Internal";
+import { buildParticleLambertMaterial } from "./FXParticleLambertMaterial";
+import { FXParticleNormalsMode } from "./FXParticleNormalsMode";
+import { FXParticleRenderingMode } from "./FXParticleRenderingMode";
 import type { GLProperty, GLTypeInfo } from "./shared";
 
 export class FXInstancedParticle extends Mesh {
   public readonly propertyBuffers: Record<string, InstancedBufferAttribute> = {};
 
   private readonly instancedGeometry: InstancedBufferGeometry;
-  private readonly shaderMaterial: ShaderMaterial;
+  private readonly particleMaterial: Material;
   private capacity: number;
 
   constructor(
@@ -19,23 +22,22 @@ export class FXInstancedParticle extends Mesh {
     private readonly capacityStep: number,
     blending: Blending,
     useAlphaHashing: boolean,
+    renderingMode: FXParticleRenderingMode,
+    normalsMode: FXParticleNormalsMode,
   ) {
     const instancedGeometry = INSTANCED_PARTICLE_GEOMETRY.clone();
-    const shaderMaterial = buildParticleMaterial(
-      sources,
-      uniforms,
-      varyings,
-      blending,
-      useAlphaHashing,
-    );
+    const particleMaterial =
+      renderingMode === FXParticleRenderingMode.Lambert
+        ? buildParticleLambertMaterial(sources, uniforms, varyings, blending, useAlphaHashing, normalsMode)
+        : buildParticleMaterial(sources, uniforms, varyings, blending, useAlphaHashing);
 
-    super(instancedGeometry, shaderMaterial);
+    super(instancedGeometry, particleMaterial);
 
     this.frustumCulled = false;
     this.instancedGeometry = instancedGeometry;
     this.instancedGeometry.instanceCount = 0;
 
-    this.shaderMaterial = shaderMaterial;
+    this.particleMaterial = particleMaterial;
     this.capacity = Math.max(
       Math.ceil(expectedCapacity / this.capacityStep) * this.capacityStep,
       this.capacityStep,
@@ -106,7 +108,7 @@ export class FXInstancedParticle extends Mesh {
 
   public destroy(): void {
     this.instancedGeometry.dispose();
-    this.shaderMaterial.dispose();
+    this.particleMaterial.dispose();
   }
 
   private ensureCapacity(requiredCapacity: number): void {

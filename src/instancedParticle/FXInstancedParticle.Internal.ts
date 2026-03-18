@@ -158,8 +158,9 @@ export function buildParticleFragmentShader(
   }
 
   return `
+    #include <common>
+
     // Defines
-    #define PI 3.14159265359
     #define SRGB_SUPPORTED ${checkSRGBSupport() ? "1" : "0"}
 
     #define PARTICLE_POSITION_X p_builtin[0][0]

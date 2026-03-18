@@ -5,6 +5,9 @@ import {
   collectProperties,
   collectUniforms,
 } from "../instancedParticle/FXInstancedParticle.Internal";
+import { buildParticleDepthMaterial } from "../instancedParticle/FXParticleDepthMaterial";
+import { FXParticleNormalsMode } from "../instancedParticle/FXParticleNormalsMode";
+import { FXParticleRenderingMode } from "../instancedParticle/FXParticleRenderingMode";
 import { resolveGLSLTypeInfo, type GLProperty, type GLTypeInfo } from "../instancedParticle/shared";
 import {
   BUILTIN_OFFSET_AGE,
@@ -26,8 +29,14 @@ import type { FXEmitterPlayOptions } from "./FXEmitter.Internal";
 import {
   EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES,
   EMITTER_DEFAULT_CAPACITY_STEP,
+  EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
+  EMITTER_DEFAULT_RECEIVE_SHADOW,
+  EMITTER_DEFAULT_RENDERING_MODE,
+  EMITTER_DEFAULT_NORMALS_MODE,
 } from "./FXEmitter.Internal";
+
+export { FXParticleNormalsMode, FXParticleRenderingMode };
 
 export interface FXEmitterOptions {
   expectedCapacity: number;
@@ -35,6 +44,10 @@ export interface FXEmitterOptions {
   automaticallyDestroyModules: boolean;
   blending: Blending;
   useAlphaHashing: boolean;
+  castShadow: boolean;
+  receiveShadow: boolean;
+  renderingMode: FXParticleRenderingMode;
+  normalsMode: FXParticleNormalsMode;
 }
 
 const INSTANCES = new Array<FXEmitter>();
@@ -55,6 +68,7 @@ export class FXEmitter extends Object3D {
     options: Partial<FXEmitterOptions> = {},
   ) {
     super();
+
     const collectedProperties: Record<string, GLTypeInfo> = {
       builtin: resolveGLSLTypeInfo("Matrix4"),
     };
@@ -78,14 +92,25 @@ export class FXEmitter extends Object3D {
     );
 
     this.mesh = new FXInstancedParticle(
-      this.renderingSequence.map((module) => module.source),
+      renderingSequence.map((module) => module.source),
       collectedUniforms,
       collectedProperties,
       options.expectedCapacity ?? EMITTER_DEFAULT_EXPECTED_CAPACITY,
       options.capacityStep ?? EMITTER_DEFAULT_CAPACITY_STEP,
       options.blending ?? NormalBlending,
       options.useAlphaHashing ?? false,
+      options.renderingMode ?? EMITTER_DEFAULT_RENDERING_MODE,
+      options.normalsMode ?? EMITTER_DEFAULT_NORMALS_MODE,
     );
+
+    if (options.castShadow ?? EMITTER_DEFAULT_CAST_SHADOW) {
+      this.mesh.castShadow = true;
+      this.mesh.customDepthMaterial = buildParticleDepthMaterial();
+    }
+
+    if (options.receiveShadow ?? EMITTER_DEFAULT_RECEIVE_SHADOW) {
+      this.mesh.receiveShadow = true;
+    }
 
     this.automaticallyDestroyModules =
       options.automaticallyDestroyModules ?? EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES;
