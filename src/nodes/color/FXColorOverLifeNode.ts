@@ -6,18 +6,19 @@ import { FXColorNode } from "./FXColorNode";
 
 export class FXColorOverLifeNode extends FXColorNode {
   /** @internal */
-  public override readonly affectsDepth = true;
+  public override readonly affectsDepth: boolean;
   /** @internal */
-  public override readonly cacheKey = "color-over-life";
+  public override readonly cacheKey: string;
   /** @internal */
-  public override readonly uniformDeclarations = ["uniform sampler2D u_ColorOverLife;"];
+  public override readonly uniformDeclarations: string[];
   /** @internal */
   public override readonly uniforms: Record<string, { value: unknown }>;
   /** @internal */
   public override readonly helperFunctions: string;
   /** @internal */
-  public override readonly colorExpression = "_fx_sampleColorOverLife(u_ColorOverLife)";
+  public override readonly colorExpression: string;
 
+  /** @internal */
   private readonly gradientTexture: DataTexture;
 
   constructor(colors: FXColor[]) {
@@ -26,20 +27,28 @@ export class FXColorOverLifeNode extends FXColorNode {
     }
 
     super();
-
     this.gradientTexture = buildGradientTexture(colors);
+
+    this.affectsDepth = true;
+    this.cacheKey = "color-over-life";
+    this.uniformDeclarations = ["uniform sampler2D u_ColorOverLife;"];
     this.uniforms = {
       // eslint-disable-next-line @typescript-eslint/naming-convention
       u_ColorOverLife: { value: this.gradientTexture },
     };
     this.helperFunctions = `
-      vec4 _fx_sampleColorOverLife(sampler2D tex) {
-        float t = clamp(PARTICLE_AGE / PARTICLE_LIFETIME, 0.0, 1.0);
-        vec4 c = texture2D(tex, vec2(t, 0.5));
-        ${checkSRGBSupport() ? "" : "c = vec4(pow(c.rgb, vec3(2.2)), c.a);"}
-        return c;
+      vec4 sampleColorOverLife(sampler2D gradientTexture) {
+        // Normalized particle age [0, 1] maps to the gradient texture's x-axis
+        float lifetimeRatio = clamp(PARTICLE_AGE / PARTICLE_LIFETIME, 0.0, 1.0);
+        vec4 color = texture2D(gradientTexture, vec2(lifetimeRatio, 0.5));
+
+        // Apply gamma correction when sRGB textures are not natively supported
+        ${checkSRGBSupport() ? "" : "color = vec4(pow(color.rgb, vec3(2.2)), color.a);"}
+
+        return color;
       }
     `;
+    this.colorExpression = "sampleColorOverLife(u_ColorOverLife)";
   }
 
   public override destroy(): void {

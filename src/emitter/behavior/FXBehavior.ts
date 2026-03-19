@@ -6,7 +6,7 @@ import type { FXPropertyName } from "../../instancedParticle/shared";
  *
  * Behavior modules update particle properties each frame.
  */
-export abstract class FXBehaviorModule<
+export abstract class FXBehavior<
   T extends Record<string, FXPropertyName> = Record<string, FXPropertyName>,
 > {
   public abstract readonly requiredProperties: T;

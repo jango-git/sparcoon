@@ -2,21 +2,21 @@ import type { InstancedBufferAttribute } from "three";
 import { MathUtils } from "three";
 import { assertValidNumber } from "../../miscellaneous/asserts";
 import type { Vector3Like } from "../../miscellaneous/math";
+import type { FXVector3Config } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_POSITION_X,
   BUILTIN_OFFSET_POSITION_Y,
   BUILTIN_OFFSET_POSITION_Z,
   resolveFXVector3Config,
-  type FXVector3Config,
 } from "../../miscellaneous/miscellaneous";
-import { FXSpawnModule } from "./FXSpawnModule";
+import { FXSpawn } from "./FXSpawn";
 
 /**
  * Spawns particles at random positions within an axis-aligned bounding box.
  *
  * Position is chosen uniformly within the bounds defined by min and max.
  */
-export class FXSpawnBox extends FXSpawnModule<{ builtin: "Matrix4" }> {
+export class FXSpawnBox extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private minInternal: Vector3Like;

@@ -6,7 +6,7 @@ import type { FXPropertyName } from "../../instancedParticle/shared";
  *
  * Spawn modules initialize particle properties when particles are created.
  */
-export abstract class FXSpawnModule<
+export abstract class FXSpawn<
   T extends Record<string, FXPropertyName> = Record<string, FXPropertyName>,
 > {
   /** @internal */

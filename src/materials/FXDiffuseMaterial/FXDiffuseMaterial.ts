@@ -1,26 +1,36 @@
-import { NormalBlending, type Blending, type MeshLambertMaterial } from "three";
+import type { MeshLambertMaterial } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
-import { FXMaterial, type FXMaterialOptions } from "../FXMaterial";
-import { buildFXDiffuseMaterial, FXParticleNormalsMode } from "./FXDiffuseMaterial.Internal";
-
-export { FXParticleNormalsMode };
+import type { FXColorNode } from "../../nodes/color/FXColorNode";
+import type { FXNormalNode } from "../../nodes/normal/FXNormalNode";
+import { FXSphericalNormalNode } from "../../nodes/normal/FXSphericalNormalNode";
+import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
+import type { FXMaterialOptions } from "../FXMaterial/FXMaterial";
+import { FXMaterial } from "../FXMaterial/FXMaterial";
+import { buildFXDiffuseMaterial } from "./FXDiffuseMaterial.Internal";
 
 export interface FXDiffuseMaterialOptions extends FXMaterialOptions {
-  blending: Blending;
-  useAlphaHashing: boolean;
-  normalsMode: FXParticleNormalsMode;
+  normalNodes?: (FXTextureNode | FXNormalNode)[];
+  emissionNodes?: (FXColorNode | FXTextureNode)[];
 }
 
 export class FXDiffuseMaterial extends FXMaterial {
-  private readonly blending: Blending;
-  private readonly useAlphaHashing: boolean;
-  private readonly normalsMode: FXParticleNormalsMode;
+  private readonly normalNodes: readonly (FXTextureNode | FXNormalNode)[];
+  private readonly emissionNodes: readonly (FXColorNode | FXTextureNode)[];
 
-  constructor(options: Partial<FXDiffuseMaterialOptions> = {}) {
+  constructor(options: FXDiffuseMaterialOptions = {}) {
     super(options);
-    this.blending = options.blending ?? NormalBlending;
-    this.useAlphaHashing = options.useAlphaHashing ?? false;
-    this.normalsMode = options.normalsMode ?? FXParticleNormalsMode.SPHERICAL;
+    this.normalNodes = options.normalNodes ?? [new FXSphericalNormalNode()];
+    this.emissionNodes = options.emissionNodes ?? [];
+  }
+
+  public override destroy(): void {
+    super.destroy();
+    for (const node of this.normalNodes) {
+      node.destroy?.();
+    }
+    for (const node of this.emissionNodes) {
+      node.destroy?.();
+    }
   }
 
   /** @internal */
@@ -29,8 +39,10 @@ export class FXDiffuseMaterial extends FXMaterial {
       varyings,
       this.blending,
       this.useAlphaHashing,
-      this.normalsMode,
-      this.colorNodes,
+      this.alphaTest,
+      this.albedoNodes,
+      this.normalNodes,
+      this.emissionNodes,
     );
   }
 }

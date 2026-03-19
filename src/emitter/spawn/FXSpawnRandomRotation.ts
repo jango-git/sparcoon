@@ -1,20 +1,16 @@
 import type { InstancedBufferAttribute } from "three";
 import { MathUtils } from "three";
 import { assertValidNumber } from "../../miscellaneous/asserts";
-import {
-  BUILTIN_OFFSET_ROTATION,
-  resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
-} from "../../miscellaneous/miscellaneous";
-import { FXSpawnModule } from "./FXSpawnModule";
+import type { FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
+import { BUILTIN_OFFSET_ROTATION, resolveFXRangeConfig } from "../../miscellaneous/miscellaneous";
+import { FXSpawn } from "./FXSpawn";
 
 /**
  * Assigns random rotation to particles.
  *
  * Initial rotation is chosen uniformly from the specified range.
  */
-export class FXSpawnRandomRotation extends FXSpawnModule<{ builtin: "Matrix4" }> {
+export class FXSpawnRandomRotation extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public requiredProperties = { builtin: "Matrix4" } as const;
   private rotationInternal: FXRange;

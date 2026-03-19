@@ -1,8 +1,10 @@
-import { MathUtils, type InstancedBufferAttribute } from "three";
+import type { InstancedBufferAttribute } from "three";
+import { MathUtils } from "three";
 import {
   assertValidNonNegativeNumber,
   assertValidPositiveNumber,
 } from "../../miscellaneous/asserts";
+import type { FXAspectConfig, FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_AGE,
   BUILTIN_OFFSET_LIFETIME,
@@ -11,18 +13,15 @@ import {
   BUILTIN_OFFSET_SCALE_Y,
   resolveAspect,
   resolveFXRangeConfig,
-  type FXAspectConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../../miscellaneous/miscellaneous";
-import { FXBehaviorModule } from "./FXBehaviorModule";
+import { FXBehavior } from "./FXBehavior";
 
 /**
  * Animates particle scale over lifetime.
  *
  * Interpolates between scale anchors based on particle age. Requires at least 2 anchors.
  */
-export class FXBehaviorScaleOverLife extends FXBehaviorModule<{ builtin: "Matrix4" }> {
+export class FXBehaviorScaleOverLife extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private readonly scales: FXRange[] = [];

@@ -1,20 +1,20 @@
-import { MathUtils, type InstancedBufferAttribute } from "three";
+import type { InstancedBufferAttribute } from "three";
+import { MathUtils } from "three";
 import { assertValidNonNegativeNumber } from "../../miscellaneous/asserts";
+import type { FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_RANDOM_B,
   BUILTIN_OFFSET_TORQUE,
   resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../../miscellaneous/miscellaneous";
-import { FXBehaviorModule } from "./FXBehaviorModule";
+import { FXBehavior } from "./FXBehavior";
 
 /**
  * Reduces particle angular velocity over time.
  *
  * Applies exponential decay to torque. Damping of 0 means no effect, 1 means instant stop.
  */
-export class FXBehaviorTorqueDamping extends FXBehaviorModule<{
+export class FXBehaviorTorqueDamping extends FXBehavior<{
   builtin: "Matrix4";
 }> {
   /** @internal */

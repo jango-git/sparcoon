@@ -1,20 +1,19 @@
-import { DoubleSide, MeshLambertMaterial, type Blending } from "three";
+import type { Blending } from "three";
+import { Color, DoubleSide, MeshLambertMaterial } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
-import type { FXColorNode } from "../color-nodes/FXColorNode";
-import { PARTICLE_DEFINES } from "../miscellaneous";
-
-export enum FXParticleNormalsMode {
-  FLAT = 0,
-  SPHERICAL = 1,
-  TOWARDS_LIGHT = 2,
-}
+import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
+import type { FXColorNode } from "../../nodes/color/FXColorNode";
+import type { FXNormalNode } from "../../nodes/normal/FXNormalNode";
+import { FXTextureNode } from "../../nodes/texture/FXTextureNode";
 
 export function buildFXDiffuseMaterial(
   varyings: Record<string, GLTypeInfo>,
   blending: Blending,
   useAlphaHashing: boolean,
-  normalsMode: FXParticleNormalsMode,
-  colorNodes: readonly FXColorNode[],
+  alphaTest: number,
+  albedoNodes: readonly (FXColorNode | FXTextureNode)[],
+  normalNodes: readonly (FXTextureNode | FXNormalNode)[],
+  emissionNodes: readonly (FXColorNode | FXTextureNode)[],
 ): MeshLambertMaterial {
   const attributeDeclarations: string[] = [];
   const varyingDeclarations: string[] = [];
@@ -35,7 +34,8 @@ export function buildFXDiffuseMaterial(
     blending,
     side: DoubleSide,
     forceSinglePass: true,
-    alphaTest: 1 / 255,
+    alphaTest,
+    emissive: emissionNodes.length > 0 ? new Color(1, 1, 1) : new Color(0, 0, 0),
   });
 
   material.onBeforeCompile = (shader): void => {
@@ -66,18 +66,22 @@ export function buildFXDiffuseMaterial(
         .replace(
           "#include <project_vertex>",
           `
-          vec2 p_bp = position.xy;
-          p_bp.x *= PARTICLE_SCALE_X;
-          p_bp.y *= PARTICLE_SCALE_Y;
-          float p_cosR = cos(PARTICLE_ROTATION);
-          float p_sinR = sin(PARTICLE_ROTATION);
-          p_bp = vec2(
-            p_bp.x * p_cosR - p_bp.y * p_sinR,
-            p_bp.x * p_sinR + p_bp.y * p_cosR
+          // Scale and rotate the billboard offset in camera space
+          vec2 billboardOffset = position.xy;
+          billboardOffset.x *= PARTICLE_SCALE_X;
+          billboardOffset.y *= PARTICLE_SCALE_Y;
+
+          float cosRotation = cos(PARTICLE_ROTATION);
+          float sinRotation = sin(PARTICLE_ROTATION);
+          billboardOffset = vec2(
+            billboardOffset.x * cosRotation - billboardOffset.y * sinRotation,
+            billboardOffset.x * sinRotation + billboardOffset.y * cosRotation
           );
-          vec3 p_c = vec3(PARTICLE_POSITION_X, PARTICLE_POSITION_Y, PARTICLE_POSITION_Z);
-          vec4 mvPosition = modelViewMatrix * vec4(p_c, 1.0);
-          mvPosition.xy += p_bp;
+
+          // Move particle center to view space, then apply the billboard offset
+          vec3 particleCenter = vec3(PARTICLE_POSITION_X, PARTICLE_POSITION_Y, PARTICLE_POSITION_Z);
+          vec4 mvPosition = modelViewMatrix * vec4(particleCenter, 1.0);
+          mvPosition.xy += billboardOffset;
           gl_Position = projectionMatrix * mvPosition;
           `,
         )
@@ -85,48 +89,77 @@ export function buildFXDiffuseMaterial(
           "#include <worldpos_vertex>",
           `
           #if defined(USE_SHADOWMAP) || defined(USE_ENVMAP) || defined(DISTANCE) || (NUM_SPOT_LIGHT_COORDS > 0)
-            vec3 p_cr = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
-            vec3 p_cu = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+            // Reconstruct world-space position for shadow/environment maps.
+            // Camera right and up are the first two rows of the view matrix rotation (transposed).
+            vec3 cameraRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+            vec3 cameraUp    = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
             vec4 worldPosition = vec4(
-              (modelMatrix * vec4(p_c, 1.0)).xyz + p_cr * p_bp.x + p_cu * p_bp.y,
+              (modelMatrix * vec4(particleCenter, 1.0)).xyz + cameraRight * billboardOffset.x + cameraUp * billboardOffset.y,
               1.0
             );
           #endif
           `,
         );
 
+    const blendReorientedNormalsHelper: string =
+      normalNodes.length > 1
+        ? `
+          vec3 blendReorientedNormals(vec3 base, vec3 detail) {
+            base += vec3(0.0, 0.0, 1.0);
+            detail *= vec3(-1.0, -1.0, 1.0);
+            return normalize(base * dot(base, detail) / base.z - detail);
+          }
+        `
+        : "";
+
     const fragmentPreamble = [
       PARTICLE_DEFINES,
       "varying vec2 p_uv;",
       varyingDeclarations.join("\n"),
-      colorNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
-      colorNodes.map((n) => n.helperFunctions).join("\n"),
+      albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      albedoNodes.map((n) => n.helperFunctions).join("\n"),
+      normalNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      normalNodes.map((n) => n.helperFunctions).join("\n"),
+      blendReorientedNormalsHelper,
+      emissionNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      emissionNodes.map((n) => n.helperFunctions).join("\n"),
     ].join("\n");
 
-    for (const node of colorNodes) {
+    for (const node of albedoNodes) {
+      Object.assign(shader.uniforms, node.uniforms);
+    }
+    for (const node of normalNodes) {
+      Object.assign(shader.uniforms, node.uniforms);
+    }
+    for (const node of emissionNodes) {
       Object.assign(shader.uniforms, node.uniforms);
     }
 
     let fragmentShader = shader.fragmentShader;
 
-    if (normalsMode === FXParticleNormalsMode.SPHERICAL) {
-      fragmentShader = fragmentShader.replace(
-        "#include <normal_fragment_begin>",
-        `
-        float faceDirection = gl_FrontFacing ? 1.0 : -1.0;
-        vec2 p_sn = p_uv * 2.0 - 1.0;
-        vec3 normal = normalize(vec3(p_sn, sqrt(max(0.0, 1.0 - dot(p_sn, p_sn)))));
-        `,
-      );
-    } else if (normalsMode === FXParticleNormalsMode.TOWARDS_LIGHT) {
-      fragmentShader = fragmentShader.replace(
-        "float dotNL = saturate( dot( geometryNormal, directLight.direction ) );",
-        "float dotNL = 1.0;",
-      );
+    if (normalNodes.length > 0) {
+      const normalExpressions = normalNodes.map((node) => {
+        if (node instanceof FXTextureNode) {
+          return `normalize(${node.colorExpression}.rgb * 2.0 - 1.0)`;
+        }
+        return node.normalExpression;
+      });
+
+      const blendLines = normalExpressions
+        .slice(1)
+        .map((expression) => `normal = blendReorientedNormals(normal, ${expression});`);
+
+      const normalCode = [
+        "float faceDirection = gl_FrontFacing ? 1.0 : -1.0;",
+        `vec3 normal = ${normalExpressions[0]};`,
+        ...blendLines,
+      ].join("\n");
+
+      fragmentShader = fragmentShader.replace("#include <normal_fragment_begin>", normalCode);
     }
 
-    if (colorNodes.length > 0) {
-      const combinedExpression = colorNodes.map((n) => n.colorExpression).join(" * ");
+    if (albedoNodes.length > 0) {
+      const combinedExpression = albedoNodes.map((n) => n.colorExpression).join(" * ");
       const discardLine = useAlphaHashing ? "" : "if (diffuseColor.a < 0.0035) discard;";
       fragmentShader = fragmentShader.replace(
         "#include <map_fragment>",
@@ -134,11 +167,19 @@ export function buildFXDiffuseMaterial(
       );
     }
 
+    if (emissionNodes.length > 0) {
+      const combinedExpression = emissionNodes.map((n) => n.colorExpression).join(" * ");
+      fragmentShader = fragmentShader.replace(
+        "#include <emissivemap_fragment>",
+        `totalEmissiveRadiance = (${combinedExpression}).rgb;`,
+      );
+    }
+
     shader.fragmentShader = fragmentPreamble + "\n" + fragmentShader;
   };
 
   material.customProgramCacheKey = (): string =>
-    `fx-diffuse-${normalsMode}-${colorNodes.map((n) => n.cacheKey).join("-") || "none"}`;
+    `fx-diffuse-${albedoNodes.map((n) => n.cacheKey).join("-") || "none"}-${normalNodes.map((n) => n.cacheKey).join("-") || "none"}-${emissionNodes.map((n) => n.cacheKey).join("-") || "none"}`;
 
   return material;
 }

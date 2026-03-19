@@ -17,7 +17,7 @@ import {
   BUILTIN_OFFSET_VELOCITY_Z,
   resolveFXRangeConfig,
 } from "../../miscellaneous/miscellaneous";
-import { FXBehaviorModule } from "./FXBehaviorModule";
+import { FXBehavior } from "./FXBehavior";
 
 const generateNoise3D0 = makeNoise3D();
 const generateNoise3D1 = makeNoise3D();
@@ -28,7 +28,7 @@ const generateNoise3D2 = makeNoise3D();
  *
  * Uses 2D noise based on particle position. Higher scale means finer noise detail.
  */
-export class FXBehaviorVelocityNoise extends FXBehaviorModule<{ builtin: "Matrix4" }> {
+export class FXBehaviorVelocityNoise extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private scaleInternal: FXRange;

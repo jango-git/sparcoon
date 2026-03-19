@@ -6,7 +6,7 @@ import {
   BUILTIN_OFFSET_POSITION_Y,
   BUILTIN_OFFSET_POSITION_Z,
 } from "../../miscellaneous/miscellaneous";
-import { FXSpawnModule } from "./FXSpawnModule";
+import { FXSpawn } from "./FXSpawn";
 
 /**
  * Spawns particles at random positions within a spherical shell.
@@ -16,7 +16,7 @@ import { FXSpawnModule } from "./FXSpawnModule";
  * - `Math.PI / 2` - full sphere
  * - Values in between produce a spherical band/zone
  */
-export class FXSpawnSphere extends FXSpawnModule<{ builtin: "Matrix4" }> {
+export class FXSpawnSphere extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private innerRadiusInternal: number;

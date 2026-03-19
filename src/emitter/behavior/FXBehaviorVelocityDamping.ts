@@ -1,23 +1,22 @@
 import type { InstancedBufferAttribute } from "three";
 import { MathUtils } from "three";
 import { assertValidNonNegativeNumber } from "../../miscellaneous/asserts";
+import type { FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_RANDOM_B,
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
   BUILTIN_OFFSET_VELOCITY_Z,
   resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../../miscellaneous/miscellaneous";
-import { FXBehaviorModule } from "./FXBehaviorModule";
+import { FXBehavior } from "./FXBehavior";
 
 /**
  * Reduces particle velocity over time.
  *
  * Applies exponential decay to velocity. Damping of 0 means no effect, 1 means instant stop.
  */
-export class FXBehaviorVelocityDamping extends FXBehaviorModule<{ builtin: "Matrix4" }> {
+export class FXBehaviorVelocityDamping extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private dampingInternal: FXRange;

@@ -1,20 +1,16 @@
 import type { InstancedBufferAttribute } from "three";
 import { MathUtils } from "three";
 import { assertValidNumber } from "../../miscellaneous/asserts";
-import {
-  BUILTIN_OFFSET_TORQUE,
-  resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
-} from "../../miscellaneous/miscellaneous";
-import { FXSpawnModule } from "./FXSpawnModule";
+import type { FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
+import { BUILTIN_OFFSET_TORQUE, resolveFXRangeConfig } from "../../miscellaneous/miscellaneous";
+import { FXSpawn } from "./FXSpawn";
 
 /**
  * Assigns random angular velocity to particles.
  *
  * Torque (rotation speed) is chosen uniformly from the specified range.
  */
-export class FXSpawnRandomTorque extends FXSpawnModule<{
+export class FXSpawnRandomTorque extends FXSpawn<{
   builtin: "Matrix4";
 }> {
   /** @internal */

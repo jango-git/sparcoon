@@ -1,4 +1,5 @@
-import { MathUtils, type InstancedBufferAttribute } from "three";
+import type { InstancedBufferAttribute } from "three";
+import { MathUtils } from "three";
 import { assertValidNumber } from "../../miscellaneous/asserts";
 import type { Vector3Like } from "../../miscellaneous/math";
 import {
@@ -17,14 +18,14 @@ import {
   type FXRangeConfig,
   type FXVector3Config,
 } from "../../miscellaneous/miscellaneous";
-import { FXBehaviorModule } from "./FXBehaviorModule";
+import { FXBehavior } from "./FXBehavior";
 
 /**
  * Applies gravity attraction toward a point.
  *
  * Force follows inverse power law: strength / distance^exponent. Particles closer than threshold are unaffected.
  */
-export class FXBehaviorPointGravity extends FXBehaviorModule<{ builtin: "Matrix4" }> {
+export class FXBehaviorPointGravity extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private centerInternal: Vector3Like;

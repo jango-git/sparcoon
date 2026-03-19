@@ -1,8 +1,8 @@
 import { Object3D } from "three";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle";
-import { collectProperties } from "../instancedParticle/FXInstancedParticle.Internal";
-import { resolveGLSLTypeInfo, type GLTypeInfo } from "../instancedParticle/shared";
-import type { FXMaterial } from "../materials/FXMaterial";
+import type { GLTypeInfo } from "../instancedParticle/shared";
+import { resolveGLSLTypeInfo } from "../instancedParticle/shared";
+import type { FXMaterial } from "../materials/FXMaterial/FXMaterial";
 import {
   BUILTIN_OFFSET_AGE,
   BUILTIN_OFFSET_POSITION_X,
@@ -17,16 +17,17 @@ import {
   BUILTIN_OFFSET_VELOCITY_Y,
   BUILTIN_OFFSET_VELOCITY_Z,
 } from "../miscellaneous/miscellaneous";
-import type { FXBehaviorModule } from "./behavior/FXBehaviorModule";
+import type { FXBehavior } from "./behavior/FXBehavior";
 import type { FXEmitterPlayOptions } from "./FXEmitter.Internal";
 import {
+  collectProperties,
   EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES,
   EMITTER_DEFAULT_CAPACITY_STEP,
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
   EMITTER_DEFAULT_RECEIVE_SHADOW,
 } from "./FXEmitter.Internal";
-import type { FXSpawnModule } from "./spawn/FXSpawnModule";
+import type { FXSpawn } from "./spawn/FXSpawn";
 
 export interface FXEmitterOptions {
   expectedCapacity: number;
@@ -49,8 +50,8 @@ export class FXEmitter extends Object3D {
   private emissionElapsed = 0;
 
   constructor(
-    private readonly spawnSequence: FXSpawnModule[],
-    private readonly behaviorSequence: readonly FXBehaviorModule[],
+    private readonly spawnSequence: FXSpawn[],
+    private readonly behaviorSequence: readonly FXBehavior[],
     material: FXMaterial,
     options: Partial<FXEmitterOptions> = {},
   ) {

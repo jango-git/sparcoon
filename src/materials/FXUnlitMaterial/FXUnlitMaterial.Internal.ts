@@ -1,13 +1,16 @@
-import { DoubleSide, MeshBasicMaterial, type Blending } from "three";
+import type { Blending } from "three";
+import { DoubleSide, MeshBasicMaterial } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
-import type { FXColorNode } from "../color-nodes/FXColorNode";
-import { PARTICLE_DEFINES } from "../miscellaneous";
+import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
+import type { FXColorNode } from "../../nodes/color/FXColorNode";
+import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
 
 export function buildFXUnlitMaterial(
   varyings: Record<string, GLTypeInfo>,
   blending: Blending,
   useAlphaHashing: boolean,
-  colorNodes: readonly FXColorNode[],
+  alphaTest: number,
+  albedoNodes: readonly (FXColorNode | FXTextureNode)[],
 ): MeshBasicMaterial {
   const attributeDeclarations: string[] = [];
   const varyingDeclarations: string[] = [];
@@ -28,7 +31,7 @@ export function buildFXUnlitMaterial(
     blending,
     side: DoubleSide,
     forceSinglePass: true,
-    alphaTest: 1 / 255,
+    alphaTest,
   });
 
   material.onBeforeCompile = (shader): void => {
@@ -57,18 +60,22 @@ export function buildFXUnlitMaterial(
         .replace(
           "#include <project_vertex>",
           `
-          vec2 p_bp = position.xy;
-          p_bp.x *= PARTICLE_SCALE_X;
-          p_bp.y *= PARTICLE_SCALE_Y;
-          float p_cosR = cos(PARTICLE_ROTATION);
-          float p_sinR = sin(PARTICLE_ROTATION);
-          p_bp = vec2(
-            p_bp.x * p_cosR - p_bp.y * p_sinR,
-            p_bp.x * p_sinR + p_bp.y * p_cosR
+          // Scale and rotate the billboard offset in camera space
+          vec2 billboardOffset = position.xy;
+          billboardOffset.x *= PARTICLE_SCALE_X;
+          billboardOffset.y *= PARTICLE_SCALE_Y;
+
+          float cosRotation = cos(PARTICLE_ROTATION);
+          float sinRotation = sin(PARTICLE_ROTATION);
+          billboardOffset = vec2(
+            billboardOffset.x * cosRotation - billboardOffset.y * sinRotation,
+            billboardOffset.x * sinRotation + billboardOffset.y * cosRotation
           );
-          vec3 p_c = vec3(PARTICLE_POSITION_X, PARTICLE_POSITION_Y, PARTICLE_POSITION_Z);
-          vec4 mvPosition = modelViewMatrix * vec4(p_c, 1.0);
-          mvPosition.xy += p_bp;
+
+          // Move particle center to view space, then apply the billboard offset
+          vec3 particleCenter = vec3(PARTICLE_POSITION_X, PARTICLE_POSITION_Y, PARTICLE_POSITION_Z);
+          vec4 mvPosition = modelViewMatrix * vec4(particleCenter, 1.0);
+          mvPosition.xy += billboardOffset;
           gl_Position = projectionMatrix * mvPosition;
           `,
         );
@@ -77,18 +84,18 @@ export function buildFXUnlitMaterial(
       PARTICLE_DEFINES,
       "varying vec2 p_uv;",
       varyingDeclarations.join("\n"),
-      colorNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
-      colorNodes.map((n) => n.helperFunctions).join("\n"),
+      albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      albedoNodes.map((n) => n.helperFunctions).join("\n"),
     ].join("\n");
 
-    for (const node of colorNodes) {
+    for (const node of albedoNodes) {
       Object.assign(shader.uniforms, node.uniforms);
     }
 
     let fragmentShader = shader.fragmentShader;
 
-    if (colorNodes.length > 0) {
-      const combinedExpression = colorNodes.map((n) => n.colorExpression).join(" * ");
+    if (albedoNodes.length > 0) {
+      const combinedExpression = albedoNodes.map((n) => n.colorExpression).join(" * ");
       const discardLine = useAlphaHashing ? "" : "if (diffuseColor.a < 0.0035) discard;";
       fragmentShader = fragmentShader.replace(
         "#include <map_fragment>",
@@ -100,7 +107,7 @@ export function buildFXUnlitMaterial(
   };
 
   material.customProgramCacheKey = (): string =>
-    `fx-unlit-${colorNodes.map((n) => n.cacheKey).join("-") || "none"}`;
+    `fx-unlit-${albedoNodes.map((n) => n.cacheKey).join("-") || "none"}`;
 
   return material;
 }

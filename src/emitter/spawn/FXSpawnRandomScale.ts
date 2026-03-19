@@ -1,23 +1,21 @@
 import type { InstancedBufferAttribute } from "three";
 import { MathUtils } from "three";
 import { assertValidPositiveNumber } from "../../miscellaneous/asserts";
+import type { FXAspectConfig, FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_SCALE_X,
   BUILTIN_OFFSET_SCALE_Y,
   resolveAspect,
   resolveFXRangeConfig,
-  type FXAspectConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../../miscellaneous/miscellaneous";
-import { FXSpawnModule } from "./FXSpawnModule";
+import { FXSpawn } from "./FXSpawn";
 
 /**
  * Assigns random scale to particles.
  *
  * Base scale is chosen uniformly from the range. Aspect ratio is applied to X scale.
  */
-export class FXSpawnRandomScale extends FXSpawnModule<{ builtin: "Matrix4" }> {
+export class FXSpawnRandomScale extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public requiredProperties = { builtin: "Matrix4" } as const;
   private scaleInternal: FXRange;

@@ -1,21 +1,21 @@
 import type { InstancedBufferAttribute } from "three";
 import { assertValidNumber } from "../../miscellaneous/asserts";
 import type { Vector3Like } from "../../miscellaneous/math";
+import type { FXVector3Config } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
   BUILTIN_OFFSET_VELOCITY_Z,
   resolveFXVector3Config,
-  type FXVector3Config,
 } from "../../miscellaneous/miscellaneous";
-import { FXBehaviorModule } from "./FXBehaviorModule";
+import { FXBehavior } from "./FXBehavior";
 
 /**
  * Applies constant acceleration to all particles.
  *
  * Adds the direction vector to particle velocity each frame.
  */
-export class FXBehaviorDirectionalGravity extends FXBehaviorModule<{ builtin: "Matrix4" }> {
+export class FXBehaviorDirectionalGravity extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private directionInternal: Vector3Like;

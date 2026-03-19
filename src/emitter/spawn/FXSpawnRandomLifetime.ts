@@ -1,21 +1,20 @@
 import type { InstancedBufferAttribute } from "three";
 import { MathUtils } from "three";
 import { assertValidPositiveNumber } from "../../miscellaneous/asserts";
+import type { FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_AGE,
   BUILTIN_OFFSET_LIFETIME,
   resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../../miscellaneous/miscellaneous";
-import { FXSpawnModule } from "./FXSpawnModule";
+import { FXSpawn } from "./FXSpawn";
 
 /**
  * Assigns random lifetime to particles.
  *
  * Lifetime is chosen uniformly from the specified range. Age is set to 0.
  */
-export class FXSpawnRandomLifetime extends FXSpawnModule<{ builtin: "Matrix4" }> {
+export class FXSpawnRandomLifetime extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private lifetimeInternal: FXRange;

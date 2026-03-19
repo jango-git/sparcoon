@@ -1,21 +1,20 @@
 import type { InstancedBufferAttribute } from "three";
 import { MathUtils, Vector3 } from "three";
 import { assertValidNumber } from "../../miscellaneous/asserts";
+import type { FXRange, FXRangeConfig } from "../../miscellaneous/miscellaneous";
 import {
   BUILTIN_OFFSET_VELOCITY_X,
   BUILTIN_OFFSET_VELOCITY_Y,
   BUILTIN_OFFSET_VELOCITY_Z,
   resolveFXRangeConfig,
-  type FXRange,
-  type FXRangeConfig,
 } from "../../miscellaneous/miscellaneous";
-import { FXSpawnModule } from "./FXSpawnModule";
+import { FXSpawn } from "./FXSpawn";
 
 const TEMP_TANGENT = new Vector3();
 const TEMP_BITANGENT = new Vector3();
 const TEMP_VELOCITY = new Vector3();
 
-export class FXSpawnRandomVelocity extends FXSpawnModule<{ builtin: "Matrix4" }> {
+export class FXSpawnRandomVelocity extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
 

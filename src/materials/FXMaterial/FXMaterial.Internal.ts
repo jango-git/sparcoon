@@ -1,6 +1,7 @@
 import { DoubleSide, MeshDepthMaterial, RGBADepthPacking } from "three";
-import type { FXColorNode } from "./color-nodes/FXColorNode";
-import { PARTICLE_DEFINES } from "./miscellaneous";
+import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
+import type { FXColorNode } from "../../nodes/color/FXColorNode";
+import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
 
 export const DEPTH_VERTEX_SHADER = `
   #define PARTICLE_POSITION_X a_builtin[0][0]
@@ -66,12 +67,12 @@ const DEPTH_SPHERICAL_FRAG_COORD_Z = `
 `;
 
 export function buildDepthMaterial(
-  colorNodes: readonly FXColorNode[],
+  albedoNodes: readonly (FXColorNode | FXTextureNode)[],
   depthAlphaTest: number,
   useDepthAlphaHash: boolean,
   useSphericalDepth: boolean,
 ): MeshDepthMaterial {
-  const depthNodes = colorNodes.filter((n): boolean => n.affectsDepth);
+  const depthNodes = albedoNodes.filter((n): boolean => n.affectsDepth);
   const needsFragmentMod = depthNodes.length > 0 || useSphericalDepth;
 
   const material = new MeshDepthMaterial({

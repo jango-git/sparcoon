@@ -1,10 +1,4 @@
-import {
-  BufferAttribute,
-  Float32BufferAttribute,
-  InstancedBufferGeometry,
-} from "three";
-import type { FXPropertyName, GLTypeInfo } from "./shared";
-import { resolveGLSLTypeInfo } from "./shared";
+import { BufferAttribute, Float32BufferAttribute, InstancedBufferGeometry } from "three";
 
 export const INSTANCED_PARTICLE_GEOMETRY = ((): InstancedBufferGeometry => {
   const geometry = new InstancedBufferGeometry();
@@ -20,26 +14,3 @@ export const INSTANCED_PARTICLE_GEOMETRY = ((): InstancedBufferGeometry => {
 
   return geometry;
 })();
-
-export function collectProperties(
-  keeper: Record<string, GLTypeInfo>,
-  modules: readonly { requiredProperties?: Record<string, FXPropertyName> }[],
-  debugContext: string,
-): void {
-  for (const module of modules) {
-    if (module.requiredProperties === undefined) {
-      continue;
-    }
-
-    for (const key in module.requiredProperties) {
-      const existingTypeInfo = keeper[key] as GLTypeInfo | undefined;
-      const newTypeInfo = resolveGLSLTypeInfo(module.requiredProperties[key]);
-
-      if (existingTypeInfo === undefined) {
-        keeper[key] = newTypeInfo;
-      } else if (existingTypeInfo.glslTypeName !== newTypeInfo.glslTypeName) {
-        throw new Error(`${debugContext}: property conflict for "${key}"`);
-      }
-    }
-  }
-}
