@@ -2,6 +2,8 @@ import type { Texture } from "three";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
 import { FXTextureNode } from "./FXTextureNode";
 
+const INSTANCES: FXStaticTextureNode[] = [];
+
 export class FXStaticTextureNode extends FXTextureNode {
   /** @internal */
   public override readonly affectsDepth: boolean;
@@ -18,13 +20,14 @@ export class FXStaticTextureNode extends FXTextureNode {
 
   constructor(texture: Texture) {
     super();
+    INSTANCES.push(this);
+    const uniformName = `u_StaticTexture_${INSTANCES.length - 1}`;
 
     this.affectsDepth = true;
     this.cacheKey = "static";
-    this.uniformDeclarations = ["uniform sampler2D u_StaticTexture;"];
+    this.uniformDeclarations = [`uniform sampler2D ${uniformName};`];
     this.uniforms = {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      u_StaticTexture: { value: texture },
+      [uniformName]: { value: texture },
     };
     this.helperFunctions = `
       vec4 sampleStaticTexture(sampler2D colorTexture, vec2 uv) {
@@ -34,6 +37,13 @@ export class FXStaticTextureNode extends FXTextureNode {
         return color;
       }
     `;
-    this.colorExpression = "sampleStaticTexture(u_StaticTexture, p_uv)";
+    this.colorExpression = `sampleStaticTexture(${uniformName}, p_uv)`;
+  }
+
+  public override destroy(): void {
+    const index = INSTANCES.indexOf(this);
+    if (index !== -1) {
+      INSTANCES.splice(index, 1);
+    }
   }
 }

@@ -80,12 +80,25 @@ export function buildFXUnlitMaterial(
           `,
         );
 
+    const seenCacheKeys = new Set<string>();
+    const uniqueHelpers = (nodes: readonly (FXColorNode | FXTextureNode)[]): string =>
+      nodes
+        .filter((n) => {
+          if (seenCacheKeys.has(n.cacheKey)) {
+            return false;
+          }
+          seenCacheKeys.add(n.cacheKey);
+          return true;
+        })
+        .map((n) => n.helperFunctions)
+        .join("\n");
+
     const fragmentPreamble = [
       PARTICLE_DEFINES,
       "varying vec2 p_uv;",
       varyingDeclarations.join("\n"),
       albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
-      albedoNodes.map((n) => n.helperFunctions).join("\n"),
+      uniqueHelpers(albedoNodes),
     ].join("\n");
 
     for (const node of albedoNodes) {

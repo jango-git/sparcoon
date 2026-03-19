@@ -2,6 +2,8 @@ import type { Texture } from "three";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
 import { FXTextureNode } from "./FXTextureNode";
 
+const INSTANCES: FXAnimatedTextureNode[] = [];
+
 export interface FXAnimatedTextureNodeOptions {
   texture: Texture;
   columns: number;
@@ -25,6 +27,11 @@ export class FXAnimatedTextureNode extends FXTextureNode {
 
   constructor({ texture, columns, rows, interpolate = false }: FXAnimatedTextureNodeOptions) {
     super();
+    INSTANCES.push(this);
+    const idx = INSTANCES.length - 1;
+    const uniformTexture = `u_AnimatedTexture_${idx}`;
+    const uniformColumns = `u_AnimatedTextureColumns_${idx}`;
+    const uniformRows = `u_AnimatedTextureRows_${idx}`;
 
     const gammaCorrection = checkSRGBSupport()
       ? ""
@@ -33,17 +40,14 @@ export class FXAnimatedTextureNode extends FXTextureNode {
     this.affectsDepth = true;
     this.cacheKey = interpolate ? "animated-interpolated" : "animated";
     this.uniformDeclarations = [
-      "uniform sampler2D u_AnimatedTexture;",
-      "uniform float u_AnimatedTextureColumns;",
-      "uniform float u_AnimatedTextureRows;",
+      `uniform sampler2D ${uniformTexture};`,
+      `uniform float ${uniformColumns};`,
+      `uniform float ${uniformRows};`,
     ];
     this.uniforms = {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      u_AnimatedTexture: { value: texture },
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      u_AnimatedTextureColumns: { value: columns },
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      u_AnimatedTextureRows: { value: rows },
+      [uniformTexture]: { value: texture },
+      [uniformColumns]: { value: columns },
+      [uniformRows]: { value: rows },
     };
     this.helperFunctions = interpolate
       ? `
@@ -95,7 +99,13 @@ export class FXAnimatedTextureNode extends FXTextureNode {
           return color;
         }
       `;
-    this.colorExpression =
-      "sampleAnimatedTexture(u_AnimatedTexture, p_uv, u_AnimatedTextureColumns, u_AnimatedTextureRows)";
+    this.colorExpression = `sampleAnimatedTexture(${uniformTexture}, p_uv, ${uniformColumns}, ${uniformRows})`;
+  }
+
+  public override destroy(): void {
+    const index = INSTANCES.indexOf(this);
+    if (index !== -1) {
+      INSTANCES.splice(index, 1);
+    }
   }
 }

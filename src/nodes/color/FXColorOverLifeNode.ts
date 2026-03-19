@@ -4,6 +4,8 @@ import { buildGradientTexture } from "../../miscellaneous/miscellaneous";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
 import { FXColorNode } from "./FXColorNode";
 
+const INSTANCES: FXColorOverLifeNode[] = [];
+
 export class FXColorOverLifeNode extends FXColorNode {
   /** @internal */
   public override readonly affectsDepth: boolean;
@@ -27,14 +29,16 @@ export class FXColorOverLifeNode extends FXColorNode {
     }
 
     super();
+    INSTANCES.push(this);
+    const uniformName = `u_ColorOverLife_${INSTANCES.length - 1}`;
+
     this.gradientTexture = buildGradientTexture(colors);
 
     this.affectsDepth = true;
     this.cacheKey = "color-over-life";
-    this.uniformDeclarations = ["uniform sampler2D u_ColorOverLife;"];
+    this.uniformDeclarations = [`uniform sampler2D ${uniformName};`];
     this.uniforms = {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      u_ColorOverLife: { value: this.gradientTexture },
+      [uniformName]: { value: this.gradientTexture },
     };
     this.helperFunctions = `
       vec4 sampleColorOverLife(sampler2D gradientTexture) {
@@ -48,10 +52,14 @@ export class FXColorOverLifeNode extends FXColorNode {
         return color;
       }
     `;
-    this.colorExpression = "sampleColorOverLife(u_ColorOverLife)";
+    this.colorExpression = `sampleColorOverLife(${uniformName})`;
   }
 
   public override destroy(): void {
     this.gradientTexture.dispose();
+    const index = INSTANCES.indexOf(this);
+    if (index !== -1) {
+      INSTANCES.splice(index, 1);
+    }
   }
 }

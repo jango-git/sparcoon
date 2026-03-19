@@ -112,17 +112,32 @@ export function buildFXDiffuseMaterial(
         `
         : "";
 
+    const seenCacheKeys = new Set<string>();
+    const uniqueHelpers = (
+      nodes: readonly (FXColorNode | FXTextureNode | FXNormalNode)[],
+    ): string =>
+      nodes
+        .filter((n) => {
+          if (seenCacheKeys.has(n.cacheKey)) {
+            return false;
+          }
+          seenCacheKeys.add(n.cacheKey);
+          return true;
+        })
+        .map((n) => n.helperFunctions)
+        .join("\n");
+
     const fragmentPreamble = [
       PARTICLE_DEFINES,
       "varying vec2 p_uv;",
       varyingDeclarations.join("\n"),
       albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
-      albedoNodes.map((n) => n.helperFunctions).join("\n"),
+      uniqueHelpers(albedoNodes),
       normalNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
-      normalNodes.map((n) => n.helperFunctions).join("\n"),
+      uniqueHelpers(normalNodes),
       blendReorientedNormalsHelper,
       emissionNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
-      emissionNodes.map((n) => n.helperFunctions).join("\n"),
+      uniqueHelpers(emissionNodes),
     ].join("\n");
 
     for (const node of albedoNodes) {
