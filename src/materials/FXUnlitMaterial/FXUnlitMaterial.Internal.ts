@@ -24,6 +24,7 @@ export function buildFXUnlitMaterial(
   }
 
   const material = new MeshBasicMaterial({
+    name: "FXUnlitMaterial",
     transparent: !useAlphaHashing,
     depthWrite: useAlphaHashing,
     depthTest: true,

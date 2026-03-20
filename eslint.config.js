@@ -49,7 +49,6 @@ export default [
 
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": "error",
-      "no-console": "error",
       "no-debugger": "error",
       "no-implicit-coercion": "error",
       "no-extend-native": "error",

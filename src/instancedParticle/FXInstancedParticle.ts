@@ -1,6 +1,12 @@
-import type { InstancedBufferGeometry, Material } from "three";
+import type { InstancedBufferGeometry, Material, Vector3 } from "three";
 import { InstancedBufferAttribute, Mesh, StreamDrawUsage } from "three";
-import { BUILTIN_OFFSET_AGE, BUILTIN_OFFSET_LIFETIME } from "../miscellaneous/miscellaneous";
+import {
+  BUILTIN_OFFSET_AGE,
+  BUILTIN_OFFSET_LIFETIME,
+  BUILTIN_OFFSET_POSITION_X,
+  BUILTIN_OFFSET_POSITION_Y,
+  BUILTIN_OFFSET_POSITION_Z,
+} from "../miscellaneous/miscellaneous";
 import { INSTANCED_PARTICLE_GEOMETRY } from "./FXInstancedParticle.Internal";
 import type { GLTypeInfo } from "./shared";
 
@@ -10,6 +16,10 @@ export class FXInstancedParticle extends Mesh {
   private readonly instancedGeometry: InstancedBufferGeometry;
   private readonly particleMaterial: Material;
   private capacity: number;
+
+  private sortingIndices: Int32Array = new Int32Array(0);
+  private sortingSquaredDistances: Float64Array = new Float64Array(0);
+  private sortingTemporaryBuffer: Float32Array = new Float32Array(0);
 
   constructor(
     varyings: Record<string, GLTypeInfo>,
@@ -63,6 +73,7 @@ export class FXInstancedParticle extends Mesh {
     const { instanceCount } = this.instancedGeometry;
 
     let writeIndex = 0;
+    let didCompact = false;
 
     for (let readIndex = 0; readIndex < instanceCount; readIndex++) {
       const offset = readIndex * builtinItemSize;
@@ -79,15 +90,91 @@ export class FXInstancedParticle extends Mesh {
             const dstOffset = writeIndex * dataItemSize;
 
             dataArray.copyWithin(dstOffset, srcOffset, srcOffset + dataItemSize);
-            attribute.needsUpdate = true;
           }
+
+          didCompact = true;
         }
 
         writeIndex++;
       }
     }
 
+    if (didCompact) {
+      for (const name in this.propertyBuffers) {
+        this.propertyBuffers[name].needsUpdate = true;
+      }
+    }
+
     this.instancedGeometry.instanceCount = writeIndex;
+  }
+
+  public sortByDistance(cameraWorldPosition: Vector3): void {
+    const { instanceCount } = this.instancedGeometry;
+
+    if (instanceCount < 2) {
+      return;
+    }
+
+    const builtinBuffer = this.propertyBuffers.builtin as InstancedBufferAttribute | undefined;
+    if (builtinBuffer === undefined) {
+      return;
+    }
+
+    if (this.sortingIndices.length < instanceCount) {
+      this.sortingIndices = new Int32Array(this.capacity);
+      this.sortingSquaredDistances = new Float64Array(this.capacity);
+    }
+
+    const { array: builtinArray, itemSize: builtinItemSize } = builtinBuffer;
+
+    for (let particleIndex = 0; particleIndex < instanceCount; particleIndex++) {
+      this.sortingIndices[particleIndex] = particleIndex;
+      const itemOffset = particleIndex * builtinItemSize;
+      const dx = builtinArray[itemOffset + BUILTIN_OFFSET_POSITION_X] - cameraWorldPosition.x;
+      const dy = builtinArray[itemOffset + BUILTIN_OFFSET_POSITION_Y] - cameraWorldPosition.y;
+      const dz = builtinArray[itemOffset + BUILTIN_OFFSET_POSITION_Z] - cameraWorldPosition.z;
+      this.sortingSquaredDistances[particleIndex] = dx * dx + dy * dy + dz * dz;
+    }
+
+    const sortingSquaredDistances = this.sortingSquaredDistances;
+    const sortingIndices = this.sortingIndices.subarray(0, instanceCount);
+    sortingIndices.sort(
+      (indexA, indexB) => sortingSquaredDistances[indexB] - sortingSquaredDistances[indexA],
+    );
+
+    let maximumItemSize = 0;
+    for (const name in this.propertyBuffers) {
+      if (this.propertyBuffers[name].itemSize > maximumItemSize) {
+        maximumItemSize = this.propertyBuffers[name].itemSize;
+      }
+    }
+
+    const requiredTemporaryBufferSize = instanceCount * maximumItemSize;
+    if (this.sortingTemporaryBuffer.length < requiredTemporaryBufferSize) {
+      this.sortingTemporaryBuffer = new Float32Array(this.capacity * maximumItemSize);
+    }
+
+    for (const name in this.propertyBuffers) {
+      const attribute = this.propertyBuffers[name];
+      const { array, itemSize } = attribute;
+
+      for (let newIndex = 0; newIndex < instanceCount; newIndex++) {
+        const originalIndex = sortingIndices[newIndex];
+        const sourceOffset = originalIndex * itemSize;
+        const destinationOffset = newIndex * itemSize;
+
+        for (let componentIndex = 0; componentIndex < itemSize; componentIndex++) {
+          this.sortingTemporaryBuffer[destinationOffset + componentIndex] =
+            array[sourceOffset + componentIndex];
+        }
+      }
+
+      for (let i = 0; i < instanceCount * itemSize; i++) {
+        array[i] = this.sortingTemporaryBuffer[i];
+      }
+
+      attribute.needsUpdate = true;
+    }
   }
 
   public drop(): void {
@@ -107,7 +194,8 @@ export class FXInstancedParticle extends Mesh {
     const newCapacity = Math.ceil(requiredCapacity / this.capacityStep) * this.capacityStep;
 
     for (const name in this.propertyBuffers) {
-      const { itemSize, array, usage } = this.propertyBuffers[name];
+      const oldAttribute = this.propertyBuffers[name];
+      const { itemSize, array, usage } = oldAttribute;
       const newArray = new Float32Array(newCapacity * itemSize);
       newArray.set(array);
 
@@ -115,10 +203,26 @@ export class FXInstancedParticle extends Mesh {
       newAttribute.setUsage(usage);
       this.instancedGeometry.setAttribute(`a_${name}`, newAttribute);
       this.propertyBuffers[name] = newAttribute;
+
+      // Detach old typed array to help GC release GPU-side memory sooner.
+      // Three.js does not expose dispose() on BufferAttribute directly,
+      // but clearing the array reference prevents the old data from lingering.
+      (oldAttribute.array as unknown) = null;
     }
 
     this.capacity = newCapacity;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- old three.js compatibility fix
-    (this.instancedGeometry as any)._maxInstanceCount = newCapacity;
+
+    // Force the renderer to recalculate _maxInstanceCount on the next
+    // setupVertexAttributes pass. The new InstancedBufferAttributes will
+    // trigger a VAO rebind, at which point _maxInstanceCount is recomputed
+    // from the current attribute sizes.
+    //
+    // _maxInstanceCount is an internal renderer cache field set by
+    // WebGLBindingStates.js. It was never promoted to a public API in the
+    // r157–r180 range. Deleting it is the standard workaround used across
+    // the Three.js ecosystem (see #19706, #26363, #27205).
+    //
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (this.instancedGeometry as any)._maxInstanceCount;
   }
 }

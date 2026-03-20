@@ -1,4 +1,5 @@
-import { Object3D } from "three";
+import type { Camera } from "three";
+import { Object3D, Vector3 } from "three";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle";
 import type { GLTypeInfo } from "../instancedParticle/shared";
 import { resolveGLSLTypeInfo } from "../instancedParticle/shared";
@@ -26,6 +27,7 @@ import {
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
   EMITTER_DEFAULT_RECEIVE_SHADOW,
+  EMITTER_DEFAULT_SORT_FRACTION,
 } from "./FXEmitter.Internal";
 import type { FXSpawn } from "./spawn/FXSpawn";
 
@@ -35,12 +37,17 @@ export interface FXEmitterOptions {
   automaticallyDestroyModules: boolean;
   castShadow: boolean;
   receiveShadow: boolean;
+  sortCamera: Camera;
+  sortFraction: number;
 }
 
 const EMITTERS = new Array<FXEmitter>();
 
 export class FXEmitter extends Object3D {
   public automaticallyDestroyModules: boolean;
+  public sortCamera: Camera | undefined;
+  public sortFraction: number;
+
   private readonly mesh: FXInstancedParticle;
   private readonly material: FXMaterial;
 
@@ -48,6 +55,9 @@ export class FXEmitter extends Object3D {
   private emissionAccumulator = 0;
   private emissionDuration = Infinity;
   private emissionElapsed = 0;
+
+  private sortingAccumulator = 0;
+  private readonly sortingCameraWorldPosition = new Vector3();
 
   constructor(
     private readonly spawnSequence: FXSpawn[],
@@ -79,6 +89,7 @@ export class FXEmitter extends Object3D {
     if (options.castShadow ?? EMITTER_DEFAULT_CAST_SHADOW) {
       this.mesh.castShadow = true;
       this.mesh.customDepthMaterial = material.buildDepthMaterial();
+      this.mesh.customDistanceMaterial = material.buildDistanceMaterial();
     }
 
     if (options.receiveShadow ?? EMITTER_DEFAULT_RECEIVE_SHADOW) {
@@ -87,6 +98,8 @@ export class FXEmitter extends Object3D {
 
     this.automaticallyDestroyModules =
       options.automaticallyDestroyModules ?? EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES;
+    this.sortCamera = options.sortCamera;
+    this.sortFraction = options.sortFraction ?? EMITTER_DEFAULT_SORT_FRACTION;
 
     this.material = material;
     this.add(this.mesh);
@@ -226,6 +239,16 @@ export class FXEmitter extends Object3D {
       }
 
       builtin.needsUpdate = true;
+    }
+
+    if (this.sortCamera !== undefined) {
+      this.sortingAccumulator += this.sortFraction;
+
+      if (this.sortingAccumulator >= 1) {
+        this.sortingAccumulator -= 1;
+        this.sortCamera.getWorldPosition(this.sortingCameraWorldPosition);
+        this.mesh.sortByDistance(this.sortingCameraWorldPosition);
+      }
     }
   };
 }

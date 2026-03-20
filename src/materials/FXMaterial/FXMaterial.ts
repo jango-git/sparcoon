@@ -1,9 +1,10 @@
-import type { Blending, Material, MeshDepthMaterial } from "three";
+import type { Blending, Material, MeshDepthMaterial, MeshDistanceMaterial } from "three";
 import { NormalBlending } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
 import type { FXColorNode } from "../../nodes/color/FXColorNode";
 import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
-import { buildDepthMaterial } from "./FXMaterial.Internal";
+import { buildDepthMaterial } from "./FXDepthMaterial.Internal";
+import { buildDistanceMaterial } from "./FXDistanceMaterial.Internal";
 
 export interface FXMaterialOptions {
   albedoNodes?: (FXColorNode | FXTextureNode)[];
@@ -32,7 +33,7 @@ export abstract class FXMaterial {
     this.albedoNodes = options.albedoNodes ?? [];
     this.blending = options.blending ?? NormalBlending;
     this.useAlphaHashing = options.useAlphaHashing ?? false;
-    this.alphaTest = options.alphaTest ?? 1 / 255;
+    this.alphaTest = options.alphaTest ?? 0.0075;
     this.depthAlphaTest = options.depthAlphaTest ?? 0.5;
     this.useDepthAlphaHash = options.useDepthAlphaHash ?? false;
     this.useSphericalDepth = options.useSphericalDepth ?? true;
@@ -47,6 +48,15 @@ export abstract class FXMaterial {
   /** @internal */
   public buildDepthMaterial(): MeshDepthMaterial {
     return buildDepthMaterial(
+      this.albedoNodes,
+      this.depthAlphaTest,
+      this.useDepthAlphaHash,
+      this.useSphericalDepth,
+    );
+  }
+
+  public buildDistanceMaterial(): MeshDistanceMaterial {
+    return buildDistanceMaterial(
       this.albedoNodes,
       this.depthAlphaTest,
       this.useDepthAlphaHash,
