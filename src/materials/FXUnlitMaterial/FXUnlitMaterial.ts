@@ -7,12 +7,19 @@ import { buildFXUnlitMaterial } from "./FXUnlitMaterial.Internal";
 export type FXUnlitMaterialOptions = FXMaterialOptions;
 
 export class FXUnlitMaterial extends FXMaterial {
-  constructor(options: FXUnlitMaterialOptions = {}) {
+  constructor(options: Partial<FXUnlitMaterialOptions> = {}) {
     super(options);
   }
 
   /** @internal */
   public override buildThreeMaterial(varyings: Record<string, GLTypeInfo>): MeshBasicMaterial {
-    return buildFXUnlitMaterial(varyings, this.blending, this.useAlphaHashing, this.alphaTest, this.albedoNodes);
+    return buildFXUnlitMaterial(
+      varyings,
+      this.blending,
+      this.useAlphaHashing,
+      this.alphaTest,
+      this.premultipliedAlpha,
+      this.albedoNodes,
+    );
   }
 }

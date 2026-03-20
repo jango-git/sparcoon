@@ -7,13 +7,14 @@ import { buildDepthMaterial } from "./FXDepthMaterial.Internal";
 import { buildDistanceMaterial } from "./FXDistanceMaterial.Internal";
 
 export interface FXMaterialOptions {
-  albedoNodes?: (FXColorNode | FXTextureNode)[];
-  blending?: Blending;
-  useAlphaHashing?: boolean;
-  alphaTest?: number;
-  depthAlphaTest?: number;
-  useDepthAlphaHash?: boolean;
-  useSphericalDepth?: boolean;
+  albedoNodes: (FXColorNode | FXTextureNode)[];
+  blending: Blending;
+  useAlphaHashing: boolean;
+  alphaTest: number;
+  depthAlphaTest: number;
+  useDepthAlphaHash: boolean;
+  useSphericalDepth: boolean;
+  premultipliedAlpha: boolean;
 }
 
 export abstract class FXMaterial {
@@ -25,15 +26,21 @@ export abstract class FXMaterial {
   public readonly useAlphaHashing: boolean;
   /** @internal */
   public readonly alphaTest: number;
+  /** @internal */
+  public readonly premultipliedAlpha: boolean;
+
   private readonly depthAlphaTest: number;
   private readonly useDepthAlphaHash: boolean;
   private readonly useSphericalDepth: boolean;
 
-  constructor(options: FXMaterialOptions = {}) {
+  constructor(options: Partial<FXMaterialOptions> = {}) {
     this.albedoNodes = options.albedoNodes ?? [];
     this.blending = options.blending ?? NormalBlending;
     this.useAlphaHashing = options.useAlphaHashing ?? false;
     this.alphaTest = options.alphaTest ?? 0.0075;
+    this.premultipliedAlpha =
+      (options.useAlphaHashing === undefined && options.premultipliedAlpha) ?? true;
+
     this.depthAlphaTest = options.depthAlphaTest ?? 0.5;
     this.useDepthAlphaHash = options.useDepthAlphaHash ?? false;
     this.useSphericalDepth = options.useSphericalDepth ?? true;

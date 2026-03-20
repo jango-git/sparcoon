@@ -63,12 +63,12 @@ export function buildFXDiffuseMaterial(
   blending: Blending,
   useAlphaHashing: boolean,
   alphaTest: number,
+  premultipliedAlpha: boolean,
   albedoNodes: readonly (FXColorNode | FXTextureNode)[],
   normalNodes: readonly (FXTextureNode | FXNormalNode)[],
   emissionNodes: readonly (FXColorNode | FXTextureNode)[],
   scatterUniforms?: FXScatterUniforms,
   shadowSensitivity?: { value: number },
-  premultipliedAlpha?: boolean,
 ): MeshLambertMaterial {
   const useScatter = scatterUniforms !== undefined;
   const useShadowSensitivity = shadowSensitivity !== undefined;

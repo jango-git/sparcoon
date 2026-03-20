@@ -10,6 +10,7 @@ export function buildFXUnlitMaterial(
   blending: Blending,
   useAlphaHashing: boolean,
   alphaTest: number,
+  premultipliedAlpha: boolean,
   albedoNodes: readonly (FXColorNode | FXTextureNode)[],
 ): MeshBasicMaterial {
   const attributeDeclarations: string[] = [];
@@ -33,6 +34,7 @@ export function buildFXUnlitMaterial(
     side: DoubleSide,
     forceSinglePass: true,
     alphaTest,
+    premultipliedAlpha,
   });
 
   material.onBeforeCompile = (shader): void => {

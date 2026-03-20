@@ -19,7 +19,6 @@ export interface FXDiffuseMaterialOptions extends FXMaterialOptions {
   forwardScatterStrength: number;
   backScatterStrength: number;
   shadowSensitivity: number;
-  premultipliedAlpha: boolean;
 }
 
 export class FXDiffuseMaterial extends FXMaterial {
@@ -27,7 +26,6 @@ export class FXDiffuseMaterial extends FXMaterial {
   private readonly emissionNodes: readonly (FXColorNode | FXTextureNode)[];
   private readonly scatterUniforms: FXScatterUniforms | undefined;
   private readonly shadowSensitivity: { value: number } | undefined;
-  private readonly premultipliedAlpha: boolean;
 
   constructor(options: Partial<FXDiffuseMaterialOptions> = {}) {
     super(options);
@@ -47,7 +45,6 @@ export class FXDiffuseMaterial extends FXMaterial {
           }
         : undefined;
     this.shadowSensitivity = { value: options.shadowSensitivity ?? 1 };
-    this.premultipliedAlpha = options.premultipliedAlpha ?? false;
   }
 
   public override destroy(): void {
@@ -67,12 +64,12 @@ export class FXDiffuseMaterial extends FXMaterial {
       this.blending,
       this.useAlphaHashing,
       this.alphaTest,
+      this.premultipliedAlpha,
       this.albedoNodes,
       this.normalNodes,
       this.emissionNodes,
       this.scatterUniforms,
       this.shadowSensitivity,
-      this.premultipliedAlpha,
     );
   }
 }
