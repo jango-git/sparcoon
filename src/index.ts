@@ -20,6 +20,7 @@ export { FXUnlitMaterial } from "./materials/FXUnlitMaterial/FXUnlitMaterial";
 export { FXColor } from "./miscellaneous/color/FXColor";
 export { FXColorNode } from "./nodes/color/FXColorNode";
 export { FXColorOverLifeNode } from "./nodes/color/FXColorOverLifeNode";
+export { FXSphericalClipNode } from "./nodes/color/FXSphericalClipNode";
 export { FXFlatNormalNode } from "./nodes/normal/FXFlatNormalNode";
 export { FXNormalNode } from "./nodes/normal/FXNormalNode";
 export { FXSphericalNormalNode } from "./nodes/normal/FXSphericalNormalNode";
