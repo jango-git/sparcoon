@@ -53,6 +53,14 @@ function spawnBox(min, max) {
   return { id: generateId(), type: "FXSpawnBox", params: { min, max } };
 }
 
+function spawnSphere(innerRadius = 0, outerRadius = 1, angle = 1.5708) {
+  return {
+    id: generateId(),
+    type: "FXSpawnSphere",
+    params: { innerRadius, outerRadius, angle },
+  };
+}
+
 function spawnLifetime(min, max) {
   return {
     id: generateId(),
@@ -231,7 +239,7 @@ export const PRESETS = {
         playing: true,
         options: createBaseOptions(),
         spawnModules: [
-          spawnBox({ x: -0.1, y: 0, z: -0.1 }, { x: 0.1, y: 0.3, z: 0.1 }),
+          spawnSphere(0, 0.25),
           spawnLifetime(0.5, 1.4),
           spawnRotation(Math.PI),
           spawnVelocity({ x: 0, y: 1, z: 0 }, 0.22, 0.05, 1.5, 1.5),
@@ -267,24 +275,24 @@ export const PRESETS = {
       },
       {
         id: generateId(),
-        name: "Spark",
-        rate: 32,
+        name: "FireSpark",
+        rate: 8,
         playing: true,
         options: { ...createBaseOptions(), expectedCapacity: 32 },
         spawnModules: [
           spawnOffset(0, 0, 0),
-          spawnLifetime(0.35, 0.85),
-          spawnVelocity({ x: 0, y: 1, z: 0 }, 0.65, 0.6, 2.5, 5.5),
+          spawnLifetime(0.85, 0.85),
+          spawnVelocity({ x: 0, y: 1, z: 0 }, 0.12, 0.1, 2, 2.5),
           spawnTorque(0, Math.PI / 2),
         ],
         behaviorModules: [
-          behaviorGravity(0, -9.8, 0),
           behaviorVelocityDamping(0.07),
           behaviorScaleOverLife([
             { min: 0, max: 0 },
             { min: 0.025, max: 0.035 },
             { min: 0, max: 0 },
           ]),
+          behaviorVelocityNoise(1000, 20),
         ],
         material: {
           type: "FXUnlitMaterial",
