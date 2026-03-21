@@ -35,6 +35,10 @@ function colorOverLifeNode(colors) {
   return { id: generateId(), type: "FXColorOverLifeNode", params: { colors } };
 }
 
+function sphericalClipNode() {
+  return { id: generateId(), type: "FXSphericalClipNode", params: {} };
+}
+
 function sphericalNormalNode() {
   return { id: generateId(), type: "FXSphericalNormalNode", params: {} };
 }
@@ -268,6 +272,7 @@ export const PRESETS = {
               colorStop("#cc2200", 0.55),
               colorStop("#330000", 0),
             ]),
+            sphericalClipNode(),
           ],
           normalNodes: [],
           emissionNodes: [],
@@ -308,6 +313,7 @@ export const PRESETS = {
               colorStop("#ff4400", 0.3),
               colorStop("#ff0000", 0),
             ]),
+            sphericalClipNode(),
           ],
           normalNodes: [],
           emissionNodes: [],
@@ -361,6 +367,7 @@ export const PRESETS = {
               colorStop("#666666", 0.22),
               colorStop("#333333", 0),
             ]),
+            sphericalClipNode(),
           ],
           normalNodes: [sphericalNormalNode()],
           emissionNodes: [],
@@ -402,6 +409,7 @@ export const PRESETS = {
             colorStop("#ff4400", 0.3),
             colorStop("#ff0000", 0),
           ]),
+          sphericalClipNode(),
         ],
         normalNodes: [],
         emissionNodes: [],
@@ -456,6 +464,7 @@ export const PRESETS = {
             colorStop("#666666", 0.22),
             colorStop("#333333", 0),
           ]),
+          sphericalClipNode(),
         ],
         normalNodes: [sphericalNormalNode()],
         emissionNodes: [],

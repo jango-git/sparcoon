@@ -279,6 +279,8 @@ const NODE_CODEGEN = {
     return `new FXColorOverLifeNode([${colorsString}])`;
   },
 
+  FXSphericalClipNode: () => "new FXSphericalClipNode()",
+
   FXStaticTextureNode: (params, textureVariables) => {
     const variableName =
       textureVariables.get(params.asset) ?? "null /* unknown asset */";
