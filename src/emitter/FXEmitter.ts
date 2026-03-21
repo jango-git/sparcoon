@@ -45,7 +45,7 @@ const EMITTERS = new Array<FXEmitter>();
 
 export class FXEmitter extends Object3D {
   public automaticallyDestroyModules: boolean;
-  public sortCamera: Camera | undefined;
+  public sortCamera?: Camera;
   public sortFraction: number;
 
   private readonly mesh: FXInstancedParticle;

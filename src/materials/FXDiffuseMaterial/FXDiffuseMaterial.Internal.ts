@@ -103,6 +103,7 @@ export function buildFXDiffuseMaterial(
       PARTICLE_DEFINES,
       attributeDeclarations.join("\n"),
       "varying vec2 p_uv;",
+      "varying float p_rotation;",
       useScatter ? "varying vec3 v_viewPosition;" : "",
       varyingDeclarations.join("\n"),
     ].join("\n");
@@ -117,6 +118,7 @@ export function buildFXDiffuseMaterial(
           "#include <begin_vertex>",
           [
             "p_uv = uv;",
+            "p_rotation = PARTICLE_ROTATION;",
             vertexAssignments.join("\n"),
             "vec3 transformed = position;",
             "#ifdef USE_ALPHAHASH",
@@ -208,6 +210,7 @@ export function buildFXDiffuseMaterial(
     const fragmentPreamble = [
       PARTICLE_DEFINES,
       "varying vec2 p_uv;",
+      "varying float p_rotation;",
       varyingDeclarations.join("\n"),
       albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
       uniqueHelpers(albedoNodes),
@@ -259,6 +262,10 @@ export function buildFXDiffuseMaterial(
         "float faceDirection = gl_FrontFacing ? 1.0 : -1.0;",
         `vec3 normal = ${normalExpressions[0]};`,
         ...blendLines,
+        "// Rotate normal xy to match billboard PARTICLE_ROTATION",
+        "float cosR = cos(p_rotation);",
+        "float sinR = sin(p_rotation);",
+        "normal = vec3(normal.x * cosR - normal.y * sinR, normal.x * sinR + normal.y * cosR, normal.z);",
         "normal *= faceDirection;",
       ].join("\n");
 
@@ -283,8 +290,6 @@ export function buildFXDiffuseMaterial(
     }
 
     if (useScatter) {
-      // Per-fragment Mie scatter for all light types.
-      // viewDirection and all light directions/positions are in view space.
       fragmentShader = fragmentShader.replace(
         "#include <opaque_fragment>",
         `
