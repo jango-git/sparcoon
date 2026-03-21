@@ -72,6 +72,7 @@ export function buildFXDiffuseMaterial(
 ): MeshLambertMaterial {
   const useScatter = scatterUniforms !== undefined;
   const useShadowSensitivity = shadowSensitivity !== undefined;
+  const useNormals = normalNodes.length > 0;
 
   const attributeDeclarations: string[] = [];
   const varyingDeclarations: string[] = [];
@@ -103,7 +104,7 @@ export function buildFXDiffuseMaterial(
       PARTICLE_DEFINES,
       attributeDeclarations.join("\n"),
       "varying vec2 p_uv;",
-      "varying float p_rotation;",
+      useNormals ? "varying vec2 p_billboardSinCos;" : "",
       useScatter ? "varying vec3 v_viewPosition;" : "",
       varyingDeclarations.join("\n"),
     ].join("\n");
@@ -118,7 +119,6 @@ export function buildFXDiffuseMaterial(
           "#include <begin_vertex>",
           [
             "p_uv = uv;",
-            "p_rotation = PARTICLE_ROTATION;",
             vertexAssignments.join("\n"),
             "vec3 transformed = position;",
             "#ifdef USE_ALPHAHASH",
@@ -139,6 +139,9 @@ export function buildFXDiffuseMaterial(
             "  billboardOffset.x * cosRotation - billboardOffset.y * sinRotation,",
             "  billboardOffset.x * sinRotation + billboardOffset.y * cosRotation",
             ");",
+            "",
+            // Pass the exact sin/cos that rotated the billboard to the fragment shader.
+            useNormals ? "p_billboardSinCos = vec2(sinRotation, cosRotation);" : "",
             "",
             "vec3 particleCenter = vec3(PARTICLE_POSITION_X, PARTICLE_POSITION_Y, PARTICLE_POSITION_Z);",
             "vec4 mvPosition = modelViewMatrix * vec4(particleCenter, 1.0);",
@@ -210,7 +213,7 @@ export function buildFXDiffuseMaterial(
     const fragmentPreamble = [
       PARTICLE_DEFINES,
       "varying vec2 p_uv;",
-      "varying float p_rotation;",
+      useNormals ? "varying vec2 p_billboardSinCos;" : "",
       varyingDeclarations.join("\n"),
       albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
       uniqueHelpers(albedoNodes),
@@ -246,7 +249,7 @@ export function buildFXDiffuseMaterial(
 
     let fragmentShader = shader.fragmentShader;
 
-    if (normalNodes.length > 0) {
+    if (useNormals) {
       const normalExpressions = normalNodes.map((node) => {
         if (node instanceof FXTextureNode) {
           return `normalize(${node.colorExpression}.rgb * 2.0 - 1.0)`;
@@ -262,10 +265,17 @@ export function buildFXDiffuseMaterial(
         "float faceDirection = gl_FrontFacing ? 1.0 : -1.0;",
         `vec3 normal = ${normalExpressions[0]};`,
         ...blendLines,
-        "// Rotate normal xy to match billboard PARTICLE_ROTATION",
-        "float cosR = cos(p_rotation);",
-        "float sinR = sin(p_rotation);",
-        "normal = vec3(normal.x * cosR - normal.y * sinR, normal.x * sinR + normal.y * cosR, normal.z);",
+        "",
+        "// Rotate tangent-space normal XY into view space to match billboard rotation.",
+        "// p_billboardSinCos carries the exact sin/cos that rotated the quad vertices.",
+        "float sinR = p_billboardSinCos.x;",
+        "float cosR = p_billboardSinCos.y;",
+        "normal = vec3(",
+        "  normal.x * cosR - normal.y * sinR,",
+        "  normal.x * sinR + normal.y * cosR,",
+        "  normal.z",
+        ");",
+        "",
         "normal *= faceDirection;",
       ].join("\n");
 
@@ -326,13 +336,6 @@ export function buildFXDiffuseMaterial(
           }
         #endif
 
-        // calculateScatter() includes a "* alpha" density factor. Compositing
-        // will apply another "* alpha" (via blend equation in straight mode,
-        // or via premultiplied_alpha_fragment + One/OneMinusSrcAlpha blend).
-        // Without correction, scatter would get alpha² while diffuse lighting
-        // only gets alpha¹. Dividing diffuseColor.rgb by alpha cancels the
-        // extra factor, so scatter composites at the same alpha power as
-        // the rest of outgoingLight.
         vec3 albedo = diffuseColor.a > 0.001
             ? diffuseColor.rgb / diffuseColor.a
             : vec3(0.0);
