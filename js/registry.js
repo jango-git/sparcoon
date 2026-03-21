@@ -14,7 +14,7 @@
  *   options  - array of { value, label } for "select" type
  */
 
-import * as FX from "https://esm.sh/sparcoon@0.4.2?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import * as FX from "https://esm.sh/sparcoon@0.4.3?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import * as THREE from "https://esm.sh/three@0.157";
 import { normalizeColor } from "./utils.js";
 
