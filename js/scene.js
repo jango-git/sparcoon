@@ -101,11 +101,12 @@ export function initScene(canvas) {
 
   // Grid
   groundGrid = new THREE.GridHelper(30, 30, 0xa09080, 0xb0a898);
+  groundGrid.position.y = 0.01;
   scene.add(groundGrid);
 
   // Human reference box (1×2×1, wireframe)
   humanReference = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 2, 1)),
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(0.5, 2, 0.8)),
     new THREE.LineBasicMaterial({
       color: 0xffffff,
       opacity: 0.25,

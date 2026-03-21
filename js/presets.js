@@ -106,11 +106,11 @@ function spawnTorque(base = 0, spread = Math.PI / 2) {
 
 // --- Behavior module builders ---
 
-function behaviorGravity(y = -9.8) {
+function behaviorGravity(x = 0, y = -9.8, z = 0) {
   return {
     id: generateId(),
     type: "FXBehaviorDirectionalGravity",
-    params: { direction: { x: 0, y, z: 0 } },
+    params: { direction: { x, y, z } },
   };
 }
 
@@ -179,7 +179,7 @@ export const PRESETS = {
         spawnTorque(0, Math.PI / 2),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.25, 0.25, 1, 3),
       ],
-      behaviorModules: [behaviorGravity(-9.8)],
+      behaviorModules: [behaviorGravity(0, -9.8, 0)],
       material: {
         type: "FXUnlitMaterial",
         params: createUnlitParams({ blending: 2 }),
@@ -208,7 +208,7 @@ export const PRESETS = {
         spawnTorque(0, Math.PI / 2),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.25, 0.25, 1, 3),
       ],
-      behaviorModules: [behaviorGravity(-9.8)],
+      behaviorModules: [behaviorGravity(0, -9.8, 0)],
       material: {
         type: "FXDiffuseMaterial",
         params: createDiffuseParams(),
@@ -278,7 +278,7 @@ export const PRESETS = {
           spawnTorque(0, Math.PI / 2),
         ],
         behaviorModules: [
-          behaviorGravity(-9.8),
+          behaviorGravity(0, -9.8, 0),
           behaviorVelocityDamping(0.07),
           behaviorScaleOverLife([
             { min: 0, max: 0 },
@@ -331,6 +331,7 @@ export const PRESETS = {
           behaviorTorqueDamping(0.85),
           behaviorTorqueNoise(0.3, 0.9),
           behaviorVelocityNoise(0.2, 0.12),
+          behaviorGravity(-0.5, 0, 0),
         ],
         material: {
           type: "FXDiffuseMaterial",
@@ -369,15 +370,17 @@ export const PRESETS = {
       playing: true,
       options: createBaseOptions(),
       spawnModules: [
+        spawnOffset(),
         spawnLifetime(0.35, 0.85),
-        spawnScale(0.05, 0.13),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.65, 0.6, 2.5, 5.5),
+        spawnTorque(),
       ],
       behaviorModules: [
-        behaviorGravity(-9.8),
+        behaviorGravity(0, -9.8, 0),
         behaviorVelocityDamping(0.07),
         behaviorScaleOverLife([
-          { min: 1, max: 1 },
+          { min: 0, max: 0 },
+          { min: 0.025, max: 0.05 },
           { min: 0, max: 0 },
         ]),
       ],
@@ -403,30 +406,31 @@ export const PRESETS = {
     create: () => ({
       id: generateId(),
       name: "Smoke",
-      rate: 6,
+      rate: 16,
       playing: true,
       options: {
         ...createBaseOptions(),
         expectedCapacity: 64,
         castShadow: true,
+        useSortCamera: true,
       },
       spawnModules: [
-        spawnBox({ x: -0.3, y: 0, z: -0.3 }, { x: 0.3, y: 0, z: 0.3 }),
-        spawnLifetime(2.5, 4.5),
-        spawnScale(0.5, 1.0),
+        spawnOffset(),
+        spawnLifetime(3.5, 4),
         spawnRotation(Math.PI),
         spawnTorque(0, Math.PI / 3),
-        spawnVelocity({ x: 0, y: 1, z: 0 }, 0.1, 0.1, 0.2, 0.55),
+        spawnVelocity({ x: 0, y: 1, z: 0 }, 0.1, 0.05, 1.5, 1.75),
       ],
       behaviorModules: [
         behaviorScaleOverLife([
-          { min: 0.7, max: 0.7 },
-          { min: 2.2, max: 2.2 },
+          { min: 0.15, max: 0.15 },
+          { min: 1, max: 1.25 },
         ]),
         behaviorVelocityDamping(0.025),
         behaviorTorqueDamping(0.85),
         behaviorTorqueNoise(0.3, 0.9),
         behaviorVelocityNoise(0.2, 0.12),
+        behaviorGravity(-0.5, 0, 0),
       ],
       material: {
         type: "FXDiffuseMaterial",

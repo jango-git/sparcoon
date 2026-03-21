@@ -521,9 +521,7 @@ function generateTypeScript(emitters, className) {
     lines.push("");
     lines.push("    // Textures - replace with loaded Texture instances");
     for (const [assetKey, variableName] of textureVariables) {
-      lines.push(
-        `    // const ${variableName} = null as unknown as Texture; // ${assetKey}`,
-      );
+      lines.push(`    // const ${variableName} = ; // ${assetKey}`);
     }
   }
 
