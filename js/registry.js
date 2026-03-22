@@ -14,7 +14,7 @@
  *   options  - array of { value, label } for "select" type
  */
 
-import * as FX from "https://esm.sh/sparcoon@0.4.5?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import * as FX from "https://esm.sh/sparcoon@0.5.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import * as THREE from "https://esm.sh/three@0.157";
 import { normalizeColor } from "./utils.js";
 
@@ -33,6 +33,20 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) => new FX.FXSpawnOffset(params.offset),
+  },
+
+  FXSpawnPoint: {
+    label: "Position",
+    params: [
+      {
+        key: "position",
+        label: "Position",
+        type: "vec3",
+        default: { x: 0, y: 0, z: 0 },
+        step: 0.1,
+      },
+    ],
+    build: (params) => new FX.FXSpawnPoint(params.position),
   },
 
   FXSpawnBox: {
@@ -532,6 +546,15 @@ export const MATERIAL_BASE_PARAMS = [
     min: 0.0075,
     max: 1,
     step: 0.0005,
+  },
+  {
+    key: "depthAlphaTest",
+    label: "Depth Alpha Test",
+    type: "slider",
+    default: 0.5,
+    min: 0.0075,
+    max: 1,
+    step: 0.0025,
   },
   {
     key: "premultipliedAlpha",

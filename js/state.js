@@ -63,7 +63,7 @@ export function createEmitterState(name = "Emitter") {
     timeline: [],
     options: defaultParams(EMITTER_OPTIONS_PARAMS),
     spawnModules: [
-      createModuleState("FXSpawnOffset", SPAWN_MODULES),
+      createModuleState("FXSpawnPoint", SPAWN_MODULES),
       createModuleState("FXSpawnRandomLifetime", SPAWN_MODULES),
       createModuleState("FXSpawnRandomRotation", SPAWN_MODULES),
       createModuleState("FXSpawnRandomScale", SPAWN_MODULES),

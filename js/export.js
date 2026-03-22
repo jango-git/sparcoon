@@ -172,7 +172,9 @@ function toEmitterFieldName(name, usedNames) {
 // --- Spawn module codegen ---
 
 const SPAWN_CODEGEN = {
-  FXSpawnOffset: (params) => `new FXSpawnOffset(${formatVec3(params.offset)})`,
+  FXSpawnOffset: (params) => `new FXSpawnOffset(${formatVec3(params.position)})`,
+
+  FXSpawnPoint: (params) => `new FXSpawnPoint(${formatVec3(params.position)})`,
 
   FXSpawnBox: (params) => `new FXSpawnBox(${formatVec3(params.min)}, ${formatVec3(params.max)})`,
 

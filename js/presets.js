@@ -41,6 +41,14 @@ function sphericalNormalNode() {
 
 // --- Spawn module builders ---
 
+function spawnPoint(x = 0, y = 0, z = 0) {
+  return {
+    id: generateId(),
+    type: "FXSpawnPoint",
+    params: { position: { x, y, z } },
+  };
+}
+
 function spawnOffset(x = 0, y = 0, z = 0) {
   return {
     id: generateId(),
@@ -173,11 +181,9 @@ export const PRESETS = {
       timeline: [{ id: generateId(), type: "play", rate: 10, delay: 0 }],
       options: createBaseOptions(),
       spawnModules: [
-        spawnOffset(),
+        spawnPoint(),
         spawnLifetime(1, 2),
         spawnScale(0.5, 1.5),
-        spawnRotation(Math.PI),
-        spawnTorque(0, Math.PI / 2),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.25, 0.25, 1, 3),
       ],
       behaviorModules: [behaviorGravity(0, -9.8, 0)],
@@ -199,11 +205,9 @@ export const PRESETS = {
       timeline: [{ id: generateId(), type: "play", rate: 10, delay: 0 }],
       options: createBaseOptions(),
       spawnModules: [
-        spawnOffset(),
+        spawnPoint(),
         spawnLifetime(1, 2),
         spawnScale(0.5, 1.5),
-        spawnRotation(Math.PI),
-        spawnTorque(0, Math.PI / 2),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.25, 0.25, 1, 3),
       ],
       behaviorModules: [behaviorGravity(0, -9.8, 0)],
@@ -226,20 +230,19 @@ export const PRESETS = {
         timeline: [{ id: generateId(), type: "play", rate: 40, delay: 0 }],
         options: createBaseOptions(),
         spawnModules: [
-          spawnSphere(0, 0.1),
+          spawnSphere(0.1, 0.15, 0),
+          spawnOffset(0, 0.1, 0),
           spawnLifetime(0.75, 1),
-          spawnRotation(Math.PI),
           spawnVelocity({ x: 0, y: 1, z: 0 }, 0.22, 0.05, 1, 1.5),
         ],
         behaviorModules: [
+          behaviorVelocityDamping(0.12),
           behaviorScaleOverLife([
             { min: 0.15, max: 0.15 },
             { min: 0.5, max: 0.5 },
             { min: 0.05, max: 0.05 },
             { min: 0, max: 0 },
           ]),
-          behaviorVelocityDamping(0.12),
-          behaviorTorqueNoise(1.2, 0.6),
         ],
         material: {
           type: "FXUnlitMaterial",
@@ -268,19 +271,19 @@ export const PRESETS = {
         timeline: [{ id: generateId(), type: "play", rate: 8, delay: 0 }],
         options: { ...createBaseOptions(), expectedCapacity: 32 },
         spawnModules: [
-          spawnOffset(0, 0, 0),
+          spawnSphere(0, 0.35, 0.1),
+          spawnOffset(0, 0.35, 0),
           spawnLifetime(0.85, 0.85),
           spawnVelocity({ x: 0, y: 1, z: 0 }, 0.12, 0.1, 2, 2.5),
-          spawnTorque(0, Math.PI / 2),
         ],
         behaviorModules: [
           behaviorVelocityDamping(0.07),
+          behaviorVelocityNoise(1000, 20),
           behaviorScaleOverLife([
             { min: 0, max: 0 },
             { min: 0.025, max: 0.035 },
             { min: 0, max: 0 },
           ]),
-          behaviorVelocityNoise(1000, 20),
         ],
         material: {
           type: "FXUnlitMaterial",
@@ -313,10 +316,9 @@ export const PRESETS = {
           useSortCamera: true,
         },
         spawnModules: [
-          spawnBox({ x: -0.25, y: 1, z: 0.25 }, { x: 0.25, y: 1, z: 0.25 }),
+          spawnSphere(0, 0.35),
+          spawnOffset(0, 0.5, 0),
           spawnLifetime(2.5, 4.5),
-          spawnRotation(Math.PI),
-          spawnTorque(0, Math.PI / 3),
           spawnVelocity({ x: 0, y: 1, z: 0 }, 0.1, 0.1, 1, 2),
         ],
         behaviorModules: [
@@ -325,8 +327,6 @@ export const PRESETS = {
             { min: 1.5, max: 2 },
           ]),
           behaviorVelocityDamping(0.025),
-          behaviorTorqueDamping(0.85),
-          behaviorTorqueNoise(0.3, 0.9),
           behaviorVelocityNoise(0.2, 0.12),
           behaviorGravity(-0.5, 0, 0),
         ],
@@ -368,10 +368,9 @@ export const PRESETS = {
       timeline: [{ id: generateId(), type: "play", rate: 22, delay: 0 }],
       options: createBaseOptions(),
       spawnModules: [
-        spawnOffset(),
+        spawnPoint(),
         spawnLifetime(0.35, 0.85),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.65, 0.6, 2.5, 5.5),
-        spawnTorque(),
       ],
       behaviorModules: [
         behaviorGravity(0, -9.8, 0),
@@ -405,17 +404,17 @@ export const PRESETS = {
     create: () => ({
       id: generateId(),
       name: "Smoke",
-      timeline: [{ id: generateId(), type: "play", rate: 15, delay: 0 }],
+      timeline: [{ id: generateId(), type: "play", rate: 32, delay: 0 }],
       options: {
         ...createBaseOptions(),
         expectedCapacity: 64,
         useSortCamera: true,
+        castShadow: true,
       },
       spawnModules: [
-        spawnBox({ x: -0.25, y: 1, z: 0.25 }, { x: 0.25, y: 1, z: 0.25 }),
+        spawnSphere(0, 0.15, Math.PI / 2),
+        spawnOffset(0, 0.15, 0),
         spawnLifetime(2.5, 4.5),
-        spawnRotation(Math.PI),
-        spawnTorque(0, Math.PI / 3),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.1, 0.1, 1, 2),
       ],
       behaviorModules: [
@@ -424,8 +423,6 @@ export const PRESETS = {
           { min: 1.5, max: 2 },
         ]),
         behaviorVelocityDamping(0.025),
-        behaviorTorqueDamping(0.85),
-        behaviorTorqueNoise(0.3, 0.9),
         behaviorVelocityNoise(0.2, 0.12),
         behaviorGravity(-0.5, 0, 0),
       ],
@@ -434,11 +431,11 @@ export const PRESETS = {
         params: createDiffuseParams({
           blending: 1,
           alphaTest: 0.0075,
-          depthAlphaTest: 0.5,
+          depthAlphaTest: 0.15,
           premultipliedAlpha: true,
           enableScatter: true,
           scatterTint: "#ffd999",
-          scatterPower: 10,
+          scatterPower: 25,
           forwardScatterStrength: 0.25,
           backScatterStrength: 0.05,
           shadowSensitivity: 0.5,

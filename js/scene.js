@@ -8,7 +8,7 @@
 
 import * as THREE from "https://esm.sh/three@0.157";
 import { OrbitControls } from "https://esm.sh/three@0.157/examples/jsm/controls/OrbitControls.js";
-import { FXEmitter } from "https://esm.sh/sparcoon@0.4.5?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import { FXEmitter } from "https://esm.sh/sparcoon@0.5.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import { buildEmitter } from "./registry.js";
 
 let renderer, scene, camera, controls, clock;
@@ -25,19 +25,21 @@ export function setTimelinePaused(v) {
 
 export function resetAllEmitters() {
   for (const e of emitterMap.values()) {
-    try { e.reset(); } catch (_) {}
+    try {
+      e.reset();
+    } catch (_) {}
   }
 }
 
 export function scheduleEmitterCommand(emitterId, cmd) {
   const emitter = emitterMap.get(emitterId);
   if (!emitter) return;
-  if (cmd.type === 'play') {
+  if (cmd.type === "play") {
     const opts = {};
     if (cmd.delay != null && cmd.delay !== 0) opts.delay = cmd.delay;
     if (cmd.duration != null) opts.duration = cmd.duration;
     emitter.play(cmd.rate ?? 10, Object.keys(opts).length > 0 ? opts : undefined);
-  } else if (cmd.type === 'burst') {
+  } else if (cmd.type === "burst") {
     const opts = {};
     if (cmd.delay != null && cmd.delay !== 0) opts.delay = cmd.delay;
     emitter.burst(cmd.count ?? 10, Object.keys(opts).length > 0 ? opts : undefined);
