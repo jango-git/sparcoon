@@ -708,9 +708,5 @@ export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
   emitter.castShadow = !!emitterOptions.castShadow;
   emitter.receiveShadow = !!emitterOptions.receiveShadow;
 
-  if (emitterState.playing) {
-    emitter.play(emitterState.rate);
-  }
-
   return emitter;
 }

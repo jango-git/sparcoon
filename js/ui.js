@@ -10,7 +10,6 @@
  * Callbacks (provided by main.js):
  *   onParamChange()     - rebuild the Three.js scene without DOM re-render
  *   onStructureChange() - re-render DOM, then rebuild scene
- *   onPlayToggle(id, playing, rate)
  */
 
 import {
@@ -38,7 +37,6 @@ import { makeElement } from "./utils.js";
 
 let onParamChangeCallback = () => {};
 let onStructureChangeCallback = () => {};
-let onPlayToggleCallback = () => {};
 
 // Accordion state - only one emitter expanded at a time
 
@@ -74,10 +72,9 @@ export function renderEditor() {
 
 // Public: wire top-level event listeners
 
-export function setupEvents({ onParamChange, onStructureChange, onPlayToggle }) {
+export function setupEvents({ onParamChange, onStructureChange }) {
   onParamChangeCallback = onParamChange;
   onStructureChangeCallback = onStructureChange;
-  onPlayToggleCallback = onPlayToggle ?? (() => {});
 
   // Tab switching
   document.getElementById("tabs").addEventListener("click", (event) => {
@@ -179,39 +176,6 @@ function buildEmitterHeader(emitter) {
   });
   header.appendChild(nameInput);
 
-  // Controls group
-  const controls = makeElement("div", "emitter-controls");
-
-  // Rate
-  const rateGroup = makeElement("div", "rate-group");
-  const rateLabel = makeElement("label");
-  rateLabel.textContent = "rate";
-
-  const rateInput = makeElement("input", "rate-input param-input");
-  rateInput.type = "number";
-  rateInput.min = 0;
-  rateInput.step = 1;
-  rateInput.value = emitter.rate;
-  rateInput.addEventListener("change", () => {
-    emitter.rate = parseFloat(rateInput.value);
-    onParamChangeCallback();
-  });
-
-  rateGroup.appendChild(rateLabel);
-  rateGroup.appendChild(rateInput);
-  controls.appendChild(rateGroup);
-
-  // Play / Stop
-  const playButton = makeElement("button", `button-play${emitter.playing ? " playing" : ""}`);
-  playButton.textContent = emitter.playing ? "■ Stop" : "▶ Play";
-  playButton.addEventListener("click", () => {
-    emitter.playing = !emitter.playing;
-    playButton.textContent = emitter.playing ? "■ Stop" : "▶ Play";
-    playButton.classList.toggle("playing", emitter.playing);
-    onPlayToggleCallback(emitter.id, emitter.playing, emitter.rate);
-  });
-  controls.appendChild(playButton);
-
   // Remove emitter
   const removeButton = makeElement("button", "button-danger-plain");
   removeButton.textContent = "✕";
@@ -219,9 +183,8 @@ function buildEmitterHeader(emitter) {
     state.emitters = state.emitters.filter((item) => item.id !== emitter.id);
     onStructureChangeCallback();
   });
-  controls.appendChild(removeButton);
+  header.appendChild(removeButton);
 
-  header.appendChild(controls);
   return header;
 }
 

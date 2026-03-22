@@ -36,8 +36,6 @@ function validateEmitter(emitter) {
     !isPlainObject(emitter) ||
     typeof emitter.id !== "string" ||
     typeof emitter.name !== "string" ||
-    typeof emitter.rate !== "number" ||
-    !isFinite(emitter.rate) ||
     !Array.isArray(emitter.spawnModules) ||
     !Array.isArray(emitter.behaviorModules) ||
     !isPlainObject(emitter.material) ||
@@ -91,6 +89,7 @@ function parseEmitters(rawArray) {
 
     result.push({
       ...rawEmitter,
+      timeline: Array.isArray(rawEmitter.timeline) ? rawEmitter.timeline : [],
       spawnModules: rawEmitter.spawnModules.filter((module) =>
         validateModule(module, `emitter "${rawEmitter.name}" spawnModules`),
       ),
@@ -486,9 +485,40 @@ function generateTypeScript(emitters, className) {
 
   lines.push(`  }`);
   lines.push("");
-  lines.push(`  public play(rate?: number): void {`);
-  for (const fieldName of fieldNames) {
-    lines.push(`    this.${fieldName}.play(rate);`);
+  lines.push(`  public play(): void {`);
+  for (let index = 0; index < emitters.length; index++) {
+    const emitter = emitters[index];
+    const fieldName = fieldNames[index];
+    const timelineCmds = emitter.timeline ?? [];
+    if (timelineCmds.length === 0) continue;
+    for (const cmd of timelineCmds) {
+      const opts = {};
+      if (cmd.delay != null && cmd.delay !== 0) opts.delay = cmd.delay;
+      if (cmd.type === "play" && cmd.duration != null) opts.duration = cmd.duration;
+      const hasOpts = Object.keys(opts).length > 0;
+      const optsStr = hasOpts
+        ? "{ " +
+          Object.entries(opts)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ") +
+          " }"
+        : "";
+      if (cmd.type === "play") {
+        const rate = cmd.rate ?? 10;
+        lines.push(
+          hasOpts
+            ? `    this.${fieldName}.play(${rate}, ${optsStr});`
+            : `    this.${fieldName}.play(${rate});`,
+        );
+      } else if (cmd.type === "burst") {
+        const count = cmd.count ?? 10;
+        lines.push(
+          hasOpts
+            ? `    this.${fieldName}.burst(${count}, ${optsStr});`
+            : `    this.${fieldName}.burst(${count});`,
+        );
+      }
+    }
   }
   lines.push(`  }`);
   lines.push("");
@@ -532,17 +562,35 @@ async function saveFile(content, suggestedName, mimeType) {
   URL.revokeObjectURL(url);
 }
 
+// --- Asset helpers ---
+
+function collectUsedAssetIds(emitters) {
+  const ids = new Set();
+  for (const emitter of emitters) {
+    for (const stackKey of ["albedoNodes", "normalNodes", "emissionNodes"]) {
+      for (const node of emitter.material?.[stackKey] ?? []) {
+        if (node.params?.asset) ids.add(node.params.asset);
+      }
+    }
+  }
+  return ids;
+}
+
 // Public API
 
 export function setupExportTab({ onStructureChange }) {
-  // Save JSON (includes assets as base64)
+  // Save SCENE (includes only assets referenced by emitters)
   document.getElementById("button-export-save").addEventListener("click", async () => {
-    const assetsData = await getAssetsAsBase64();
+    const usedIds = collectUsedAssetIds(state.emitters);
+    const allAssets = await getAssetsAsBase64();
+    const assetsData = Object.fromEntries(
+      Object.entries(allAssets).filter(([id]) => usedIds.has(id)),
+    );
     const payload = { emitters: state.emitters, assets: assetsData };
     saveFile(JSON.stringify(payload, null, 2), "sparcoon-scene.json", "application/json");
   });
 
-  // Load JSON
+  // Load SCENE
   const fileInput = document.getElementById("input-export-file");
 
   document.getElementById("button-export-load").addEventListener("click", () => {

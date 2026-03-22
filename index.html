@@ -8,65 +8,103 @@
   </head>
   <body>
     <div id="app">
-      <div id="viewport">
-        <canvas id="canvas"></canvas>
-        <div id="viewport-controls">
-          <div class="viewport-panel" id="sun-angle-controls">
-            <div class="sun-row">
-              <span class="sun-label">Elevation</span>
-              <input
-                type="range"
-                id="slider-sun-elevation"
-                class="sun-slider"
-                min="5"
-                max="85"
-                step="5"
-                value="10"
-              />
-              <span class="sun-value" id="value-sun-elevation">10°</span>
+      <div id="left-panel">
+        <div id="viewport">
+          <canvas id="canvas"></canvas>
+          <div id="viewport-controls">
+            <div class="viewport-panel" id="sun-angle-controls">
+              <div class="sun-row">
+                <span class="sun-label">Elevation</span>
+                <input
+                  type="range"
+                  id="slider-sun-elevation"
+                  class="sun-slider"
+                  min="5"
+                  max="85"
+                  step="5"
+                  value="10"
+                />
+                <span class="sun-value" id="value-sun-elevation">10°</span>
+              </div>
+              <div class="sun-row">
+                <span class="sun-label">Azimuth</span>
+                <input
+                  type="range"
+                  id="slider-sun-azimuth"
+                  class="sun-slider"
+                  min="0"
+                  max="360"
+                  step="10"
+                  value="190"
+                />
+                <span class="sun-value" id="value-sun-azimuth">190°</span>
+              </div>
             </div>
-            <div class="sun-row">
-              <span class="sun-label">Azimuth</span>
+            <div id="viewport-buttons">
+              <button class="viewport-button active" id="button-sun" title="Toggle Sun">☀</button>
+              <button
+                class="viewport-button active"
+                id="button-hemisphere"
+                title="Toggle Hemisphere"
+              >
+                ◑
+              </button>
+              <button
+                class="viewport-button active"
+                id="button-background"
+                title="Toggle Background"
+              >
+                ▣
+              </button>
               <input
-                type="range"
-                id="slider-sun-azimuth"
-                class="sun-slider"
-                min="0"
-                max="360"
-                step="10"
-                value="190"
+                type="color"
+                id="input-bg-color"
+                class="viewport-color-pick"
+                value="#9abfd4"
+                title="Background color"
               />
-              <span class="sun-value" id="value-sun-azimuth">190°</span>
+              <button class="viewport-button active" id="button-plane" title="Toggle Ground Plane">
+                ▭
+              </button>
+              <button
+                class="viewport-button active"
+                id="button-human"
+                title="Toggle Human Reference"
+              >
+                ⬜
+              </button>
+              <button
+                class="viewport-button viewport-button--reset"
+                id="button-reset"
+                title="Reset camera &amp; scene"
+              >
+                Reset
+              </button>
             </div>
           </div>
-          <div id="viewport-buttons">
-            <button class="viewport-button active" id="button-sun" title="Toggle Sun">☀</button>
-            <button class="viewport-button active" id="button-hemisphere" title="Toggle Hemisphere">
-              ◑
-            </button>
-            <button class="viewport-button active" id="button-background" title="Toggle Background">
-              ▣
-            </button>
-            <input
-              type="color"
-              id="input-bg-color"
-              class="viewport-color-pick"
-              value="#9abfd4"
-              title="Background color"
-            />
-            <button class="viewport-button active" id="button-plane" title="Toggle Ground Plane">
-              ▭
-            </button>
-            <button class="viewport-button active" id="button-human" title="Toggle Human Reference">
-              ⬜
-            </button>
-            <button
-              class="viewport-button viewport-button--reset"
-              id="button-reset"
-              title="Reset camera &amp; scene"
-            >
-              Reset
-            </button>
+        </div>
+        <div id="timeline">
+          <div id="tl-main">
+            <div id="tl-ruler-row">
+              <div class="tl-label-cell"></div>
+              <div id="tl-ruler"></div>
+            </div>
+            <div id="tl-scroll">
+              <div id="tl-rows"></div>
+            </div>
+            <div id="tl-playhead"></div>
+          </div>
+          <div id="tl-sidebar">
+            <div id="tl-controls">
+              <label id="tl-autoplay-label" title="Loop playback">
+                <input type="checkbox" id="tl-autoplay" />
+                <span id="tl-autoplay-toggle">⟳</span>
+              </label>
+              <button id="tl-btn-play">▶ Play</button>
+              <button id="tl-btn-pause" disabled>⏸ Pause</button>
+              <button id="tl-btn-stop" disabled>■ Stop</button>
+            </div>
+            <div id="tl-cmd-panel"></div>
           </div>
         </div>
       </div>
@@ -101,10 +139,10 @@
           <div id="tab-export" class="tab-panel">
             <div class="export-actions">
               <button id="button-export-save" class="button-primary button-export-save">
-                ⬇ Save JSON
+                ⬇ Save SCENE
               </button>
               <button id="button-export-load" class="button-primary button-export-load">
-                ⬆ Load JSON
+                ⬆ Load SCENE
               </button>
             </div>
             <input type="file" id="input-export-file" accept=".json" hidden />

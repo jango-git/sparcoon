@@ -170,8 +170,7 @@ export const PRESETS = {
     create: () => ({
       id: generateId(),
       name: "Unlit",
-      rate: 10,
-      playing: true,
+      timeline: [{ id: generateId(), type: "play", rate: 10, delay: 0 }],
       options: createBaseOptions(),
       spawnModules: [
         spawnOffset(),
@@ -197,8 +196,7 @@ export const PRESETS = {
     create: () => ({
       id: generateId(),
       name: "Diffuse",
-      rate: 10,
-      playing: true,
+      timeline: [{ id: generateId(), type: "play", rate: 10, delay: 0 }],
       options: createBaseOptions(),
       spawnModules: [
         spawnOffset(),
@@ -225,8 +223,7 @@ export const PRESETS = {
       {
         id: generateId(),
         name: "Fire",
-        rate: 40,
-        playing: true,
+        timeline: [{ id: generateId(), type: "play", rate: 40, delay: 0 }],
         options: createBaseOptions(),
         spawnModules: [
           spawnSphere(0, 0.1),
@@ -268,8 +265,7 @@ export const PRESETS = {
       {
         id: generateId(),
         name: "FireSpark",
-        rate: 8,
-        playing: true,
+        timeline: [{ id: generateId(), type: "play", rate: 8, delay: 0 }],
         options: { ...createBaseOptions(), expectedCapacity: 32 },
         spawnModules: [
           spawnOffset(0, 0, 0),
@@ -310,8 +306,7 @@ export const PRESETS = {
       {
         id: generateId(),
         name: "FireSmoke",
-        rate: 15,
-        playing: true,
+        timeline: [{ id: generateId(), type: "play", rate: 15, delay: 0 }],
         options: {
           ...createBaseOptions(),
           expectedCapacity: 64,
@@ -370,8 +365,7 @@ export const PRESETS = {
     create: () => ({
       id: generateId(),
       name: "Spark",
-      rate: 22,
-      playing: true,
+      timeline: [{ id: generateId(), type: "play", rate: 22, delay: 0 }],
       options: createBaseOptions(),
       spawnModules: [
         spawnOffset(),
@@ -411,25 +405,23 @@ export const PRESETS = {
     create: () => ({
       id: generateId(),
       name: "Smoke",
-      rate: 16,
-      playing: true,
+      timeline: [{ id: generateId(), type: "play", rate: 15, delay: 0 }],
       options: {
         ...createBaseOptions(),
         expectedCapacity: 64,
-        castShadow: true,
         useSortCamera: true,
       },
       spawnModules: [
-        spawnOffset(),
-        spawnLifetime(3.5, 4),
+        spawnBox({ x: -0.25, y: 1, z: 0.25 }, { x: 0.25, y: 1, z: 0.25 }),
+        spawnLifetime(2.5, 4.5),
         spawnRotation(Math.PI),
         spawnTorque(0, Math.PI / 3),
-        spawnVelocity({ x: 0, y: 1, z: 0 }, 0.1, 0.05, 1.5, 1.75),
+        spawnVelocity({ x: 0, y: 1, z: 0 }, 0.1, 0.1, 1, 2),
       ],
       behaviorModules: [
         behaviorScaleOverLife([
-          { min: 0.15, max: 0.15 },
-          { min: 1, max: 1.25 },
+          { min: 0.25, max: 0.25 },
+          { min: 1.5, max: 2 },
         ]),
         behaviorVelocityDamping(0.025),
         behaviorTorqueDamping(0.85),
@@ -443,18 +435,22 @@ export const PRESETS = {
           blending: 1,
           alphaTest: 0.0075,
           depthAlphaTest: 0.5,
+          premultipliedAlpha: true,
           enableScatter: true,
+          scatterTint: "#ffd999",
+          scatterPower: 10,
           forwardScatterStrength: 0.25,
           backScatterStrength: 0.05,
+          shadowSensitivity: 0.5,
         }),
         albedoNodes: [
           colorOverLifeNode([
             colorStop("#aaaaaa", 0),
-            colorStop("#888888", 0.32),
-            colorStop("#666666", 0.22),
+            colorStop("#888888", 0.6),
+            colorStop("#666666", 0.3),
             colorStop("#333333", 0),
           ]),
-          sphericalClipNode(),
+          sphericalClipNode(0.1),
         ],
         normalNodes: [sphericalNormalNode()],
         emissionNodes: [],

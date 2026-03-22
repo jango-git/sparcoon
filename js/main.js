@@ -7,7 +7,6 @@
 import {
   initScene,
   syncEmitters,
-  setEmitterPlaying,
   toggleSun,
   toggleHemisphere,
   toggleBackground,
@@ -21,6 +20,7 @@ import { renderEditor, setupEvents } from "./ui.js";
 import { setupExportTab } from "./export.js";
 import { loadAssetsIntoState, setupAssetsTab, renderAssetsTab } from "./assets.js";
 import { state } from "./state.js";
+import { setupTimeline, renderTimeline, restartTimeline, startTimeline } from "./timeline.js";
 
 // Scene initialization
 
@@ -31,6 +31,7 @@ initScene(canvas);
 loadAssetsIntoState().then(() => {
   renderAssetsTab();
   syncEmitters(state.emitters, state.assets);
+  startTimeline();
 });
 
 // Initial UI render (empty emitter list)
@@ -43,7 +44,10 @@ let paramChangeTimer = null;
 
 function scheduleSyncEmitters() {
   clearTimeout(paramChangeTimer);
-  paramChangeTimer = setTimeout(() => syncEmitters(state.emitters, state.assets), 300);
+  paramChangeTimer = setTimeout(() => {
+    syncEmitters(state.emitters, state.assets);
+    restartTimeline();
+  }, 300);
 }
 
 // Callbacks: wire UI → scene
@@ -57,14 +61,13 @@ const callbacks = {
     clearTimeout(paramChangeTimer);
     renderEditor();
     syncEmitters(state.emitters, state.assets);
-  },
-
-  onPlayToggle(emitterId, playing, rate) {
-    setEmitterPlaying(emitterId, playing, rate);
+    renderTimeline();
+    restartTimeline();
   },
 };
 
 setupEvents(callbacks);
+setupTimeline({ onTimelineChange: restartTimeline });
 
 setupExportTab({ onStructureChange: callbacks.onStructureChange });
 

@@ -60,8 +60,7 @@ export function createEmitterState(name = "Emitter") {
   return {
     id: nextId(),
     name,
-    rate: 10,
-    playing: true,
+    timeline: [],
     options: defaultParams(EMITTER_OPTIONS_PARAMS),
     spawnModules: [
       createModuleState("FXSpawnOffset", SPAWN_MODULES),

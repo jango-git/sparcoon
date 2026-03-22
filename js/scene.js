@@ -17,6 +17,33 @@ let customBackgroundColor = new THREE.Color(0x9abfd4);
 
 const emitterMap = new Map(); // emitter state id → FXEmitter instance
 
+let timelinePaused = false;
+
+export function setTimelinePaused(v) {
+  timelinePaused = v;
+}
+
+export function resetAllEmitters() {
+  for (const e of emitterMap.values()) {
+    try { e.reset(); } catch (_) {}
+  }
+}
+
+export function scheduleEmitterCommand(emitterId, cmd) {
+  const emitter = emitterMap.get(emitterId);
+  if (!emitter) return;
+  if (cmd.type === 'play') {
+    const opts = {};
+    if (cmd.delay != null && cmd.delay !== 0) opts.delay = cmd.delay;
+    if (cmd.duration != null) opts.duration = cmd.duration;
+    emitter.play(cmd.rate ?? 10, Object.keys(opts).length > 0 ? opts : undefined);
+  } else if (cmd.type === 'burst') {
+    const opts = {};
+    if (cmd.delay != null && cmd.delay !== 0) opts.delay = cmd.delay;
+    emitter.burst(cmd.count ?? 10, Object.keys(opts).length > 0 ? opts : undefined);
+  }
+}
+
 const SKY_COLOR = new THREE.Color(0x9abfd4);
 const BLACK_COLOR = new THREE.Color(0x111111);
 
@@ -152,7 +179,7 @@ function animate() {
   requestAnimationFrame(animate);
   const deltaTime = clock.getDelta();
   controls.update();
-  FXEmitter.onWillRender(deltaTime);
+  FXEmitter.onWillRender(timelinePaused ? 0 : deltaTime);
   renderer.render(scene, camera);
 }
 
@@ -187,15 +214,6 @@ export function setSunAngle(elevationDegrees, azimuthDegrees) {
     SUN_DISTANCE * Math.sin(elevationRadians),
     SUN_DISTANCE * Math.cos(elevationRadians) * Math.cos(azimuthRadians),
   );
-}
-
-// Emitter play/stop (without rebuild)
-
-export function setEmitterPlaying(emitterId, playing, rate) {
-  const emitter = emitterMap.get(emitterId);
-  if (!emitter) return;
-  if (playing) emitter.play(rate);
-  else emitter.stop();
 }
 
 // Emitter sync - rebuild all emitters from state
