@@ -13,7 +13,7 @@ import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
  *
  * `vWorldPosition` is a Three.js convention consumed by the distance fragment
  * shader. `viewMatrix` here is the shadow camera's view matrix, so the
- * billboard faces the light — which is correct for shadow shape.
+ * billboard faces the light - which is correct for shadow shape.
  */
 const DISTANCE_VERTEX_SHADER = `
   #define DISTANCE
@@ -80,9 +80,9 @@ const DISTANCE_VERTEX_SHADER = `
  * the smaller scale dimension. Fragments outside the sphere are discarded.
  *
  * The depth offset is subtracted from the flat distance, bringing the
- * perceived surface closer to the light. This is an approximation — the
+ * perceived surface closer to the light. This is an approximation - the
  * true offset direction depends on the light-to-fragment vector, not the
- * camera-to-fragment vector — but for smoke particles the error is
+ * camera-to-fragment vector - but for smoke particles the error is
  * negligible.
  */
 const SPHERICAL_DISTANCE_SNIPPET = `
@@ -149,7 +149,7 @@ export function buildDistanceMaterial(
 
     let fragmentShader = shader.fragmentShader;
 
-    // Alpha from nodes — MeshDistanceMaterial may or may not include
+    // Alpha from nodes - MeshDistanceMaterial may or may not include
     // <map_fragment> depending on the Three.js version. If the chunk is
     // absent, insert the alpha discard before the distance calculation.
     if (distanceNodes.length > 0) {
@@ -174,7 +174,7 @@ export function buildDistanceMaterial(
       }
     }
 
-    // Spherical distance adjustment — offset the flat-billboard distance by
+    // Spherical distance adjustment - offset the flat-billboard distance by
     // the sphere's front surface depth.
     if (useSphericalDepth) {
       if (!DISTANCE_CALCULATION_PATTERN.test(fragmentShader)) {

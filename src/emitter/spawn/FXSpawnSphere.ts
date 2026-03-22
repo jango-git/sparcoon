@@ -40,8 +40,8 @@ export class FXSpawnSphere extends FXSpawn<{ builtin: "Matrix4" }> {
 
   /**
    * Polar half-angle from the equatorial plane.
-   * - `0` — flat disk
-   * - `Math.PI / 2` — full sphere
+   * - `0` - flat disk
+   * - `Math.PI / 2` - full sphere
    */
   public get angle(): number {
     return this.angleInternal;

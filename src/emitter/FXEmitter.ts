@@ -19,29 +19,24 @@ import {
   BUILTIN_OFFSET_VELOCITY_Z,
 } from "../miscellaneous/miscellaneous";
 import type { FXBehavior } from "./behavior/FXBehavior";
-import type { FXEmitterPlayOptions } from "./FXEmitter.Internal";
+import type {
+  FXEmitterBurstOptions,
+  FXEmitterOptions,
+  FXEmitterPlayOptions,
+} from "./FXEmitter.Internal";
 import {
   collectProperties,
   EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES,
   EMITTER_DEFAULT_CAPACITY_STEP,
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
+  EMITTER_DEFAULT_PREWARM_MAX_STEP_COUNT,
+  EMITTER_DEFAULT_PREWARM_MIN_STEP_DURATION,
   EMITTER_DEFAULT_RECEIVE_SHADOW,
   EMITTER_DEFAULT_SORT_FRACTION,
+  EMITTERS,
 } from "./FXEmitter.Internal";
 import type { FXSpawn } from "./spawn/FXSpawn";
-
-export interface FXEmitterOptions {
-  expectedCapacity: number;
-  capacityStep: number;
-  automaticallyDestroyModules: boolean;
-  castShadow: boolean;
-  receiveShadow: boolean;
-  sortCamera: Camera;
-  sortFraction: number;
-}
-
-const EMITTERS = new Array<FXEmitter>();
 
 export class FXEmitter extends Object3D {
   public automaticallyDestroyModules: boolean;
@@ -51,10 +46,16 @@ export class FXEmitter extends Object3D {
   private readonly mesh: FXInstancedParticle;
   private readonly material: FXMaterial;
 
-  private emissionRate = 0;
-  private emissionAccumulator = 0;
-  private emissionDuration = Infinity;
-  private emissionElapsed = 0;
+  private nextHandler = 0;
+  private readonly pendingBursts: { handler: number; count: number; delay: number }[] = [];
+  private readonly activePlays: {
+    handler: number;
+    rate: number;
+    duration: number;
+    elapsed: number;
+    accumulator: number;
+    delay: number;
+  }[] = [];
 
   private sortingAccumulator = 0;
   private readonly sortingCameraWorldPosition = new Vector3();
@@ -131,7 +132,186 @@ export class FXEmitter extends Object3D {
     this.removeFromParent();
   }
 
-  public burst(count: number): void {
+  public burst(count: number, options: Partial<FXEmitterBurstOptions> = {}): number {
+    const handler = this.nextHandler++;
+    const delay = options.delay ?? 0;
+
+    if (delay <= 0) {
+      this.spawnBurst(count);
+    } else {
+      this.pendingBursts.push({ handler, count, delay });
+    }
+
+    return handler;
+  }
+
+  public play(rate: number, options: Partial<FXEmitterPlayOptions> = {}): number {
+    const handler = this.nextHandler++;
+
+    this.activePlays.push({
+      handler,
+      rate,
+      duration: options.duration ?? Infinity,
+      elapsed: 0,
+      accumulator: 0,
+      delay: options.delay ?? 0,
+    });
+
+    return handler;
+  }
+
+  public stop(handler?: number): boolean {
+    if (handler === undefined) {
+      const hadAnything = this.pendingBursts.length > 0 || this.activePlays.length > 0;
+      this.pendingBursts.length = 0;
+      this.activePlays.length = 0;
+      return hadAnything;
+    }
+
+    const burstIndex = this.pendingBursts.findIndex((b) => b.handler === handler);
+    if (burstIndex !== -1) {
+      this.pendingBursts.splice(burstIndex, 1);
+      return true;
+    }
+
+    const playIndex = this.activePlays.findIndex((p) => p.handler === handler);
+    if (playIndex !== -1) {
+      this.activePlays.splice(playIndex, 1);
+      return true;
+    }
+
+    return false;
+  }
+
+  public prewarm(duration: number, stepDuration = EMITTER_DEFAULT_PREWARM_MIN_STEP_DURATION): void {
+    const stepCount = Math.min(
+      duration / Math.max(stepDuration, EMITTER_DEFAULT_PREWARM_MIN_STEP_DURATION),
+      EMITTER_DEFAULT_PREWARM_MAX_STEP_COUNT,
+    );
+    const step = duration / stepCount;
+    let remaining = duration;
+
+    while (remaining > 0) {
+      const deltaTime = Math.min(remaining, step);
+      this.tick(deltaTime);
+      remaining -= deltaTime;
+    }
+  }
+
+  public reset(): void {
+    this.pendingBursts.length = 0;
+    this.activePlays.length = 0;
+    this.mesh.drop();
+  }
+
+  private tick(deltaTime: number): void {
+    // Age increment & cull dead particles
+    {
+      const { builtin } = this.mesh.propertyBuffers;
+      const { array, itemSize } = builtin;
+
+      for (let i = 0; i < this.mesh.instanceCount; i++) {
+        array[i * itemSize + BUILTIN_OFFSET_AGE] += deltaTime;
+      }
+    }
+
+    this.mesh.removeDeadParticles();
+
+    // Pending bursts (delayed)
+    for (let i = this.pendingBursts.length - 1; i >= 0; i--) {
+      const pending = this.pendingBursts[i];
+      pending.delay -= deltaTime;
+
+      if (pending.delay <= 0) {
+        this.pendingBursts.splice(i, 1);
+        this.spawnBurst(pending.count);
+      }
+    }
+
+    // Active plays
+    for (let i = this.activePlays.length - 1; i >= 0; i--) {
+      const play = this.activePlays[i];
+      let effectiveDeltaTime = deltaTime;
+
+      if (play.delay > 0) {
+        play.delay -= deltaTime;
+
+        if (play.delay > 0) {
+          continue;
+        }
+
+        // Delay just expired - use the overshoot as effective dt this tick
+        effectiveDeltaTime = -play.delay;
+        play.delay = 0;
+      }
+
+      play.elapsed += effectiveDeltaTime;
+
+      if (play.elapsed >= play.duration) {
+        this.activePlays.splice(i, 1);
+        continue;
+      }
+
+      play.accumulator += play.rate * effectiveDeltaTime;
+      const particlesToSpawn = Math.floor(play.accumulator);
+
+      if (particlesToSpawn > 0) {
+        this.spawnBurst(particlesToSpawn);
+        play.accumulator -= particlesToSpawn;
+      }
+    }
+
+    if (this.mesh.instanceCount === 0) {
+      return;
+    }
+
+    {
+      const { propertyBuffers, instanceCount } = this.mesh;
+
+      for (const module of this.behaviorSequence) {
+        module.update(propertyBuffers, instanceCount, deltaTime);
+      }
+    }
+
+    {
+      const { builtin } = this.mesh.propertyBuffers;
+      const { array, itemSize } = builtin;
+
+      for (let i = 0; i < this.mesh.instanceCount; i++) {
+        const offset = i * itemSize;
+
+        // Position += velocity * dt
+        array[offset + BUILTIN_OFFSET_POSITION_X] +=
+          array[offset + BUILTIN_OFFSET_VELOCITY_X] * deltaTime;
+        array[offset + BUILTIN_OFFSET_POSITION_Y] +=
+          array[offset + BUILTIN_OFFSET_VELOCITY_Y] * deltaTime;
+        array[offset + BUILTIN_OFFSET_POSITION_Z] +=
+          array[offset + BUILTIN_OFFSET_VELOCITY_Z] * deltaTime;
+
+        // Rotation += torque * dt
+        array[offset + BUILTIN_OFFSET_ROTATION] +=
+          array[offset + BUILTIN_OFFSET_TORQUE] * deltaTime;
+      }
+
+      builtin.needsUpdate = true;
+    }
+  }
+
+  private readonly onRendering = (deltaTime: number): void => {
+    this.tick(deltaTime);
+
+    if (this.sortCamera !== undefined && this.mesh.instanceCount > 0) {
+      this.sortingAccumulator += this.sortFraction;
+
+      if (this.sortingAccumulator >= 1) {
+        this.sortingAccumulator -= 1;
+        this.sortCamera.getWorldPosition(this.sortingCameraWorldPosition);
+        this.mesh.sortByDistance(this.sortingCameraWorldPosition);
+      }
+    }
+  };
+
+  private spawnBurst(count: number): void {
     const instanceBegin = this.mesh.instanceCount;
     this.mesh.createInstances(count);
     const instanceEnd = this.mesh.instanceCount;
@@ -154,101 +334,4 @@ export class FXEmitter extends Object3D {
       spawnModule.spawn(this.mesh.propertyBuffers, instanceBegin, instanceEnd);
     }
   }
-
-  public reset(): void {
-    this.mesh.drop();
-  }
-
-  public play(rate: number, options: Partial<FXEmitterPlayOptions> = {}): void {
-    this.emissionRate = rate;
-    this.emissionAccumulator = 0;
-    this.emissionDuration = options.duration ?? Infinity;
-    this.emissionElapsed = 0;
-  }
-
-  public stop(): void {
-    this.emissionRate = 0;
-    this.emissionAccumulator = 0;
-    this.emissionDuration = Infinity;
-    this.emissionElapsed = 0;
-  }
-
-  private readonly onRendering = (deltaTime: number): void => {
-    {
-      const { builtin } = this.mesh.propertyBuffers;
-      const { array, itemSize } = builtin;
-
-      for (let i = 0; i < this.mesh.instanceCount; i++) {
-        array[i * itemSize + BUILTIN_OFFSET_AGE] += deltaTime;
-      }
-
-      builtin.needsUpdate = true;
-      this.mesh.removeDeadParticles();
-    }
-
-    if (this.emissionRate > 0) {
-      this.emissionElapsed += deltaTime;
-
-      if (this.emissionElapsed >= this.emissionDuration) {
-        this.stop();
-      } else {
-        this.emissionAccumulator += this.emissionRate * deltaTime;
-
-        const particlesToSpawn = Math.floor(this.emissionAccumulator);
-        if (particlesToSpawn > 0) {
-          this.burst(particlesToSpawn);
-          this.emissionAccumulator -= particlesToSpawn;
-        }
-      }
-    }
-
-    if (this.mesh.instanceCount === 0) {
-      return;
-    }
-
-    {
-      const { propertyBuffers, instanceCount } = this.mesh;
-
-      for (const module of this.behaviorSequence) {
-        module.update(propertyBuffers, instanceCount, deltaTime);
-      }
-    }
-
-    const { builtin } = this.mesh.propertyBuffers;
-    const { array, itemSize } = builtin;
-
-    {
-      for (let i = 0; i < this.mesh.instanceCount; i++) {
-        const itemOffset = i * itemSize;
-        array[itemOffset + BUILTIN_OFFSET_POSITION_X] +=
-          array[itemOffset + BUILTIN_OFFSET_VELOCITY_X] * deltaTime;
-        array[itemOffset + BUILTIN_OFFSET_POSITION_Y] +=
-          array[itemOffset + BUILTIN_OFFSET_VELOCITY_Y] * deltaTime;
-        array[itemOffset + BUILTIN_OFFSET_POSITION_Z] +=
-          array[itemOffset + BUILTIN_OFFSET_VELOCITY_Z] * deltaTime;
-      }
-
-      builtin.needsUpdate = true;
-    }
-
-    {
-      for (let i = 0; i < this.mesh.instanceCount; i++) {
-        const itemOffset = i * itemSize;
-        array[itemOffset + BUILTIN_OFFSET_ROTATION] +=
-          array[itemOffset + BUILTIN_OFFSET_TORQUE] * deltaTime;
-      }
-
-      builtin.needsUpdate = true;
-    }
-
-    if (this.sortCamera !== undefined) {
-      this.sortingAccumulator += this.sortFraction;
-
-      if (this.sortingAccumulator >= 1) {
-        this.sortingAccumulator -= 1;
-        this.sortCamera.getWorldPosition(this.sortingCameraWorldPosition);
-        this.mesh.sortByDistance(this.sortingCameraWorldPosition);
-      }
-    }
-  };
 }
