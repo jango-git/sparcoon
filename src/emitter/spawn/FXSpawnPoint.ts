@@ -10,38 +10,28 @@ import {
 } from "../../miscellaneous/miscellaneous";
 import { FXSpawn } from "./FXSpawn";
 
-/**
- * Sets particle spawn position offset.
- *
- * All particles spawned with this module start at the specified position.
- */
 export class FXSpawnPoint extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
-  private offsetInternal: Vector3Like;
+  private positionInternal: Vector3Like;
 
-  /**
-   * @param offset - Initial particle position offset
-   */
-  constructor(offset: FXVector3Config = { x: 0, y: 0, z: 0 }) {
+  constructor(position: FXVector3Config = { x: 0, y: 0, z: 0 }) {
     super();
-    this.offsetInternal = resolveFXVector3Config(offset);
-    assertValidNumber(this.offsetInternal.x, "FXSpawnOffset.constructor.offset.x");
-    assertValidNumber(this.offsetInternal.y, "FXSpawnOffset.constructor.offset.y");
-    assertValidNumber(this.offsetInternal.z, "FXSpawnOffset.constructor.offset.z");
+    this.positionInternal = resolveFXVector3Config(position);
+    assertValidNumber(this.positionInternal.x, "FXSpawnPoint.constructor.position.x");
+    assertValidNumber(this.positionInternal.y, "FXSpawnPoint.constructor.position.y");
+    assertValidNumber(this.positionInternal.z, "FXSpawnPoint.constructor.position.z");
   }
 
-  /** Particle position offset */
-  public get offset(): Vector3Like {
-    return this.offsetInternal;
+  public get position(): Vector3Like {
+    return this.positionInternal;
   }
 
-  /** Particle position offset */
-  public set offset(value: FXVector3Config) {
-    this.offsetInternal = resolveFXVector3Config(value);
-    assertValidNumber(this.offsetInternal.x, "FXSpawnOffset.offset.x");
-    assertValidNumber(this.offsetInternal.y, "FXSpawnOffset.offset.y");
-    assertValidNumber(this.offsetInternal.z, "FXSpawnOffset.offset.z");
+  public set position(value: FXVector3Config) {
+    this.positionInternal = resolveFXVector3Config(value);
+    assertValidNumber(this.positionInternal.x, "FXSpawnPoint.position.x");
+    assertValidNumber(this.positionInternal.y, "FXSpawnPoint.position.y");
+    assertValidNumber(this.positionInternal.z, "FXSpawnPoint.position.z");
   }
 
   /** @internal */
@@ -52,13 +42,13 @@ export class FXSpawnPoint extends FXSpawn<{ builtin: "Matrix4" }> {
   ): void {
     const { builtin } = properties;
     const { array, itemSize } = builtin;
-    const { x: offsetX, y: offsetY, z: offsetZ } = this.offsetInternal;
+    const { x: positionX, y: positionY, z: positionZ } = this.positionInternal;
 
     for (let i = instanceBegin; i < instanceEnd; i++) {
       const itemOffset = i * itemSize;
-      array[itemOffset + BUILTIN_OFFSET_POSITION_X] = offsetX;
-      array[itemOffset + BUILTIN_OFFSET_POSITION_Y] = offsetY;
-      array[itemOffset + BUILTIN_OFFSET_POSITION_Z] = offsetZ;
+      array[itemOffset + BUILTIN_OFFSET_POSITION_X] = positionX;
+      array[itemOffset + BUILTIN_OFFSET_POSITION_Y] = positionY;
+      array[itemOffset + BUILTIN_OFFSET_POSITION_Z] = positionZ;
     }
 
     builtin.needsUpdate = true;

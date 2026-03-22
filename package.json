@@ -1,7 +1,7 @@
 {
   "name": "sparcoon",
-  "version": "0.4.5",
-  "description": "",
+  "version": "0.5.0",
+  "description": "Instanced-mesh particle system for Three.js.",
   "keywords": [
     "particles",
     "particle-system",

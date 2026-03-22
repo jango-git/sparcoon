@@ -7,7 +7,8 @@ export { FXBehaviorVelocityDamping } from "./emitter/behavior/FXBehaviorVelocity
 export { FXBehaviorVelocityNoise } from "./emitter/behavior/FXBehaviorVelocityNoise";
 export { FXEmitter } from "./emitter/FXEmitter";
 export { FXSpawnBox } from "./emitter/spawn/FXSpawnBox";
-export { FXSpawnPoint as FXSpawnOffset } from "./emitter/spawn/FXSpawnPoint";
+export { FXSpawnOffset } from "./emitter/spawn/FXSpawnOffset";
+export { FXSpawnPoint } from "./emitter/spawn/FXSpawnPoint";
 export { FXSpawnRandomLifetime } from "./emitter/spawn/FXSpawnRandomLifetime";
 export { FXSpawnRandomRotation } from "./emitter/spawn/FXSpawnRandomRotation";
 export { FXSpawnRandomScale } from "./emitter/spawn/FXSpawnRandomScale";
