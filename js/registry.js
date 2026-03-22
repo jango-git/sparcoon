@@ -14,7 +14,7 @@
  *   options  - array of { value, label } for "select" type
  */
 
-import * as FX from "https://esm.sh/sparcoon@0.4.4?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import * as FX from "https://esm.sh/sparcoon@0.4.5?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import * as THREE from "https://esm.sh/three@0.157";
 import { normalizeColor } from "./utils.js";
 
@@ -63,9 +63,9 @@ export const SPAWN_MODULES = {
         key: "innerRadius",
         label: "Inner Radius",
         type: "number",
-        default: 0,
+        default: 0.5,
         min: 0,
-        step: 0.01,
+        step: 0.05,
       },
       {
         key: "outerRadius",
@@ -410,8 +410,18 @@ export const COLOR_NODES = {
   },
   FXSphericalClipNode: {
     label: "Spherical Clip",
-    params: [],
-    build: () => new FX.FXSphericalClipNode(),
+    params: [
+      {
+        key: "innerRadius",
+        label: "Inner Radius",
+        type: "slider",
+        default: 0,
+        min: 0,
+        max: 0.5,
+        step: 0.01,
+      },
+    ],
+    build: (params) => new FX.FXSphericalClipNode(params.innerRadius || undefined),
   },
 };
 

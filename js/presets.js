@@ -31,8 +31,8 @@ function colorOverLifeNode(colors) {
   return { id: generateId(), type: "FXColorOverLifeNode", params: { colors } };
 }
 
-function sphericalClipNode() {
-  return { id: generateId(), type: "FXSphericalClipNode", params: {} };
+function sphericalClipNode(innerRadius = 0) {
+  return { id: generateId(), type: "FXSphericalClipNode", params: { innerRadius } };
 }
 
 function sphericalNormalNode() {
@@ -229,10 +229,10 @@ export const PRESETS = {
         playing: true,
         options: createBaseOptions(),
         spawnModules: [
-          spawnSphere(0, 0.25),
-          spawnLifetime(0.5, 1.4),
+          spawnSphere(0, 0.1),
+          spawnLifetime(0.75, 1),
           spawnRotation(Math.PI),
-          spawnVelocity({ x: 0, y: 1, z: 0 }, 0.22, 0.05, 1.5, 1.5),
+          spawnVelocity({ x: 0, y: 1, z: 0 }, 0.22, 0.05, 1, 1.5),
         ],
         behaviorModules: [
           behaviorScaleOverLife([
@@ -248,7 +248,8 @@ export const PRESETS = {
           type: "FXUnlitMaterial",
           params: createUnlitParams({
             blending: 2,
-            alphaTest: 0.005,
+            alphaTest: 0.0075,
+            depthAlphaTest: 0.5,
             premultipliedAlpha: true,
           }),
           albedoNodes: [
@@ -258,7 +259,7 @@ export const PRESETS = {
               colorStop("#cc2200", 0.55),
               colorStop("#330000", 0),
             ]),
-            sphericalClipNode(),
+            sphericalClipNode(0.25),
           ],
           normalNodes: [],
           emissionNodes: [],
@@ -290,6 +291,7 @@ export const PRESETS = {
           params: createUnlitParams({
             blending: 2,
             alphaTest: 0.0075,
+            depthAlphaTest: 0.5,
             premultipliedAlpha: true,
           }),
           albedoNodes: [
@@ -307,7 +309,7 @@ export const PRESETS = {
       },
       {
         id: generateId(),
-        name: "Smoke",
+        name: "FireSmoke",
         rate: 15,
         playing: true,
         options: {
@@ -337,7 +339,8 @@ export const PRESETS = {
           type: "FXDiffuseMaterial",
           params: createDiffuseParams({
             blending: 1,
-            alphaTest: 0.005,
+            alphaTest: 0.0075,
+            depthAlphaTest: 0.5,
             premultipliedAlpha: true,
             enableScatter: true,
             scatterTint: "#ffd999",
@@ -349,11 +352,11 @@ export const PRESETS = {
           albedoNodes: [
             colorOverLifeNode([
               colorStop("#aaaaaa", 0),
-              colorStop("#888888", 0.32),
-              colorStop("#666666", 0.22),
+              colorStop("#888888", 0.6),
+              colorStop("#666666", 0.3),
               colorStop("#333333", 0),
             ]),
-            sphericalClipNode(),
+            sphericalClipNode(0.1),
           ],
           normalNodes: [sphericalNormalNode()],
           emissionNodes: [],
@@ -438,7 +441,8 @@ export const PRESETS = {
         type: "FXDiffuseMaterial",
         params: createDiffuseParams({
           blending: 1,
-          alphaTest: 0.005,
+          alphaTest: 0.0075,
+          depthAlphaTest: 0.5,
           enableScatter: true,
           forwardScatterStrength: 0.25,
           backScatterStrength: 0.05,

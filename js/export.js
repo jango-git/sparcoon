@@ -255,7 +255,10 @@ const NODE_CODEGEN = {
     return `new FXColorOverLifeNode([${colorsString}])`;
   },
 
-  FXSphericalClipNode: () => "new FXSphericalClipNode()",
+  FXSphericalClipNode: (params) =>
+    params.innerRadius
+      ? `new FXSphericalClipNode(${formatNumber(params.innerRadius)})`
+      : "new FXSphericalClipNode()",
 
   FXStaticTextureNode: (params, textureVariables) => {
     const variableName = textureVariables.get(params.asset) ?? "null /* unknown asset */";
@@ -323,6 +326,7 @@ function buildEmitterCode(emitter, fieldName, textureVariables) {
   lines.push(`    blending: ${materialParams.blending ?? 1},`);
   if (materialParams.useAlphaHashing) lines.push(`    useAlphaHashing: true,`);
   lines.push(`    alphaTest: ${formatNumber(materialParams.alphaTest ?? 0.0075)},`);
+  lines.push(`    depthAlphaTest: ${formatNumber(materialParams.depthAlphaTest ?? 0.5)},`);
   lines.push(`    premultipliedAlpha: ${!!(materialParams.premultipliedAlpha ?? true)},`);
 
   if (isDiffuse) {
