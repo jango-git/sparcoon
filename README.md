@@ -3,7 +3,15 @@
 [![npm](https://img.shields.io/npm/v/sparcoon.svg)](https://www.npmjs.com/package/sparcoon)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Instanced-mesh particle system for Three.js. WebGL 1 compatible. **[EDITOR](https://jango-git.github.io/sparcoon/)**
+Instanced-mesh particle system for Three.js. WebGL 1 compatible.
+
+## Editor
+
+Interactive visual editor: **[Open Editor](https://jango-git.github.io/sparcoon/)**
+
+![Editor](assets/ediotr.webp)
+
+![Fire effect](assets/fire.gif) ![Spark effect](assets/spark.gif)
 
 ## API
 
