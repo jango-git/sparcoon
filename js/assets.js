@@ -198,7 +198,7 @@ export function renderAssetsTab() {
   if (entries.length === 0) {
     const emptyMessage = document.createElement("p");
     emptyMessage.className = "placeholder-text";
-    emptyMessage.textContent = "No assets. Click + Add Texture to import images.";
+    emptyMessage.textContent = "No assets. Click '+ ADD TEXTURE' to import images.";
     assetsTabGrid.appendChild(emptyMessage);
     return;
   }

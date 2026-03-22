@@ -510,7 +510,7 @@ export const NORMAL_NODES = {
 
 export const NODE_REGISTRIES = {
   albedoNodes: { ...COLOR_NODES, ...TEXTURE_NODES },
-  normalNodes: { ...NORMAL_NODES },
+  normalNodes: { ...NORMAL_NODES, ...TEXTURE_NODES },
   emissionNodes: { ...COLOR_NODES, ...TEXTURE_NODES },
 };
 

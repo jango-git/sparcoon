@@ -106,7 +106,7 @@ function spawnVelocity(direction, angleMid, angleSpread, magnitudeMin, magnitude
   };
 }
 
-function spawnTorque(base = 0, spread = Math.PI / 2) {
+function spawnTorque(base = 0, spread = 1.5708) {
   return {
     id: generateId(),
     type: "FXSpawnRandomTorque",
@@ -412,7 +412,7 @@ export const PRESETS = {
         castShadow: true,
       },
       spawnModules: [
-        spawnSphere(0, 0.15, Math.PI / 2),
+        spawnSphere(0, 0.15, 1.5708),
         spawnOffset(0, 0.15, 0),
         spawnLifetime(2.5, 4.5),
         spawnVelocity({ x: 0, y: 1, z: 0 }, 0.1, 0.1, 1, 2),

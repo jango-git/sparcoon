@@ -119,16 +119,16 @@ export function initScene(canvas) {
 
   // Ground plane
   groundPlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(30, 30),
+    new THREE.PlaneGeometry(50, 50),
     new THREE.MeshStandardMaterial({ color: 0xc8bfb0, roughness: 0.9 }),
   );
+  groundPlane.position.y = -0.01;
   groundPlane.rotation.x = -Math.PI / 2;
   groundPlane.receiveShadow = true;
   scene.add(groundPlane);
 
   // Grid
-  groundGrid = new THREE.GridHelper(30, 30, 0xa09080, 0xb0a898);
-  groundGrid.position.y = 0.01;
+  groundGrid = new THREE.GridHelper(50, 50, 0xa09080, 0xb0a898);
   scene.add(groundGrid);
 
   // Human reference box (1×2×1, wireframe)
@@ -140,7 +140,7 @@ export function initScene(canvas) {
       transparent: true,
     }),
   );
-  humanReference.position.set(1.2, 1, 0);
+  humanReference.position.set(1.25, 1, 0);
   scene.add(humanReference);
 
   // Hemisphere light (sky / ground fill)

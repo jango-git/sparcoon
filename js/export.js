@@ -581,7 +581,7 @@ function collectUsedAssetIds(emitters) {
 // Public API
 
 export function setupExportTab({ onStructureChange }) {
-  // Save SCENE (includes only assets referenced by emitters)
+  // Save SCENE as JSON (includes only assets referenced by emitters)
   document.getElementById("button-export-save").addEventListener("click", async () => {
     const usedIds = collectUsedAssetIds(state.emitters);
     const allAssets = await getAssetsAsBase64();
@@ -592,7 +592,7 @@ export function setupExportTab({ onStructureChange }) {
     saveFile(JSON.stringify(payload, null, 2), "sparcoon-scene.json", "application/json");
   });
 
-  // Load SCENE
+  // Load SCENE from JSON
   const fileInput = document.getElementById("input-export-file");
 
   document.getElementById("button-export-load").addEventListener("click", () => {

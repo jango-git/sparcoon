@@ -219,7 +219,7 @@ function buildStackSection(title, registry, moduleList, sectionClass) {
   header.appendChild(titleSpan);
 
   const addButton = makeElement("button", "button-add");
-  addButton.textContent = "+ Add";
+  addButton.textContent = "+ ADD";
   addButton.addEventListener("click", (event) => {
     showDropdown(event.target, registry, (type) => {
       moduleList.push(createModuleState(type, registry));
@@ -344,8 +344,8 @@ function buildNodeStack(title, stackKey, emitter) {
   titleSpan.textContent = title;
   header.appendChild(titleSpan);
 
-  const addButton = makeElement("button", "button-add button-add--small");
-  addButton.textContent = "+ Add";
+  const addButton = makeElement("button", "button-add button-add");
+  addButton.textContent = "+ ADD";
   addButton.addEventListener("click", (event) => {
     showDropdown(event.target, nodeRegistry, (type) => {
       nodes.push(createNodeState(type, nodeRegistry));
