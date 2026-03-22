@@ -9,7 +9,7 @@ Instanced-mesh particle system for Three.js. WebGL 1 compatible.
 
 Interactive visual editor: **[Open Editor](https://jango-git.github.io/sparcoon/)**
 
-![Editor](assets/ediotr.jpg)
+![Editor](assets/editor.jpg)
 
 ## API
 
