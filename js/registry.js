@@ -85,12 +85,7 @@ export const SPAWN_MODULES = {
         step: 0.01,
       },
     ],
-    build: (params) =>
-      new FX.FXSpawnSphere(
-        params.innerRadius,
-        params.outerRadius,
-        params.angle,
-      ),
+    build: (params) => new FX.FXSpawnSphere(params.innerRadius, params.outerRadius, params.angle),
   },
 
   FXSpawnRandomLifetime: {
@@ -219,11 +214,7 @@ export const SPAWN_MODULES = {
       const angleMid = params.angleMid ?? 0.25;
       const angleSpread = params.angleSpread ?? 0.25;
       return new FX.FXSpawnRandomVelocity(
-        new THREE.Vector3(
-          params.direction.x,
-          params.direction.y,
-          params.direction.z,
-        ),
+        new THREE.Vector3(params.direction.x, params.direction.y, params.direction.z),
         {
           min: Math.max(0, angleMid - angleSpread),
           max: angleMid + angleSpread,
@@ -313,8 +304,7 @@ export const BEHAVIOR_MODULES = {
         step: 0.01,
       },
     ],
-    build: (params) =>
-      new FX.FXBehaviorScaleOverLife(params.scales, params.aspect),
+    build: (params) => new FX.FXBehaviorScaleOverLife(params.scales, params.aspect),
   },
 
   FXBehaviorTorqueDamping: {
@@ -353,8 +343,7 @@ export const BEHAVIOR_MODULES = {
         step: 0.01,
       },
     ],
-    build: (params) =>
-      new FX.FXBehaviorTorqueNoise(params.scale, params.strength),
+    build: (params) => new FX.FXBehaviorTorqueNoise(params.scale, params.strength),
   },
 
   FXBehaviorVelocityDamping: {
@@ -391,8 +380,7 @@ export const BEHAVIOR_MODULES = {
         step: 0.01,
       },
     ],
-    build: (params) =>
-      new FX.FXBehaviorVelocityNoise(params.scale, params.strength),
+    build: (params) => new FX.FXBehaviorVelocityNoise(params.scale, params.strength),
   },
 };
 
@@ -416,10 +404,7 @@ export const COLOR_NODES = {
       new FX.FXColorOverLifeNode(
         params.colors.map((colorValue) => {
           const normalized = normalizeColor(colorValue);
-          return new FX.FXColor(
-            parseInt(normalized.hex.replace("#", ""), 16),
-            normalized.alpha,
-          );
+          return new FX.FXColor(parseInt(normalized.hex.replace("#", ""), 16), normalized.alpha);
         }),
       ),
   },
@@ -649,24 +634,18 @@ export function buildMaterial(materialState, assets = {}) {
   const materialParams = { ...materialState.params };
 
   const albedoNodes = (materialState.albedoNodes || [])
-    .map((nodeState) =>
-      buildNode(nodeState, NODE_REGISTRIES.albedoNodes, assets),
-    )
+    .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.albedoNodes, assets))
     .filter(Boolean);
 
   const options = { ...materialParams, albedoNodes };
 
   if (materialState.type === "FXDiffuseMaterial") {
     const normalNodes = (materialState.normalNodes || [])
-      .map((nodeState) =>
-        buildNode(nodeState, NODE_REGISTRIES.normalNodes, assets),
-      )
+      .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.normalNodes, assets))
       .filter(Boolean);
 
     const emissionNodes = (materialState.emissionNodes || [])
-      .map((nodeState) =>
-        buildNode(nodeState, NODE_REGISTRIES.emissionNodes, assets),
-      )
+      .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.emissionNodes, assets))
       .filter(Boolean);
 
     // Convert CSS hex string to numeric color for Three.js
@@ -688,10 +667,7 @@ export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
       try {
         return descriptor.build(moduleState.params);
       } catch (error) {
-        console.warn(
-          `[registry] Failed to build spawn "${moduleState.type}":`,
-          error,
-        );
+        console.warn(`[registry] Failed to build spawn "${moduleState.type}":`, error);
         return null;
       }
     })
@@ -704,10 +680,7 @@ export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
       try {
         return descriptor.build(moduleState.params);
       } catch (error) {
-        console.warn(
-          `[registry] Failed to build behavior "${moduleState.type}":`,
-          error,
-        );
+        console.warn(`[registry] Failed to build behavior "${moduleState.type}":`, error);
         return null;
       }
     })
@@ -721,12 +694,7 @@ export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
     emitterOptions.sortCamera = sceneCamera;
   }
 
-  const emitter = new FX.FXEmitter(
-    spawnModules,
-    behaviorModules,
-    material,
-    emitterOptions,
-  );
+  const emitter = new FX.FXEmitter(spawnModules, behaviorModules, material, emitterOptions);
   emitter.castShadow = !!emitterOptions.castShadow;
   emitter.receiveShadow = !!emitterOptions.receiveShadow;
 

@@ -71,9 +71,7 @@ export function createEmitterState(name = "Emitter") {
       createModuleState("FXSpawnRandomTorque", SPAWN_MODULES),
       createModuleState("FXSpawnRandomVelocity", SPAWN_MODULES),
     ],
-    behaviorModules: [
-      createModuleState("FXBehaviorDirectionalGravity", BEHAVIOR_MODULES),
-    ],
+    behaviorModules: [createModuleState("FXBehaviorDirectionalGravity", BEHAVIOR_MODULES)],
     material: {
       type: "FXUnlitMaterial",
       params: defaultParams(MATERIAL_BASE_PARAMS),

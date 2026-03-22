@@ -166,25 +166,21 @@ export function setupAssetsTab({ onAssetsChange }) {
     document.getElementById("input-asset-file").click();
   });
 
-  document
-    .getElementById("input-asset-file")
-    .addEventListener("change", async (event) => {
-      const files = Array.from(event.target.files);
-      event.target.value = "";
-      for (const file of files) {
-        await addAssetFromFile(file);
-      }
-      renderAssetsTab();
-      onAssetsChangeCallback();
-    });
+  document.getElementById("input-asset-file").addEventListener("change", async (event) => {
+    const files = Array.from(event.target.files);
+    event.target.value = "";
+    for (const file of files) {
+      await addAssetFromFile(file);
+    }
+    renderAssetsTab();
+    onAssetsChangeCallback();
+  });
 
   renderAssetsTab();
 }
 
 async function addAssetFromFile(file, overrideId) {
-  const defaultId = file.name
-    .replace(/\.[^.]+$/, "")
-    .replace(/[^a-zA-Z0-9_-]/g, "_");
+  const defaultId = file.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
   const assetId = overrideId ?? defaultId;
   try {
     await databasePut({ id: assetId, name: file.name, blob: file });
@@ -202,8 +198,7 @@ export function renderAssetsTab() {
   if (entries.length === 0) {
     const emptyMessage = document.createElement("p");
     emptyMessage.className = "placeholder-text";
-    emptyMessage.textContent =
-      "No assets. Click + Add Texture to import images.";
+    emptyMessage.textContent = "No assets. Click + Add Texture to import images.";
     assetsTabGrid.appendChild(emptyMessage);
     return;
   }
@@ -306,8 +301,7 @@ export function openAssetPicker(anchor, currentId, onSelect) {
     // "None" option
     const noneCard = document.createElement("div");
     noneCard.className =
-      "asset-picker-card asset-picker-card--none" +
-      (currentId == null ? " selected" : "");
+      "asset-picker-card asset-picker-card--none" + (currentId == null ? " selected" : "");
     noneCard.textContent = "none";
     noneCard.addEventListener("click", () => {
       onSelect(null);
@@ -327,8 +321,7 @@ export function openAssetPicker(anchor, currentId, onSelect) {
       }
 
       const card = document.createElement("div");
-      card.className =
-        "asset-picker-card" + (assetId === currentId ? " selected" : "");
+      card.className = "asset-picker-card" + (assetId === currentId ? " selected" : "");
 
       const thumbnail = document.createElement("img");
       thumbnail.src = meta.url;
@@ -349,9 +342,7 @@ export function openAssetPicker(anchor, currentId, onSelect) {
   }
 
   renderPickerGrid("");
-  searchInput.addEventListener("input", () =>
-    renderPickerGrid(searchInput.value),
-  );
+  searchInput.addEventListener("input", () => renderPickerGrid(searchInput.value));
 
   panel.appendChild(searchInput);
   panel.appendChild(grid);

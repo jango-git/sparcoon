@@ -8,11 +8,7 @@
  */
 
 import { state } from "./state.js";
-import {
-  getAssetsAsBase64,
-  restoreAssetsFromJson,
-  renderAssetsTab,
-} from "./assets.js";
+import { getAssetsAsBase64, restoreAssetsFromJson, renderAssetsTab } from "./assets.js";
 
 // JSON save / load
 
@@ -57,10 +53,7 @@ function validateEmitter(emitter) {
     !isPlainObject(material.params) ||
     !Array.isArray(material.albedoNodes)
   ) {
-    console.warn(
-      `[import] Dropping emitter "${emitter.name}" - invalid material:`,
-      material,
-    );
+    console.warn(`[import] Dropping emitter "${emitter.name}" - invalid material:`, material);
     return false;
   }
 
@@ -71,17 +64,12 @@ function validateEmitter(emitter) {
 
 function filterNodeArray(nodes, emitterName, stackName) {
   if (!Array.isArray(nodes)) return [];
-  return nodes.filter((node) =>
-    validateModule(node, `emitter "${emitterName}" ${stackName}`),
-  );
+  return nodes.filter((node) => validateModule(node, `emitter "${emitterName}" ${stackName}`));
 }
 
 function parseEmitters(rawArray) {
   if (!Array.isArray(rawArray)) {
-    console.warn(
-      "[import] Expected a JSON array at the top level - got:",
-      typeof rawArray,
-    );
+    console.warn("[import] Expected a JSON array at the top level - got:", typeof rawArray);
     return [];
   }
 
@@ -92,16 +80,8 @@ function parseEmitters(rawArray) {
 
     const material = {
       ...rawEmitter.material,
-      albedoNodes: filterNodeArray(
-        rawEmitter.material.albedoNodes,
-        rawEmitter.name,
-        "albedoNodes",
-      ),
-      normalNodes: filterNodeArray(
-        rawEmitter.material.normalNodes,
-        rawEmitter.name,
-        "normalNodes",
-      ),
+      albedoNodes: filterNodeArray(rawEmitter.material.albedoNodes, rawEmitter.name, "albedoNodes"),
+      normalNodes: filterNodeArray(rawEmitter.material.normalNodes, rawEmitter.name, "normalNodes"),
       emissionNodes: filterNodeArray(
         rawEmitter.material.emissionNodes,
         rawEmitter.name,
@@ -195,14 +175,12 @@ function toEmitterFieldName(name, usedNames) {
 const SPAWN_CODEGEN = {
   FXSpawnOffset: (params) => `new FXSpawnOffset(${formatVec3(params.offset)})`,
 
-  FXSpawnBox: (params) =>
-    `new FXSpawnBox(${formatVec3(params.min)}, ${formatVec3(params.max)})`,
+  FXSpawnBox: (params) => `new FXSpawnBox(${formatVec3(params.min)}, ${formatVec3(params.max)})`,
 
   FXSpawnSphere: (params) =>
     `new FXSpawnSphere(${formatNumber(params.innerRadius)}, ${formatNumber(params.outerRadius)}, ${formatNumber(params.angle)})`,
 
-  FXSpawnRandomLifetime: (params) =>
-    `new FXSpawnRandomLifetime(${formatRange(params.lifetime)})`,
+  FXSpawnRandomLifetime: (params) => `new FXSpawnRandomLifetime(${formatRange(params.lifetime)})`,
 
   FXSpawnRandomRotation: (params) => {
     const spread = params.rotation ?? 0;
@@ -265,9 +243,7 @@ const NODE_CODEGEN = {
     const colorsString = (params.colors || [])
       .map((colorValue) => {
         const hex =
-          typeof colorValue === "string"
-            ? colorValue.slice(0, 7)
-            : (colorValue?.hex ?? "#ffffff");
+          typeof colorValue === "string" ? colorValue.slice(0, 7) : (colorValue?.hex ?? "#ffffff");
         const alpha =
           typeof colorValue === "string"
             ? parseInt(colorValue.slice(7, 9) || "ff", 16) / 255
@@ -282,14 +258,12 @@ const NODE_CODEGEN = {
   FXSphericalClipNode: () => "new FXSphericalClipNode()",
 
   FXStaticTextureNode: (params, textureVariables) => {
-    const variableName =
-      textureVariables.get(params.asset) ?? "null /* unknown asset */";
+    const variableName = textureVariables.get(params.asset) ?? "null /* unknown asset */";
     return `new FXStaticTextureNode(${variableName})`;
   },
 
   FXAnimatedTextureNode: (params, textureVariables) => {
-    const variableName =
-      textureVariables.get(params.asset) ?? "null /* unknown asset */";
+    const variableName = textureVariables.get(params.asset) ?? "null /* unknown asset */";
     return [
       "new FXAnimatedTextureNode({",
       `  texture: ${variableName},`,
@@ -348,12 +322,8 @@ function buildEmitterCode(emitter, fieldName, textureVariables) {
   lines.push(`  new ${materialType}({`);
   lines.push(`    blending: ${materialParams.blending ?? 1},`);
   if (materialParams.useAlphaHashing) lines.push(`    useAlphaHashing: true,`);
-  lines.push(
-    `    alphaTest: ${formatNumber(materialParams.alphaTest ?? 0.0075)},`,
-  );
-  lines.push(
-    `    premultipliedAlpha: ${!!(materialParams.premultipliedAlpha ?? true)},`,
-  );
+  lines.push(`    alphaTest: ${formatNumber(materialParams.alphaTest ?? 0.0075)},`);
+  lines.push(`    premultipliedAlpha: ${!!(materialParams.premultipliedAlpha ?? true)},`);
 
   if (isDiffuse) {
     if (materialParams.enableScatter) lines.push(`    enableScatter: true,`);
@@ -362,47 +332,32 @@ function buildEmitterCode(emitter, fieldName, textureVariables) {
       lines.push(`    scatterTint: 0x${hex.toString(16).padStart(6, "0")},`);
     }
     if (materialParams.scatterPower != null)
-      lines.push(
-        `    scatterPower: ${formatNumber(materialParams.scatterPower)},`,
-      );
+      lines.push(`    scatterPower: ${formatNumber(materialParams.scatterPower)},`);
     if (materialParams.forwardScatterStrength != null)
       lines.push(
         `    forwardScatterStrength: ${formatNumber(materialParams.forwardScatterStrength)},`,
       );
     if (materialParams.backScatterStrength != null)
-      lines.push(
-        `    backScatterStrength: ${formatNumber(materialParams.backScatterStrength)},`,
-      );
+      lines.push(`    backScatterStrength: ${formatNumber(materialParams.backScatterStrength)},`);
     if (materialParams.shadowSensitivity != null)
-      lines.push(
-        `    shadowSensitivity: ${formatNumber(materialParams.shadowSensitivity)},`,
-      );
+      lines.push(`    shadowSensitivity: ${formatNumber(materialParams.shadowSensitivity)},`);
   }
 
   lines.push("    albedoNodes: [");
-  for (const code of buildNodeListCode(
-    emitter.material?.albedoNodes,
-    textureVariables,
-  )) {
+  for (const code of buildNodeListCode(emitter.material?.albedoNodes, textureVariables)) {
     lines.push(addIndent(code + ",", 6));
   }
   lines.push("    ],");
 
   if (isDiffuse) {
     lines.push("    normalNodes: [");
-    for (const code of buildNodeListCode(
-      emitter.material?.normalNodes,
-      textureVariables,
-    )) {
+    for (const code of buildNodeListCode(emitter.material?.normalNodes, textureVariables)) {
       lines.push(addIndent(code + ",", 6));
     }
     lines.push("    ],");
 
     lines.push("    emissionNodes: [");
-    for (const code of buildNodeListCode(
-      emitter.material?.emissionNodes,
-      textureVariables,
-    )) {
+    for (const code of buildNodeListCode(emitter.material?.emissionNodes, textureVariables)) {
       lines.push(addIndent(code + ",", 6));
     }
     lines.push("    ],");
@@ -412,17 +367,13 @@ function buildEmitterCode(emitter, fieldName, textureVariables) {
 
   // Options
   lines.push("  {");
-  lines.push(
-    `    expectedCapacity: ${emitterOptions.expectedCapacity ?? 128},`,
-  );
+  lines.push(`    expectedCapacity: ${emitterOptions.expectedCapacity ?? 128},`);
   lines.push(`    capacityStep: ${emitterOptions.capacityStep ?? 64},`);
   lines.push(`    castShadow: ${!!emitterOptions.castShadow},`);
   lines.push(`    receiveShadow: ${!!emitterOptions.receiveShadow},`);
   if (emitterOptions.useSortCamera) {
     lines.push(`    sortCamera: camera, // pass your render camera`);
-    lines.push(
-      `    sortFraction: ${formatNumber(emitterOptions.sortFraction ?? 0.1)},`,
-    );
+    lines.push(`    sortFraction: ${formatNumber(emitterOptions.sortFraction ?? 0.1)},`);
   }
   lines.push("  },");
 
@@ -468,8 +419,7 @@ function generateTypeScript(emitters, className) {
     for (const module of emitter.spawnModules ?? []) {
       if (SPAWN_CODEGEN[module.type]) {
         usedFxTypes.add(module.type);
-        if (module.type === "FXSpawnRandomVelocity")
-          usedThreeTypes.add("Vector3");
+        if (module.type === "FXSpawnRandomVelocity") usedThreeTypes.add("Vector3");
       }
     }
 
@@ -482,10 +432,7 @@ function generateTypeScript(emitters, className) {
         if (NODE_CODEGEN[node.type]) {
           usedFxTypes.add(node.type);
           if (node.type === "FXColorOverLifeNode") usedFxTypes.add("FXColor");
-          if (
-            node.type === "FXStaticTextureNode" ||
-            node.type === "FXAnimatedTextureNode"
-          ) {
+          if (node.type === "FXStaticTextureNode" || node.type === "FXAnimatedTextureNode") {
             usedThreeTypes.add("Texture");
           }
         }
@@ -495,9 +442,7 @@ function generateTypeScript(emitters, className) {
 
   // Collect per-emitter field names
   const usedFieldNames = new Set();
-  const fieldNames = emitters.map((emitter) =>
-    toEmitterFieldName(emitter.name, usedFieldNames),
-  );
+  const fieldNames = emitters.map((emitter) => toEmitterFieldName(emitter.name, usedFieldNames));
 
   const threeImportList = [...usedThreeTypes].sort().join(", ");
   const fxImportList = [...usedFxTypes].sort().join(",\n  ");
@@ -531,10 +476,7 @@ function generateTypeScript(emitters, className) {
     lines.push("");
     lines.push(`    // Emitter: "${emitters[index].name}"`);
     lines.push(
-      addIndent(
-        buildEmitterCode(emitters[index], fieldNames[index], textureVariables),
-        4,
-      ),
+      addIndent(buildEmitterCode(emitters[index], fieldNames[index], textureVariables), 4),
     );
   }
 
@@ -565,9 +507,7 @@ async function saveFile(content, suggestedName, mimeType) {
     try {
       const fileHandle = await window.showSaveFilePicker({
         suggestedName,
-        types: [
-          { description: mimeType, accept: { [mimeType]: [`.${extension}`] } },
-        ],
+        types: [{ description: mimeType, accept: { [mimeType]: [`.${extension}`] } }],
       });
       const writable = await fileHandle.createWritable();
       await writable.write(content);
@@ -592,26 +532,18 @@ async function saveFile(content, suggestedName, mimeType) {
 
 export function setupExportTab({ onStructureChange }) {
   // Save JSON (includes assets as base64)
-  document
-    .getElementById("button-export-save")
-    .addEventListener("click", async () => {
-      const assetsData = await getAssetsAsBase64();
-      const payload = { emitters: state.emitters, assets: assetsData };
-      saveFile(
-        JSON.stringify(payload, null, 2),
-        "sparcoon-scene.json",
-        "application/json",
-      );
-    });
+  document.getElementById("button-export-save").addEventListener("click", async () => {
+    const assetsData = await getAssetsAsBase64();
+    const payload = { emitters: state.emitters, assets: assetsData };
+    saveFile(JSON.stringify(payload, null, 2), "sparcoon-scene.json", "application/json");
+  });
 
   // Load JSON
   const fileInput = document.getElementById("input-export-file");
 
-  document
-    .getElementById("button-export-load")
-    .addEventListener("click", () => {
-      fileInput.click();
-    });
+  document.getElementById("button-export-load").addEventListener("click", () => {
+    fileInput.click();
+  });
 
   fileInput.addEventListener("change", () => {
     const file = fileInput.files[0];
@@ -636,11 +568,7 @@ export function setupExportTab({ onStructureChange }) {
 
       state.emitters = parseEmitters(rawEmitters);
 
-      if (
-        parsed?.assets &&
-        typeof parsed.assets === "object" &&
-        !Array.isArray(parsed.assets)
-      ) {
+      if (parsed?.assets && typeof parsed.assets === "object" && !Array.isArray(parsed.assets)) {
         await restoreAssetsFromJson(parsed.assets);
         renderAssetsTab();
       }
@@ -655,8 +583,7 @@ export function setupExportTab({ onStructureChange }) {
 
   // Export TypeScript
   document.getElementById("button-export-ts").addEventListener("click", () => {
-    const className =
-      document.getElementById("input-classname").value.trim() || "MyEffect";
+    const className = document.getElementById("input-classname").value.trim() || "MyEffect";
     const code = generateTypeScript(state.emitters, className);
     const safeName = toPascalCase(className) || "MyEffect";
     saveFile(code, `VFX${safeName}.ts`, "text/plain");

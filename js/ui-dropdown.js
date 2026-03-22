@@ -15,9 +15,7 @@ import { makeElement } from "./utils.js";
  */
 export function showDropdown(anchor, registry, onSelect) {
   // Remove any previously open dropdown
-  document
-    .querySelectorAll(".dropdown-menu")
-    .forEach((openMenu) => openMenu.remove());
+  document.querySelectorAll(".dropdown-menu").forEach((openMenu) => openMenu.remove());
 
   const menu = makeElement("div", "dropdown-menu");
 

@@ -67,9 +67,7 @@ export function makeSortable(container, array, onReorder, handleSelector) {
       clearIndicators();
       if (draggedIndex === index) return;
       const position = getDropPosition(item, event.clientY);
-      item.classList.add(
-        position === "before" ? "drag-indicator-top" : "drag-indicator-bottom",
-      );
+      item.classList.add(position === "before" ? "drag-indicator-top" : "drag-indicator-bottom");
     });
 
     item.addEventListener("dragleave", (event) => {

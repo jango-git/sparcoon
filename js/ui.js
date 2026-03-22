@@ -69,21 +69,12 @@ export function renderEditor() {
     list.appendChild(buildEmitterCard(emitter));
   }
 
-  makeSortable(
-    list,
-    state.emitters,
-    onStructureChangeCallback,
-    ".emitter-header",
-  );
+  makeSortable(list, state.emitters, onStructureChangeCallback, ".emitter-header");
 }
 
 // Public: wire top-level event listeners
 
-export function setupEvents({
-  onParamChange,
-  onStructureChange,
-  onPlayToggle,
-}) {
+export function setupEvents({ onParamChange, onStructureChange, onPlayToggle }) {
   onParamChangeCallback = onParamChange;
   onStructureChangeCallback = onStructureChange;
   onPlayToggleCallback = onPlayToggle ?? (() => {});
@@ -102,34 +93,29 @@ export function setupEvents({
   });
 
   // Add emitter from preset
-  document
-    .getElementById("add-emitter-button")
-    .addEventListener("click", () => {
-      const presetKey = document.getElementById("preset-select").value;
-      const preset = PRESETS[presetKey];
-      const created = preset ? preset.create() : createEmitterState("Emitter");
+  document.getElementById("add-emitter-button").addEventListener("click", () => {
+    const presetKey = document.getElementById("preset-select").value;
+    const preset = PRESETS[presetKey];
+    const created = preset ? preset.create() : createEmitterState("Emitter");
 
-      if (Array.isArray(created)) {
-        state.emitters.push(...created);
-        // Expand the first emitter of the batch
-        expandedEmitterId = created[0]?.id ?? expandedEmitterId;
-      } else {
-        state.emitters.push(created);
-        expandedEmitterId = created.id;
-      }
+    if (Array.isArray(created)) {
+      state.emitters.push(...created);
+      // Expand the first emitter of the batch
+      expandedEmitterId = created[0]?.id ?? expandedEmitterId;
+    } else {
+      state.emitters.push(created);
+      expandedEmitterId = created.id;
+    }
 
-      onStructureChangeCallback();
-    });
+    onStructureChangeCallback();
+  });
 }
 
 // Emitter card
 
 function buildEmitterCard(emitter) {
   const isCollapsed = emitter.id !== expandedEmitterId;
-  const card = makeElement(
-    "div",
-    `emitter-card${isCollapsed ? " emitter-card--collapsed" : ""}`,
-  );
+  const card = makeElement("div", `emitter-card${isCollapsed ? " emitter-card--collapsed" : ""}`);
   card.dataset.emitterId = emitter.id;
 
   // --- Header ---
@@ -141,12 +127,7 @@ function buildEmitterCard(emitter) {
 
   body.appendChild(buildOptionsSection(emitter));
   body.appendChild(
-    buildStackSection(
-      "Spawn Modules",
-      SPAWN_MODULES,
-      emitter.spawnModules,
-      "card-section--spawn",
-    ),
+    buildStackSection("Spawn Modules", SPAWN_MODULES, emitter.spawnModules, "card-section--spawn"),
   );
   body.appendChild(
     buildStackSection(
@@ -175,8 +156,7 @@ function buildEmitterHeader(emitter) {
     // Update all toggle arrows
     document.querySelectorAll(".emitter-collapse-toggle").forEach((toggle) => {
       const cardElement = toggle.closest(".emitter-card");
-      toggle.textContent =
-        cardElement?.dataset.emitterId === expandedEmitterId ? "▾" : "▸";
+      toggle.textContent = cardElement?.dataset.emitterId === expandedEmitterId ? "▾" : "▸";
     });
   });
   header.appendChild(collapseToggle);
@@ -189,8 +169,7 @@ function buildEmitterHeader(emitter) {
   nameInput.addEventListener("input", () => {
     const sanitized = nameInput.value.replace(/[^a-zA-Z0-9_ ]/g, "");
     if (sanitized !== nameInput.value) {
-      const cursorPosition =
-        nameInput.selectionStart - (nameInput.value.length - sanitized.length);
+      const cursorPosition = nameInput.selectionStart - (nameInput.value.length - sanitized.length);
       nameInput.value = sanitized;
       nameInput.setSelectionRange(cursorPosition, cursorPosition);
     }
@@ -223,10 +202,7 @@ function buildEmitterHeader(emitter) {
   controls.appendChild(rateGroup);
 
   // Play / Stop
-  const playButton = makeElement(
-    "button",
-    `button-play${emitter.playing ? " playing" : ""}`,
-  );
+  const playButton = makeElement("button", `button-play${emitter.playing ? " playing" : ""}`);
   playButton.textContent = emitter.playing ? "■ Stop" : "▶ Play";
   playButton.addEventListener("click", () => {
     emitter.playing = !emitter.playing;
@@ -261,11 +237,7 @@ function buildOptionsSection(emitter) {
   section.appendChild(header);
 
   section.appendChild(
-    buildParamsGrid(
-      EMITTER_OPTIONS_PARAMS,
-      emitter.options,
-      onParamChangeCallback,
-    ),
+    buildParamsGrid(EMITTER_OPTIONS_PARAMS, emitter.options, onParamChangeCallback),
   );
   return section;
 }
@@ -296,17 +268,10 @@ function buildStackSection(title, registry, moduleList, sectionClass) {
 
   const listContainer = makeElement("div", "sortable-list");
   for (const moduleState of moduleList) {
-    listContainer.appendChild(
-      buildModuleCard(moduleState, registry, moduleList),
-    );
+    listContainer.appendChild(buildModuleCard(moduleState, registry, moduleList));
   }
   section.appendChild(listContainer);
-  makeSortable(
-    listContainer,
-    moduleList,
-    onStructureChangeCallback,
-    ".module-card-header",
-  );
+  makeSortable(listContainer, moduleList, onStructureChangeCallback, ".module-card-header");
 
   return section;
 }
@@ -333,13 +298,7 @@ function buildModuleCard(moduleState, registry, moduleList) {
   card.appendChild(header);
 
   if (descriptor && descriptor.params.length > 0) {
-    card.appendChild(
-      buildParamsGrid(
-        descriptor.params,
-        moduleState.params,
-        onParamChangeCallback,
-      ),
-    );
+    card.appendChild(buildParamsGrid(descriptor.params, moduleState.params, onParamChangeCallback));
   }
 
   return card;
@@ -360,8 +319,7 @@ function buildMaterialSection(emitter) {
   for (const materialType of ["FXUnlitMaterial", "FXDiffuseMaterial"]) {
     const option = makeElement("option");
     option.value = materialType;
-    option.textContent =
-      materialType === "FXUnlitMaterial" ? "Unlit" : "Diffuse";
+    option.textContent = materialType === "FXUnlitMaterial" ? "Unlit" : "Diffuse";
     if (materialType === emitter.material.type) option.selected = true;
     typeSelect.appendChild(option);
   }
@@ -372,9 +330,7 @@ function buildMaterialSection(emitter) {
       // Ensure diffuse-specific params exist
       for (const descriptor of DIFFUSE_EXTRA_PARAMS) {
         if (!(descriptor.key in emitter.material.params)) {
-          emitter.material.params[descriptor.key] = JSON.parse(
-            JSON.stringify(descriptor.default),
-          );
+          emitter.material.params[descriptor.key] = JSON.parse(JSON.stringify(descriptor.default));
         }
       }
       // Ensure at least one normal node
@@ -392,21 +348,13 @@ function buildMaterialSection(emitter) {
 
   // Base material params
   section.appendChild(
-    buildParamsGrid(
-      MATERIAL_BASE_PARAMS,
-      emitter.material.params,
-      onParamChangeCallback,
-    ),
+    buildParamsGrid(MATERIAL_BASE_PARAMS, emitter.material.params, onParamChangeCallback),
   );
 
   // Diffuse-specific extra params
   if (emitter.material.type === "FXDiffuseMaterial") {
     section.appendChild(
-      buildParamsGrid(
-        DIFFUSE_EXTRA_PARAMS,
-        emitter.material.params,
-        onParamChangeCallback,
-      ),
+      buildParamsGrid(DIFFUSE_EXTRA_PARAMS, emitter.material.params, onParamChangeCallback),
     );
   }
 
@@ -415,9 +363,7 @@ function buildMaterialSection(emitter) {
 
   if (emitter.material.type === "FXDiffuseMaterial") {
     section.appendChild(buildNodeStack("Normal Nodes", "normalNodes", emitter));
-    section.appendChild(
-      buildNodeStack("Emission Nodes", "emissionNodes", emitter),
-    );
+    section.appendChild(buildNodeStack("Emission Nodes", "emissionNodes", emitter));
   }
 
   return section;
@@ -451,12 +397,7 @@ function buildNodeStack(title, stackKey, emitter) {
     nodeList.appendChild(buildNodeCard(node, nodeRegistry, nodes));
   }
   section.appendChild(nodeList);
-  makeSortable(
-    nodeList,
-    nodes,
-    onStructureChangeCallback,
-    ".module-card-header",
-  );
+  makeSortable(nodeList, nodes, onStructureChangeCallback, ".module-card-header");
 
   return section;
 }
@@ -483,13 +424,7 @@ function buildNodeCard(nodeState, nodeRegistry, nodeList) {
   card.appendChild(header);
 
   if (descriptor && descriptor.params.length > 0) {
-    card.appendChild(
-      buildParamsGrid(
-        descriptor.params,
-        nodeState.params,
-        onParamChangeCallback,
-      ),
-    );
+    card.appendChild(buildParamsGrid(descriptor.params, nodeState.params, onParamChangeCallback));
   }
 
   return card;

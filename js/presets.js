@@ -5,11 +5,7 @@
  */
 
 import { nextId, defaultParams } from "./state.js";
-import {
-  MATERIAL_BASE_PARAMS,
-  DIFFUSE_EXTRA_PARAMS,
-  EMITTER_OPTIONS_PARAMS,
-} from "./registry.js";
+import { MATERIAL_BASE_PARAMS, DIFFUSE_EXTRA_PARAMS, EMITTER_OPTIONS_PARAMS } from "./registry.js";
 
 // Low-level helpers
 
@@ -89,13 +85,7 @@ function spawnRotation(spread = Math.PI) {
   };
 }
 
-function spawnVelocity(
-  direction,
-  angleMid,
-  angleSpread,
-  magnitudeMin,
-  magnitudeMax,
-) {
+function spawnVelocity(direction, angleMid, angleSpread, magnitudeMin, magnitudeMax) {
   return {
     id: generateId(),
     type: "FXSpawnRandomVelocity",
@@ -195,9 +185,7 @@ export const PRESETS = {
       material: {
         type: "FXUnlitMaterial",
         params: createUnlitParams({ blending: 2 }),
-        albedoNodes: [
-          colorOverLifeNode([colorStop("#ffffff", 1), colorStop("#ffffff", 0)]),
-        ],
+        albedoNodes: [colorOverLifeNode([colorStop("#ffffff", 1), colorStop("#ffffff", 0)])],
         normalNodes: [],
         emissionNodes: [],
       },
@@ -224,9 +212,7 @@ export const PRESETS = {
       material: {
         type: "FXDiffuseMaterial",
         params: createDiffuseParams(),
-        albedoNodes: [
-          colorOverLifeNode([colorStop("#ffffff", 1), colorStop("#ffffff", 0)]),
-        ],
+        albedoNodes: [colorOverLifeNode([colorStop("#ffffff", 1), colorStop("#ffffff", 0)])],
         normalNodes: [sphericalNormalNode()],
         emissionNodes: [],
       },

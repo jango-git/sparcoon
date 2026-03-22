@@ -45,9 +45,7 @@ export function toggleHemisphere() {
 
 export function toggleBackground() {
   sceneOptions.background = !sceneOptions.background;
-  scene.background = sceneOptions.background
-    ? customBackgroundColor.clone()
-    : BLACK_COLOR;
+  scene.background = sceneOptions.background ? customBackgroundColor.clone() : BLACK_COLOR;
   return sceneOptions.background;
 }
 
@@ -223,10 +221,7 @@ export function syncEmitters(emittersState, assets = {}) {
       scene.add(emitter);
       emitterMap.set(emitterState.id, emitter);
     } catch (error) {
-      console.error(
-        `[scene] Failed to build emitter "${emitterState.id}":`,
-        error,
-      );
+      console.error(`[scene] Failed to build emitter "${emitterState.id}":`, error);
     }
   }
 }

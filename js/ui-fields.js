@@ -239,9 +239,7 @@ function buildColorField(descriptor, values, onParamChange) {
     if (descriptor.hasAlpha === false) {
       values[descriptor.key] = colorInput.value;
     } else {
-      const alphaHex = Math.round(
-        Math.min(1, Math.max(0, parseFloat(alphaInput.value))) * 255,
-      )
+      const alphaHex = Math.round(Math.min(1, Math.max(0, parseFloat(alphaInput.value))) * 255)
         .toString(16)
         .padStart(2, "0");
       values[descriptor.key] = colorInput.value + alphaHex;

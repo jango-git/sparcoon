@@ -19,11 +19,7 @@ import {
 } from "./scene.js";
 import { renderEditor, setupEvents } from "./ui.js";
 import { setupExportTab } from "./export.js";
-import {
-  loadAssetsIntoState,
-  setupAssetsTab,
-  renderAssetsTab,
-} from "./assets.js";
+import { loadAssetsIntoState, setupAssetsTab, renderAssetsTab } from "./assets.js";
 import { state } from "./state.js";
 
 // Scene initialization
@@ -47,10 +43,7 @@ let paramChangeTimer = null;
 
 function scheduleSyncEmitters() {
   clearTimeout(paramChangeTimer);
-  paramChangeTimer = setTimeout(
-    () => syncEmitters(state.emitters, state.assets),
-    300,
-  );
+  paramChangeTimer = setTimeout(() => syncEmitters(state.emitters, state.assets), 300);
 }
 
 // Callbacks: wire UI → scene
@@ -135,8 +128,7 @@ document.getElementById("button-reset").addEventListener("click", () => {
   const azimuthSlider = document.getElementById("slider-sun-azimuth");
   elevationSlider.value = sunElevation;
   azimuthSlider.value = sunAzimuth;
-  document.getElementById("value-sun-elevation").textContent =
-    `${sunElevation}°`;
+  document.getElementById("value-sun-elevation").textContent = `${sunElevation}°`;
   document.getElementById("value-sun-azimuth").textContent = `${sunAzimuth}°`;
 });
 
