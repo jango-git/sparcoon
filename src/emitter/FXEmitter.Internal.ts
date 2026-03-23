@@ -22,13 +22,6 @@ export interface FXEmitterOptions {
   capacityStep: number;
 
   /**
-   * When `true`, {@link FXEmitter.destroy} also calls `destroy()` on all modules and the material
-   *
-   * @defaultValue `true`
-   */
-  automaticallyDestroyModules: boolean;
-
-  /**
    * Enables shadow casting
    *
    * @defaultValue `false`
@@ -88,7 +81,6 @@ export const EMITTERS = new Array<FXEmitter>();
 
 export const EMITTER_DEFAULT_EXPECTED_CAPACITY = 32;
 export const EMITTER_DEFAULT_CAPACITY_STEP = 32;
-export const EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES = true;
 export const EMITTER_DEFAULT_CAST_SHADOW = false;
 export const EMITTER_DEFAULT_RECEIVE_SHADOW = false;
 export const EMITTER_DEFAULT_SORT_FRACTION = 1 / 10;

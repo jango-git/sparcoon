@@ -1,13 +1,10 @@
-import type { Camera } from "three";
+import type { Camera, Material } from "three";
 import { Object3D, Vector3 } from "three";
-import {
-  assertValidNonNegativeNumber,
-  assertValidPositiveNumber,
-} from "../miscellaneous/asserts";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle";
 import type { GLTypeInfo } from "../instancedParticle/shared";
 import { resolveGLSLTypeInfo } from "../instancedParticle/shared";
 import type { FXMaterial } from "../materials/FXMaterial/FXMaterial";
+import { assertValidNonNegativeNumber, assertValidPositiveNumber } from "../miscellaneous/asserts";
 import {
   BUILTIN_OFFSET_AGE,
   BUILTIN_OFFSET_POSITION_X,
@@ -30,7 +27,6 @@ import type {
 } from "./FXEmitter.Internal";
 import {
   collectProperties,
-  EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES,
   EMITTER_DEFAULT_CAPACITY_STEP,
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
@@ -50,8 +46,6 @@ import type { FXSpawn } from "./spawn/FXSpawn";
  * (run every frame). Call {@link FXEmitter.onWillRender} each frame to tick the system.
  */
 export class FXEmitter extends Object3D {
-  /** When `true`, {@link FXEmitter.destroy} also calls `destroy()` on all modules and the material; defaults to `true` */
-  public automaticallyDestroyModules: boolean;
   /** Camera used for back-to-front depth sorting; `undefined` disables sorting */
   public sortCamera?: Camera;
   /** Fraction of frames on which sorting runs (`1` = every frame, `0.1` = ~every 10th frame); defaults to `0.1` */
@@ -89,13 +83,19 @@ export class FXEmitter extends Object3D {
     super();
 
     if (options.expectedCapacity !== undefined) {
-      assertValidPositiveNumber(options.expectedCapacity, "FXEmitter.constructor.options.expectedCapacity");
+      assertValidPositiveNumber(
+        options.expectedCapacity,
+        "FXEmitter.constructor.options.expectedCapacity",
+      );
     }
     if (options.capacityStep !== undefined) {
       assertValidPositiveNumber(options.capacityStep, "FXEmitter.constructor.options.capacityStep");
     }
     if (options.sortFraction !== undefined) {
-      assertValidNonNegativeNumber(options.sortFraction, "FXEmitter.constructor.options.sortFraction");
+      assertValidNonNegativeNumber(
+        options.sortFraction,
+        "FXEmitter.constructor.options.sortFraction",
+      );
     }
 
     const collectedProperties: Record<string, GLTypeInfo> = {
@@ -127,8 +127,6 @@ export class FXEmitter extends Object3D {
       this.mesh.receiveShadow = true;
     }
 
-    this.automaticallyDestroyModules =
-      options.automaticallyDestroyModules ?? EMITTER_DEFAULT_AUTOMATICALLY_DESTROY_MODULES;
     this.sortCamera = options.sortCamera;
     this.sortFraction = options.sortFraction ?? EMITTER_DEFAULT_SORT_FRACTION;
 
@@ -148,22 +146,24 @@ export class FXEmitter extends Object3D {
     }
   };
 
-  /** Unregisters the emitter, removes it from the scene, and disposes modules and material when {@link automaticallyDestroyModules} is `true` */
+  /** Unregisters the emitter, removes it from the scene, and disposes modules and material */
   public destroy(): void {
     const index = EMITTERS.indexOf(this);
     if (index !== -1) {
       EMITTERS.splice(index, 1);
     }
 
-    if (this.automaticallyDestroyModules) {
-      for (const module of this.spawnSequence) {
-        module.destroy?.();
-      }
-      for (const module of this.behaviorSequence) {
-        module.destroy?.();
-      }
-      this.material.destroy();
+    for (const module of this.spawnSequence) {
+      module.destroy?.();
     }
+    for (const module of this.behaviorSequence) {
+      module.destroy?.();
+    }
+
+    this.material.destroy();
+    (this.mesh.material as Material | undefined)?.dispose();
+    this.mesh.customDepthMaterial?.dispose();
+    this.mesh.customDistanceMaterial?.dispose();
 
     this.removeFromParent();
   }
