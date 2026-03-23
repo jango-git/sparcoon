@@ -176,7 +176,7 @@ function getDisplayDuration() {
 
 function getMaxLifetime(emitter) {
   for (const module of emitter.spawnModules ?? []) {
-    if (module.type === "FXSpawnRandomLifetime") {
+    if (module.type === "FXSpawnLifetime") {
       return module.params?.lifetime?.max ?? 1;
     }
   }

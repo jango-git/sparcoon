@@ -14,7 +14,7 @@
  *   options  - array of { value, label } for "select" type
  */
 
-import * as FX from "https://esm.sh/sparcoon@0.5.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import * as FX from "https://esm.sh/sparcoon@0.6.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import * as THREE from "https://esm.sh/three@0.157";
 import { normalizeColor } from "./utils.js";
 
@@ -102,8 +102,8 @@ export const SPAWN_MODULES = {
     build: (params) => new FX.FXSpawnSphere(params.innerRadius, params.outerRadius, params.angle),
   },
 
-  FXSpawnRandomLifetime: {
-    label: "Random Lifetime",
+  FXSpawnLifetime: {
+    label: "Lifetime",
     params: [
       {
         key: "lifetime",
@@ -113,11 +113,11 @@ export const SPAWN_MODULES = {
         step: 0.1,
       },
     ],
-    build: (params) => new FX.FXSpawnRandomLifetime(params.lifetime),
+    build: (params) => new FX.FXSpawnLifetime(params.lifetime),
   },
 
-  FXSpawnRandomRotation: {
-    label: "Random Rotation",
+  FXSpawnRotation: {
+    label: "Rotation",
     params: [
       {
         key: "rotation",
@@ -130,14 +130,14 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) =>
-      new FX.FXSpawnRandomRotation({
+      new FX.FXSpawnRotation({
         min: -params.rotation,
         max: params.rotation,
       }),
   },
 
-  FXSpawnRandomScale: {
-    label: "Random Scale",
+  FXSpawnScale: {
+    label: "Scale",
     params: [
       {
         key: "scale",
@@ -156,11 +156,11 @@ export const SPAWN_MODULES = {
         step: 0.01,
       },
     ],
-    build: (params) => new FX.FXSpawnRandomScale(params.scale, params.aspect),
+    build: (params) => new FX.FXSpawnScale(params.scale, params.aspect),
   },
 
-  FXSpawnRandomTorque: {
-    label: "Random Torque",
+  FXSpawnTorque: {
+    label: "Torque",
     params: [
       {
         key: "base",
@@ -182,14 +182,14 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) =>
-      new FX.FXSpawnRandomTorque({
+      new FX.FXSpawnTorque({
         min: (params.base ?? 0) - (params.spread ?? Math.PI / 2),
         max: (params.base ?? 0) + (params.spread ?? Math.PI / 2),
       }),
   },
 
-  FXSpawnRandomVelocity: {
-    label: "Random Velocity",
+  FXSpawnVelocity: {
+    label: "Velocity",
     params: [
       {
         key: "direction",
@@ -227,7 +227,7 @@ export const SPAWN_MODULES = {
     build: (params) => {
       const angleMid = params.angleMid ?? 0.25;
       const angleSpread = params.angleSpread ?? 0.25;
-      return new FX.FXSpawnRandomVelocity(
+      return new FX.FXSpawnVelocity(
         new THREE.Vector3(params.direction.x, params.direction.y, params.direction.z),
         {
           min: Math.max(0, angleMid - angleSpread),
@@ -242,22 +242,30 @@ export const SPAWN_MODULES = {
 // Behavior Modules
 
 export const BEHAVIOR_MODULES = {
-  FXBehaviorDirectionalGravity: {
-    label: "Directional Gravity",
+  FXBehaviorDirectionalForce: {
+    label: "Directional Force",
     params: [
       {
         key: "direction",
         label: "Direction",
         type: "vec3",
-        default: { x: 0, y: -9.8, z: 0 },
+        default: { x: 0, y: -1, z: 0 },
+        step: 0.01,
+      },
+      {
+        key: "magnitude",
+        label: "Magnitude",
+        type: "number",
+        default: 9.8,
+        min: 0,
         step: 0.1,
       },
     ],
-    build: (params) => new FX.FXBehaviorDirectionalGravity(params.direction),
+    build: (params) => new FX.FXBehaviorDirectionalForce(params.direction, params.magnitude),
   },
 
-  FXBehaviorPointGravity: {
-    label: "Point Gravity",
+  FXBehaviorPointForce: {
+    label: "Point Force",
     params: [
       {
         key: "center",
@@ -289,7 +297,7 @@ export const BEHAVIOR_MODULES = {
       },
     ],
     build: (params) =>
-      new FX.FXBehaviorPointGravity(
+      new FX.FXBehaviorPointForce(
         params.center,
         params.strength,
         params.exponent,
@@ -319,6 +327,38 @@ export const BEHAVIOR_MODULES = {
       },
     ],
     build: (params) => new FX.FXBehaviorScaleOverLife(params.scales, params.aspect),
+  },
+
+  FXBehaviorTorqueOverLife: {
+    label: "Torque Over Life",
+    params: [
+      {
+        key: "torques",
+        label: "Torques",
+        type: "ranges",
+        default: [
+          { min: 0, max: 0 },
+          { min: 0, max: 0 },
+        ],
+      },
+    ],
+    build: (params) => new FX.FXBehaviorTorqueOverLife(params.torques),
+  },
+
+  FXBehaviorVelocityOverLife: {
+    label: "Velocity Over Life",
+    params: [
+      {
+        key: "velocities",
+        label: "Velocities",
+        type: "ranges",
+        default: [
+          { min: 1, max: 1 },
+          { min: 0, max: 0 },
+        ],
+      },
+    ],
+    build: (params) => new FX.FXBehaviorVelocityOverLife(params.velocities),
   },
 
   FXBehaviorTorqueDamping: {
@@ -401,7 +441,7 @@ export const BEHAVIOR_MODULES = {
 // Color Nodes
 
 export const COLOR_NODES = {
-  FXColorOverLifeNode: {
+  FXNodeColorOverLife: {
     label: "Color Over Life",
     params: [
       {
@@ -415,14 +455,14 @@ export const COLOR_NODES = {
       },
     ],
     build: (params) =>
-      new FX.FXColorOverLifeNode(
+      new FX.FXNodeColorOverLife(
         params.colors.map((colorValue) => {
           const normalized = normalizeColor(colorValue);
           return new FX.FXColor(parseInt(normalized.hex.replace("#", ""), 16), normalized.alpha);
         }),
       ),
   },
-  FXSphericalClipNode: {
+  FXNodeSphericalClip: {
     label: "Spherical Clip",
     params: [
       {
@@ -435,23 +475,23 @@ export const COLOR_NODES = {
         step: 0.01,
       },
     ],
-    build: (params) => new FX.FXSphericalClipNode(params.innerRadius || undefined),
+    build: (params) => new FX.FXNodeSphericalClip(params.innerRadius || undefined),
   },
 };
 
 // Texture Nodes
 
 export const TEXTURE_NODES = {
-  FXStaticTextureNode: {
+  FXNodeStaticTexture: {
     label: "Static Texture",
     params: [{ key: "asset", label: "Texture", type: "asset", default: null }],
     build: (params, assets) => {
       if (!params.asset || !assets[params.asset]) return null;
-      return new FX.FXStaticTextureNode(assets[params.asset]);
+      return new FX.FXNodeStaticTexture(assets[params.asset]);
     },
   },
 
-  FXAnimatedTextureNode: {
+  FXNodeAnimatedTexture: {
     label: "Animated Texture",
     params: [
       { key: "asset", label: "Texture", type: "asset", default: null },
@@ -480,7 +520,7 @@ export const TEXTURE_NODES = {
     ],
     build: (params, assets) => {
       if (!params.asset || !assets[params.asset]) return null;
-      return new FX.FXAnimatedTextureNode({
+      return new FX.FXNodeAnimatedTexture({
         texture: assets[params.asset],
         columns: params.columns,
         rows: params.rows,
@@ -493,16 +533,16 @@ export const TEXTURE_NODES = {
 // Normal Nodes
 
 export const NORMAL_NODES = {
-  FXFlatNormalNode: {
+  FXNodeFlatNormal: {
     label: "Flat Normal",
     params: [],
-    build: () => new FX.FXFlatNormalNode(),
+    build: () => new FX.FXNodeFlatNormal(),
   },
 
-  FXSphericalNormalNode: {
+  FXNodeSphericalNormal: {
     label: "Spherical Normal",
     params: [],
-    build: () => new FX.FXSphericalNormalNode(),
+    build: () => new FX.FXNodeSphericalNormal(),
   },
 };
 

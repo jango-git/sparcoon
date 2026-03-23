@@ -299,7 +299,7 @@ function buildMaterialSection(emitter) {
       // Ensure at least one normal node
       if (emitter.material.normalNodes.length === 0) {
         emitter.material.normalNodes.push(
-          createNodeState("FXSphericalNormalNode", NODE_REGISTRIES.normalNodes),
+          createNodeState("FXNodeSphericalNormal", NODE_REGISTRIES.normalNodes),
         );
       }
     }

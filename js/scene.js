@@ -8,7 +8,7 @@
 
 import * as THREE from "https://esm.sh/three@0.157";
 import { OrbitControls } from "https://esm.sh/three@0.157/examples/jsm/controls/OrbitControls.js";
-import { FXEmitter } from "https://esm.sh/sparcoon@0.5.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import { FXEmitter } from "https://esm.sh/sparcoon@0.6.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import { buildEmitter } from "./registry.js";
 
 let renderer, scene, camera, controls, clock;

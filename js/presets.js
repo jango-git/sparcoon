@@ -28,15 +28,15 @@ function createDiffuseParams(overrides = {}) {
 // --- Node builders ---
 
 function colorOverLifeNode(colors) {
-  return { id: generateId(), type: "FXColorOverLifeNode", params: { colors } };
+  return { id: generateId(), type: "FXNodeColorOverLife", params: { colors } };
 }
 
 function sphericalClipNode(innerRadius = 0) {
-  return { id: generateId(), type: "FXSphericalClipNode", params: { innerRadius } };
+  return { id: generateId(), type: "FXNodeSphericalClip", params: { innerRadius } };
 }
 
 function sphericalNormalNode() {
-  return { id: generateId(), type: "FXSphericalNormalNode", params: {} };
+  return { id: generateId(), type: "FXNodeSphericalNormal", params: {} };
 }
 
 // --- Spawn module builders ---
@@ -72,7 +72,7 @@ function spawnSphere(innerRadius = 0, outerRadius = 1, angle = 1.5708) {
 function spawnLifetime(min, max) {
   return {
     id: generateId(),
-    type: "FXSpawnRandomLifetime",
+    type: "FXSpawnLifetime",
     params: { lifetime: { min, max } },
   };
 }
@@ -80,7 +80,7 @@ function spawnLifetime(min, max) {
 function spawnScale(min, max, aspect = 1) {
   return {
     id: generateId(),
-    type: "FXSpawnRandomScale",
+    type: "FXSpawnScale",
     params: { scale: { min, max }, aspect },
   };
 }
@@ -88,7 +88,7 @@ function spawnScale(min, max, aspect = 1) {
 function spawnRotation(spread = Math.PI) {
   return {
     id: generateId(),
-    type: "FXSpawnRandomRotation",
+    type: "FXSpawnRotation",
     params: { rotation: spread },
   };
 }
@@ -96,7 +96,7 @@ function spawnRotation(spread = Math.PI) {
 function spawnVelocity(direction, angleMid, angleSpread, magnitudeMin, magnitudeMax) {
   return {
     id: generateId(),
-    type: "FXSpawnRandomVelocity",
+    type: "FXSpawnVelocity",
     params: {
       direction,
       angleMid,
@@ -109,7 +109,7 @@ function spawnVelocity(direction, angleMid, angleSpread, magnitudeMin, magnitude
 function spawnTorque(base = 0, spread = 1.5708) {
   return {
     id: generateId(),
-    type: "FXSpawnRandomTorque",
+    type: "FXSpawnTorque",
     params: { base, spread },
   };
 }
@@ -117,10 +117,14 @@ function spawnTorque(base = 0, spread = 1.5708) {
 // --- Behavior module builders ---
 
 function behaviorGravity(x = 0, y = -9.8, z = 0) {
+  const magnitude = Math.sqrt(x * x + y * y + z * z) || 1;
   return {
     id: generateId(),
-    type: "FXBehaviorDirectionalGravity",
-    params: { direction: { x, y, z } },
+    type: "FXBehaviorDirectionalForce",
+    params: {
+      direction: { x: x / magnitude, y: y / magnitude, z: z / magnitude },
+      magnitude,
+    },
   };
 }
 

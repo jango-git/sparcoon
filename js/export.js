@@ -181,30 +181,30 @@ const SPAWN_CODEGEN = {
   FXSpawnSphere: (params) =>
     `new FXSpawnSphere(${formatNumber(params.innerRadius)}, ${formatNumber(params.outerRadius)}, ${formatNumber(params.angle)})`,
 
-  FXSpawnRandomLifetime: (params) => `new FXSpawnRandomLifetime(${formatRange(params.lifetime)})`,
+  FXSpawnLifetime: (params) => `new FXSpawnLifetime(${formatRange(params.lifetime)})`,
 
-  FXSpawnRandomRotation: (params) => {
+  FXSpawnRotation: (params) => {
     const spread = params.rotation ?? 0;
-    return `new FXSpawnRandomRotation(${formatRange({ min: -spread, max: spread })})`;
+    return `new FXSpawnRotation(${formatRange({ min: -spread, max: spread })})`;
   },
 
-  FXSpawnRandomScale: (params) =>
-    `new FXSpawnRandomScale(${formatRange(params.scale)}, ${formatNumber(params.aspect)})`,
+  FXSpawnScale: (params) =>
+    `new FXSpawnScale(${formatRange(params.scale)}, ${formatNumber(params.aspect)})`,
 
-  FXSpawnRandomTorque: (params) => {
+  FXSpawnTorque: (params) => {
     const base = params.base ?? 0;
     const spread = params.spread ?? Math.PI / 2;
-    return `new FXSpawnRandomTorque(${formatRange({ min: base - spread, max: base + spread })})`;
+    return `new FXSpawnTorque(${formatRange({ min: base - spread, max: base + spread })})`;
   },
 
-  FXSpawnRandomVelocity: (params) => {
+  FXSpawnVelocity: (params) => {
     const direction = params.direction ?? { x: 0, y: 1, z: 0 };
     const angleMid = params.angleMid ?? 0.25;
     const angleSpread = params.angleSpread ?? 0.25;
     const angleMin = Math.max(0, angleMid - angleSpread);
     const angleMax = angleMid + angleSpread;
     return [
-      "new FXSpawnRandomVelocity(",
+      "new FXSpawnVelocity(",
       `  new Vector3(${formatNumber(direction.x)}, ${formatNumber(direction.y)}, ${formatNumber(direction.z)}),`,
       `  { min: ${formatNumber(angleMin)}, max: ${formatNumber(angleMax)} },`,
       `  ${formatRange(params.magnitude)},`,
@@ -216,15 +216,25 @@ const SPAWN_CODEGEN = {
 // --- Behavior module codegen ---
 
 const BEHAVIOR_CODEGEN = {
-  FXBehaviorDirectionalGravity: (params) =>
-    `new FXBehaviorDirectionalGravity(${formatVec3(params.direction)})`,
+  FXBehaviorDirectionalForce: (params) =>
+    `new FXBehaviorDirectionalForce(${formatVec3(params.direction)}, ${formatNumber(params.magnitude)})`,
 
-  FXBehaviorPointGravity: (params) =>
-    `new FXBehaviorPointGravity(${formatVec3(params.center)}, ${formatRange(params.strength)}, ${formatRange(params.exponent)}, ${formatRange(params.threshold)})`,
+  FXBehaviorPointForce: (params) =>
+    `new FXBehaviorPointForce(${formatVec3(params.center)}, ${formatRange(params.strength)}, ${formatRange(params.exponent)}, ${formatRange(params.threshold)})`,
 
   FXBehaviorScaleOverLife: (params) => {
     const scalesString = (params.scales || []).map(formatRange).join(", ");
     return `new FXBehaviorScaleOverLife([${scalesString}], ${formatNumber(params.aspect)})`;
+  },
+
+  FXBehaviorTorqueOverLife: (params) => {
+    const valuesString = (params.torques || []).map(formatRange).join(", ");
+    return `new FXBehaviorTorqueOverLife([${valuesString}])`;
+  },
+
+  FXBehaviorVelocityOverLife: (params) => {
+    const valuesString = (params.velocities || []).map(formatRange).join(", ");
+    return `new FXBehaviorVelocityOverLife([${valuesString}])`;
   },
 
   FXBehaviorTorqueDamping: (params) =>
@@ -240,7 +250,7 @@ const BEHAVIOR_CODEGEN = {
 // --- Node codegen ---
 
 const NODE_CODEGEN = {
-  FXColorOverLifeNode: (params) => {
+  FXNodeColorOverLife: (params) => {
     const colorsString = (params.colors || [])
       .map((colorValue) => {
         const hex =
@@ -253,23 +263,23 @@ const NODE_CODEGEN = {
         return `new FXColor(${hexNumber}, ${formatNumber(alpha)})`;
       })
       .join(", ");
-    return `new FXColorOverLifeNode([${colorsString}])`;
+    return `new FXNodeColorOverLife([${colorsString}])`;
   },
 
-  FXSphericalClipNode: (params) =>
+  FXNodeSphericalClip: (params) =>
     params.innerRadius
-      ? `new FXSphericalClipNode(${formatNumber(params.innerRadius)})`
-      : "new FXSphericalClipNode()",
+      ? `new FXNodeSphericalClip(${formatNumber(params.innerRadius)})`
+      : "new FXNodeSphericalClip()",
 
-  FXStaticTextureNode: (params, textureVariables) => {
+  FXNodeStaticTexture: (params, textureVariables) => {
     const variableName = textureVariables.get(params.asset) ?? "null /* unknown asset */";
-    return `new FXStaticTextureNode(${variableName})`;
+    return `new FXNodeStaticTexture(${variableName})`;
   },
 
-  FXAnimatedTextureNode: (params, textureVariables) => {
+  FXNodeAnimatedTexture: (params, textureVariables) => {
     const variableName = textureVariables.get(params.asset) ?? "null /* unknown asset */";
     return [
-      "new FXAnimatedTextureNode({",
+      "new FXNodeAnimatedTexture({",
       `  texture: ${variableName},`,
       `  columns: ${params.columns ?? 4},`,
       `  rows: ${params.rows ?? 4},`,
@@ -278,8 +288,8 @@ const NODE_CODEGEN = {
     ].join("\n");
   },
 
-  FXFlatNormalNode: () => "new FXFlatNormalNode()",
-  FXSphericalNormalNode: () => "new FXSphericalNormalNode()",
+  FXNodeFlatNormal: () => "new FXNodeFlatNormal()",
+  FXNodeSphericalNormal: () => "new FXNodeSphericalNormal()",
 };
 
 // --- Per-emitter block ---
@@ -424,7 +434,7 @@ function generateTypeScript(emitters, className) {
     for (const module of emitter.spawnModules ?? []) {
       if (SPAWN_CODEGEN[module.type]) {
         usedFxTypes.add(module.type);
-        if (module.type === "FXSpawnRandomVelocity") usedThreeTypes.add("Vector3");
+        if (module.type === "FXSpawnVelocity") usedThreeTypes.add("Vector3");
       }
     }
 
@@ -436,8 +446,8 @@ function generateTypeScript(emitters, className) {
       for (const node of emitter.material?.[stackKey] ?? []) {
         if (NODE_CODEGEN[node.type]) {
           usedFxTypes.add(node.type);
-          if (node.type === "FXColorOverLifeNode") usedFxTypes.add("FXColor");
-          if (node.type === "FXStaticTextureNode" || node.type === "FXAnimatedTextureNode") {
+          if (node.type === "FXNodeColorOverLife") usedFxTypes.add("FXColor");
+          if (node.type === "FXNodeStaticTexture" || node.type === "FXNodeAnimatedTexture") {
             usedThreeTypes.add("Texture");
           }
         }
