@@ -429,6 +429,75 @@ body {
   flex: 1;
 }
 
+/* Curve Editor */
+.curve-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.curve-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.curve-magnitude-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.curve-magnitude-row .param-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.curve-magnitude-row .param-input {
+  width: 64px;
+}
+
+.curve-active-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 6px;
+  background: var(--bg-card-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  min-height: 28px;
+}
+
+.curve-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+  align-self: center;
+  padding: 2px 0;
+}
+
+.curve-active-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.curve-active-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+  min-width: 36px;
+}
+
+.curve-active-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .asset-placeholder {
   color: var(--text-muted);
   font-size: 11px;

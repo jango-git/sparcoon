@@ -14,9 +14,18 @@
  *   options  - array of { value, label } for "select" type
  */
 
-import * as FX from "https://esm.sh/sparcoon@0.6.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import * as FX from "https://esm.sh/sparcoon@0.6.1?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import * as THREE from "https://esm.sh/three@0.157";
 import { normalizeColor } from "./utils.js";
+
+// Converts curve editor points { position, center, spread } to FXCurve1DConfig<FXRange>
+function curveParamsToAnchors(points) {
+  if (!Array.isArray(points) || points.length < 2) return [{ min: 0, max: 0 }];
+  return points.map((p) => ({
+    position: p.position,
+    value: { min: p.center - p.spread, max: p.center + p.spread },
+  }));
+}
 
 // Spawn Modules
 
@@ -309,12 +318,12 @@ export const BEHAVIOR_MODULES = {
     label: "Scale Over Life",
     params: [
       {
-        key: "scales",
-        label: "Scales",
-        type: "ranges",
+        key: "curve",
+        label: "Curve",
+        type: "curve",
         default: [
-          { min: 1, max: 1 },
-          { min: 0, max: 0 },
+          { position: 0, center: 1, spread: 0 },
+          { position: 1, center: 0, spread: 0 },
         ],
       },
       {
@@ -326,39 +335,42 @@ export const BEHAVIOR_MODULES = {
         step: 0.01,
       },
     ],
-    build: (params) => new FX.FXBehaviorScaleOverLife(params.scales, params.aspect),
+    build: (params) => {
+      const anchors = curveParamsToAnchors(params.curve);
+      return new FX.FXBehaviorScaleOverLife(anchors, params.aspect);
+    },
   },
 
   FXBehaviorTorqueOverLife: {
     label: "Torque Over Life",
     params: [
       {
-        key: "torques",
-        label: "Torques",
-        type: "ranges",
+        key: "curve",
+        label: "Curve",
+        type: "curve",
         default: [
-          { min: 0, max: 0 },
-          { min: 0, max: 0 },
+          { position: 0, center: 0, spread: 0 },
+          { position: 1, center: 0, spread: 0 },
         ],
       },
     ],
-    build: (params) => new FX.FXBehaviorTorqueOverLife(params.torques),
+    build: (params) => new FX.FXBehaviorTorqueOverLife(curveParamsToAnchors(params.curve)),
   },
 
   FXBehaviorVelocityOverLife: {
     label: "Velocity Over Life",
     params: [
       {
-        key: "velocities",
-        label: "Velocities",
-        type: "ranges",
+        key: "curve",
+        label: "Curve",
+        type: "curve",
         default: [
-          { min: 1, max: 1 },
-          { min: 0, max: 0 },
+          { position: 0, center: 1, spread: 0 },
+          { position: 1, center: 0, spread: 0 },
         ],
       },
     ],
-    build: (params) => new FX.FXBehaviorVelocityOverLife(params.velocities),
+    build: (params) => new FX.FXBehaviorVelocityOverLife(curveParamsToAnchors(params.curve)),
   },
 
   FXBehaviorTorqueDamping: {

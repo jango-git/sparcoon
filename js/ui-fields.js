@@ -9,6 +9,7 @@
 import { state } from "./state.js";
 import { openAssetPicker } from "./assets.js";
 import { makeElement, normalizeColor } from "./utils.js";
+import { createCurveEditor, sortCurvePoints } from "./curve-editor.js";
 
 // Params grid (container for a list of param rows)
 
@@ -65,6 +66,8 @@ function buildField(descriptor, values, onParamChange) {
       return buildColorsField(descriptor.key, values, onParamChange);
     case "ranges":
       return buildRangesField(descriptor.key, values, onParamChange);
+    case "curve":
+      return buildCurveField(descriptor, values, onParamChange);
     case "asset":
       return buildAssetField(descriptor, values, onParamChange);
     default:
@@ -403,6 +406,166 @@ function buildRangesField(key, values, onParamChange) {
   };
 
   rerenderRangesList();
+  return wrapper;
+}
+
+// Curve field - canvas curve editor for FXCurve1DConfig<FXRange>
+
+function buildCurveField(descriptor, values, onParamChange) {
+  const key = descriptor.key;
+  const magKey = `${key}__magnitude`;
+
+  if (!Array.isArray(values[key]) || values[key].length < 2) {
+    values[key] = descriptor.default.map((p) => ({ ...p }));
+  }
+  if (values[magKey] === undefined) values[magKey] = 1;
+
+  const points = values[key];
+  const wrapper = makeElement("div", "curve-field");
+  const getMagnitude = () => values[magKey] || 1;
+
+  // Active point panel - refs to inputs for live updates during drag
+  let selectedPoint = null;
+  let activeRefs = { pos: null, val: null, spread: null };
+
+  const activePanel = makeElement("div", "curve-active-panel");
+
+  const updateActivePanelValues = () => {
+    if (!selectedPoint || !activeRefs.pos) return;
+    activeRefs.pos.value = selectedPoint.position.toFixed(3);
+    activeRefs.val.value = selectedPoint.center.toFixed(3);
+    activeRefs.spread.value = selectedPoint.spread.toFixed(3);
+  };
+
+  const rebuildActivePanel = () => {
+    activePanel.innerHTML = "";
+    activeRefs = { pos: null, val: null, spread: null };
+
+    if (!selectedPoint) {
+      const hint = makeElement("span", "curve-hint");
+      hint.textContent = "Click a point to edit";
+      activePanel.appendChild(hint);
+      return;
+    }
+
+    const isLocked = () => {
+      const i = points.indexOf(selectedPoint);
+      return i === 0 || i === points.length - 1;
+    };
+
+    // Row 1: Position + Value
+    const row1 = makeElement("div", "curve-active-row");
+
+    const posLabel = makeElement("span", "curve-active-label");
+    posLabel.textContent = "Pos";
+    const posInput = makeElement("input", "param-input curve-active-input");
+    posInput.type = "number";
+    posInput.min = "0";
+    posInput.max = "1";
+    posInput.step = "0.01";
+    posInput.value = selectedPoint.position.toFixed(3);
+    posInput.disabled = isLocked();
+    posInput.addEventListener("change", () => {
+      selectedPoint.position = Math.max(0, Math.min(1, parseFloat(posInput.value) || 0));
+      sortCurvePoints(points);
+      editorRedraw();
+      onParamChange();
+    });
+
+    const valLabel = makeElement("span", "curve-active-label");
+    valLabel.textContent = "Value";
+    const valInput = makeElement("input", "param-input curve-active-input");
+    valInput.type = "number";
+    valInput.min = "0";
+    valInput.step = "0.01";
+    valInput.value = selectedPoint.center.toFixed(3);
+    valInput.addEventListener("change", () => {
+      selectedPoint.center = Math.max(0, parseFloat(valInput.value) || 0);
+      editorRedraw();
+      onParamChange();
+    });
+
+    row1.appendChild(posLabel);
+    row1.appendChild(posInput);
+    row1.appendChild(valLabel);
+    row1.appendChild(valInput);
+    activePanel.appendChild(row1);
+
+    // Row 2: Spread + Remove
+    const row2 = makeElement("div", "curve-active-row");
+
+    const spreadLabel = makeElement("span", "curve-active-label");
+    spreadLabel.textContent = "Spread";
+    const spreadInput = makeElement("input", "param-input curve-active-input");
+    spreadInput.type = "number";
+    spreadInput.min = "0";
+    spreadInput.step = "0.01";
+    spreadInput.value = selectedPoint.spread.toFixed(3);
+    spreadInput.addEventListener("change", () => {
+      selectedPoint.spread = Math.max(0, parseFloat(spreadInput.value) || 0);
+      editorRedraw();
+      onParamChange();
+    });
+
+    row2.appendChild(spreadLabel);
+    row2.appendChild(spreadInput);
+
+    if (!isLocked()) {
+      const removeBtn = makeElement("button", "button-icon button-danger");
+      removeBtn.textContent = "✕";
+      removeBtn.title = "Remove point";
+      removeBtn.addEventListener("click", () => {
+        const idx = points.indexOf(selectedPoint);
+        if (idx > 0 && idx < points.length - 1) {
+          points.splice(idx, 1);
+          selectedPoint = null;
+          rebuildActivePanel();
+          editorRedraw();
+          onParamChange();
+        }
+      });
+      row2.appendChild(removeBtn);
+    }
+
+    activePanel.appendChild(row2);
+
+    activeRefs = { pos: posInput, val: valInput, spread: spreadInput };
+  };
+
+  const onSelect = (point) => {
+    selectedPoint = point;
+    rebuildActivePanel();
+  };
+
+  // Called during drag — update input values without rebuilding DOM
+  const onChange = () => {
+    updateActivePanelValues();
+    onParamChange();
+  };
+
+  const { canvas, redraw: editorRedraw } = createCurveEditor(points, getMagnitude, onChange, onSelect);
+  wrapper.appendChild(canvas);
+
+  // Scale row (Y-axis display scale, UI only)
+  const scaleRow = makeElement("div", "curve-magnitude-row");
+  const scaleLabel = makeElement("span", "param-label");
+  scaleLabel.textContent = "Scale";
+  const scaleInput = makeElement("input", "param-input");
+  scaleInput.type = "number";
+  scaleInput.min = "0.01";
+  scaleInput.step = "0.1";
+  scaleInput.value = values[magKey];
+  scaleInput.addEventListener("change", () => {
+    values[magKey] = Math.max(0.01, parseFloat(scaleInput.value) || 1);
+    editorRedraw();
+  });
+  scaleRow.appendChild(scaleLabel);
+  scaleRow.appendChild(scaleInput);
+  wrapper.appendChild(scaleRow);
+
+  wrapper.appendChild(activePanel);
+  rebuildActivePanel();
+
   return wrapper;
 }
 

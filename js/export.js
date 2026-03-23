@@ -120,6 +120,17 @@ function formatRange(range) {
   return `{ min: ${formatNumber(range?.min ?? 0)}, max: ${formatNumber(range?.max ?? 0)} }`;
 }
 
+function formatCurveAnchors(points) {
+  if (!Array.isArray(points) || points.length === 0) return "";
+  return points
+    .map((p) => {
+      const center = p?.center ?? 0;
+      const spread = p?.spread ?? 0;
+      return `    { position: ${formatNumber(p.position)}, value: { min: ${formatNumber(center - spread)}, max: ${formatNumber(center + spread)} } }`;
+    })
+    .join(",\n");
+}
+
 function addIndent(text, spaces) {
   const padding = " ".repeat(spaces);
   return text
@@ -223,18 +234,18 @@ const BEHAVIOR_CODEGEN = {
     `new FXBehaviorPointForce(${formatVec3(params.center)}, ${formatRange(params.strength)}, ${formatRange(params.exponent)}, ${formatRange(params.threshold)})`,
 
   FXBehaviorScaleOverLife: (params) => {
-    const scalesString = (params.scales || []).map(formatRange).join(", ");
-    return `new FXBehaviorScaleOverLife([${scalesString}], ${formatNumber(params.aspect)})`;
+    const anchorsString = formatCurveAnchors(params.curve);
+    return `new FXBehaviorScaleOverLife([\n${anchorsString}\n  ], ${formatNumber(params.aspect)})`;
   },
 
   FXBehaviorTorqueOverLife: (params) => {
-    const valuesString = (params.torques || []).map(formatRange).join(", ");
-    return `new FXBehaviorTorqueOverLife([${valuesString}])`;
+    const anchorsString = formatCurveAnchors(params.curve);
+    return `new FXBehaviorTorqueOverLife([\n${anchorsString}\n  ])`;
   },
 
   FXBehaviorVelocityOverLife: (params) => {
-    const valuesString = (params.velocities || []).map(formatRange).join(", ");
-    return `new FXBehaviorVelocityOverLife([${valuesString}])`;
+    const anchorsString = formatCurveAnchors(params.curve);
+    return `new FXBehaviorVelocityOverLife([\n${anchorsString}\n  ])`;
   },
 
   FXBehaviorTorqueDamping: (params) =>
