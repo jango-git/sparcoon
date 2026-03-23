@@ -6,23 +6,21 @@ import { BUILTIN_OFFSET_ROTATION, resolveFXRangeConfig } from "../../miscellaneo
 import { FXSpawn } from "./FXSpawn";
 
 /**
- * Assigns random rotation to particles.
- *
- * Initial rotation is chosen uniformly from the specified range.
+ * Assigns a random initial rotation to each spawned particle
  */
-export class FXSpawnRandomRotation extends FXSpawn<{ builtin: "Matrix4" }> {
+export class FXSpawnRotation extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public requiredProperties = { builtin: "Matrix4" } as const;
   private rotationInternal: FXRange;
 
   /**
-   * @param rotation - Rotation range in radians. Accepts number, tuple, or range object
+   * @param rotation - Rotation range in radians. Defaults to `{ min: -Math.PI, max: Math.PI }`
    */
   constructor(rotation: FXRangeConfig = { min: -Math.PI, max: Math.PI }) {
     super();
     this.rotationInternal = resolveFXRangeConfig(rotation);
-    assertValidNumber(this.rotationInternal.min, "FXSpawnRandomRotation.constructor.rotation.min");
-    assertValidNumber(this.rotationInternal.max, "FXSpawnRandomRotation.constructor.rotation.max");
+    assertValidNumber(this.rotationInternal.min, "FXSpawnRotation.constructor.rotation.min");
+    assertValidNumber(this.rotationInternal.max, "FXSpawnRotation.constructor.rotation.max");
   }
 
   /** Rotation range in radians */
@@ -33,8 +31,8 @@ export class FXSpawnRandomRotation extends FXSpawn<{ builtin: "Matrix4" }> {
   /** Rotation range in radians */
   public set rotation(value: FXRangeConfig) {
     this.rotationInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.rotationInternal.min, "FXSpawnRandomRotation.rotation.min");
-    assertValidNumber(this.rotationInternal.max, "FXSpawnRandomRotation.rotation.max");
+    assertValidNumber(this.rotationInternal.min, "FXSpawnRotation.rotation.min");
+    assertValidNumber(this.rotationInternal.max, "FXSpawnRotation.rotation.max");
   }
 
   /** @internal */

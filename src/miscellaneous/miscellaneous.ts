@@ -12,6 +12,13 @@ import {
 import type { Vector3Like } from "../miscellaneous/math";
 import type { FXTextureConfig } from "../miscellaneous/texture/FXTextureView.Internal";
 import type { FXColor } from "./color/FXColor";
+import type { FXCurve1D } from "./curve/FXCurve1D";
+
+let nextInstanceId = 0;
+
+export function getNextInstanceId(): number {
+  return nextInstanceId++;
+}
 
 export interface FXRange {
   min: number;
@@ -58,13 +65,13 @@ export function resolveAspect(config: number | FXTextureConfig): number {
   return config.sourceSize.w / config.sourceSize.h;
 }
 
-export function buildGradientTexture(colors: FXColor[]): DataTexture {
-  const width = colors.length;
+export function buildGradientTexture(curve: FXCurve1D<FXColor>): DataTexture {
+  const width = curve.anchors.length;
   const height = 1;
   const data = new Uint8Array(width * height * 4);
 
   for (let i = 0; i < width; i++) {
-    const color = colors[i];
+    const color = curve.anchors[i].value;
 
     const index = i * 4;
     data[index] = Math.round(color.r * 255);

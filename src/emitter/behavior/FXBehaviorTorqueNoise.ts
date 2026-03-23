@@ -20,9 +20,10 @@ import { FXBehavior } from "./FXBehavior";
 const generateNoise3D = makeNoise3D();
 
 /**
- * Applies noise-based angular acceleration to particles.
+ * Applies noise-based angular acceleration to particles
  *
- * Uses 2D noise based on particle position. Higher scale means finer noise detail.
+ * @remarks
+ * Higher `scale` values produce finer noise detail.
  */
 export class FXBehaviorTorqueNoise extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
@@ -34,7 +35,7 @@ export class FXBehaviorTorqueNoise extends FXBehavior<{ builtin: "Matrix4" }> {
    * @param scale - Noise frequency range. Accepts number, tuple, or range object
    * @param strength - Force multiplier range. Accepts number, tuple, or range object
    */
-  constructor(scale: number, strength: number) {
+  constructor(scale: FXRangeConfig, strength: FXRangeConfig) {
     super();
     this.scaleInternal = resolveFXRangeConfig(scale);
     assertValidPositiveNumber(

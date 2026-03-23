@@ -1,6 +1,9 @@
-import { FXNormalNode } from "./FXNormalNode";
+import { FXNodeNormal } from "./FXNodeNormal";
 
-export class FXSphericalNormalNode extends FXNormalNode {
+/**
+ * Normal node that outputs a constant face-aligned normal pointing toward the camera
+ */
+export class FXNodeFlatNormal extends FXNodeNormal {
   /** @internal */
   public override readonly cacheKey: string;
   /** @internal */
@@ -15,15 +18,10 @@ export class FXSphericalNormalNode extends FXNormalNode {
   constructor() {
     super();
 
-    this.cacheKey = "spherical";
+    this.cacheKey = "flat-normal";
     this.uniformDeclarations = [];
     this.uniforms = {};
-    this.helperFunctions = `
-      vec3 fxComputeSphericalNormal(vec2 uv) {
-        vec2 centeredUV = uv * 2.0 - 1.0;
-        return normalize(vec3(centeredUV, sqrt(max(0.0, 1.0 - dot(centeredUV, centeredUV)))));
-      }
-    `;
-    this.normalExpression = "fxComputeSphericalNormal(p_uv)";
+    this.helperFunctions = "";
+    this.normalExpression = "vec3(0.0, 0.0, 1.0)";
   }
 }

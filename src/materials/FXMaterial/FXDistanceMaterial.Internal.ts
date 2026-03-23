@@ -1,7 +1,7 @@
 import { DoubleSide, MeshDistanceMaterial } from "three";
 import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
-import type { FXColorNode } from "../../nodes/color/FXColorNode";
-import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
+import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
+import type { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
 
 /**
  * Custom vertex shader for point/spot light shadow maps.
@@ -101,7 +101,7 @@ const DISTANCE_CALCULATION_PATTERN =
   /float\s+dist\s*=\s*length\s*\(\s*vWorldPosition\s*-\s*referencePosition\s*\)\s*;/;
 
 export function buildDistanceMaterial(
-  albedoNodes: readonly (FXColorNode | FXTextureNode)[],
+  albedoNodes: readonly (FXNodeColor | FXNodeTexture)[],
   distanceAlphaTest: number,
   useDistanceAlphaHash: boolean,
   useSphericalDepth: boolean,

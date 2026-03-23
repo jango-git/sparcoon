@@ -12,9 +12,10 @@ import {
 import { FXBehavior } from "./FXBehavior";
 
 /**
- * Reduces particle velocity over time.
+ * Reduces particle velocity over time
  *
- * Applies exponential decay to velocity. Damping of 0 means no effect, 1 means instant stop.
+ * @remarks
+ * A damping value of `0` has no effect; `1` stops the particle instantly.
  */
 export class FXBehaviorVelocityDamping extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */

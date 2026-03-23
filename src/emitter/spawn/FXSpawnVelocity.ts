@@ -14,7 +14,10 @@ const TEMP_TANGENT = new Vector3();
 const TEMP_BITANGENT = new Vector3();
 const TEMP_VELOCITY = new Vector3();
 
-export class FXSpawnRandomVelocity extends FXSpawn<{ builtin: "Matrix4" }> {
+/**
+ * Assigns a random initial velocity to each spawned particle within a cone around a direction axis
+ */
+export class FXSpawnVelocity extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
 
@@ -22,10 +25,16 @@ export class FXSpawnRandomVelocity extends FXSpawn<{ builtin: "Matrix4" }> {
   private magnitudeInternal: FXRange;
   private readonly directionInternal: Vector3;
 
+  /**
+   * @param direction - Cone axis; normalized automatically. Defaults to `(0, 1, 0)`
+   * @param angle - Cone half-angle range in radians; `{ min: 0, max: 0 }` fires in a straight line.
+   * Defaults to `{ min: 0, max: Math.PI }`
+   * @param magnitude - Speed range in units/second. Defaults to `{ min: -1, max: 1 }`
+   */
   constructor(
     direction: Vector3 = new Vector3(0, 1, 0),
     angle: FXRangeConfig = { min: 0, max: Math.PI },
-    magnitude: FXRangeConfig = { min: -50, max: 50 },
+    magnitude: FXRangeConfig = { min: -1, max: 1 },
   ) {
     super();
 
@@ -33,42 +42,42 @@ export class FXSpawnRandomVelocity extends FXSpawn<{ builtin: "Matrix4" }> {
     this.angleInternal = resolveFXRangeConfig(angle);
     this.magnitudeInternal = resolveFXRangeConfig(magnitude);
 
-    assertValidNumber(this.angleInternal.min, "FXSpawnRandomVelocity.constructor.angle.min");
-    assertValidNumber(this.angleInternal.max, "FXSpawnRandomVelocity.constructor.angle.max");
-    assertValidNumber(
-      this.magnitudeInternal.min,
-      "FXSpawnRandomVelocity.constructor.magnitude.min",
-    );
-    assertValidNumber(
-      this.magnitudeInternal.max,
-      "FXSpawnRandomVelocity.constructor.magnitude.max",
-    );
+    assertValidNumber(this.angleInternal.min, "FXSpawnVelocity.constructor.angle.min");
+    assertValidNumber(this.angleInternal.max, "FXSpawnVelocity.constructor.angle.max");
+    assertValidNumber(this.magnitudeInternal.min, "FXSpawnVelocity.constructor.magnitude.min");
+    assertValidNumber(this.magnitudeInternal.max, "FXSpawnVelocity.constructor.magnitude.max");
   }
 
+  /** Cone half-angle range in radians */
   public get angle(): FXRange {
     return this.angleInternal;
   }
 
+  /** Speed range in units/second */
   public get magnitude(): FXRange {
     return this.magnitudeInternal;
   }
 
+  /** Cone axis (always normalized) */
   public get direction(): Vector3 {
     return this.directionInternal;
   }
 
+  /** Cone half-angle range in radians */
   public set angle(value: FXRangeConfig) {
     this.angleInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.angleInternal.min, "FXSpawnRandomVelocity.angle.min");
-    assertValidNumber(this.angleInternal.max, "FXSpawnRandomVelocity.angle.max");
+    assertValidNumber(this.angleInternal.min, "FXSpawnVelocity.angle.min");
+    assertValidNumber(this.angleInternal.max, "FXSpawnVelocity.angle.max");
   }
 
+  /** Speed range in units/second */
   public set magnitude(value: FXRangeConfig) {
     this.magnitudeInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.magnitudeInternal.min, "FXSpawnRandomVelocity.magnitude.min");
-    assertValidNumber(this.magnitudeInternal.max, "FXSpawnRandomVelocity.magnitude.max");
+    assertValidNumber(this.magnitudeInternal.min, "FXSpawnVelocity.magnitude.min");
+    assertValidNumber(this.magnitudeInternal.max, "FXSpawnVelocity.magnitude.max");
   }
 
+  /** Cone axis - normalized on assignment */
   public set direction(value: Vector3) {
     this.directionInternal.copy(value).normalize();
   }

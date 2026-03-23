@@ -1,4 +1,7 @@
-export abstract class FXTextureNode {
+/**
+ * Abstract base class for particle color nodes
+ */
+export abstract class FXNodeColor {
   /** @internal */
   public readonly affectsDepth: boolean = false;
   /** @internal */
@@ -12,5 +15,6 @@ export abstract class FXTextureNode {
   /** @internal */
   public abstract readonly colorExpression: string;
 
+  /** Releases any GPU resources held by this node */
   public destroy?(): void;
 }

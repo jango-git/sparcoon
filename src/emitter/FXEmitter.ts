@@ -1,5 +1,9 @@
 import type { Camera } from "three";
 import { Object3D, Vector3 } from "three";
+import {
+  assertValidNonNegativeNumber,
+  assertValidPositiveNumber,
+} from "../miscellaneous/asserts";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle";
 import type { GLTypeInfo } from "../instancedParticle/shared";
 import { resolveGLSLTypeInfo } from "../instancedParticle/shared";
@@ -38,9 +42,19 @@ import {
 } from "./FXEmitter.Internal";
 import type { FXSpawn } from "./spawn/FXSpawn";
 
+/**
+ * Particle emitter - add to a scene to make particles visible
+ *
+ * @remarks
+ * Drives a pipeline of spawn modules (run once at particle birth) and behavior modules
+ * (run every frame). Call {@link FXEmitter.onWillRender} each frame to tick the system.
+ */
 export class FXEmitter extends Object3D {
+  /** When `true`, {@link FXEmitter.destroy} also calls `destroy()` on all modules and the material; defaults to `true` */
   public automaticallyDestroyModules: boolean;
+  /** Camera used for back-to-front depth sorting; `undefined` disables sorting */
   public sortCamera?: Camera;
+  /** Fraction of frames on which sorting runs (`1` = every frame, `0.1` = ~every 10th frame); defaults to `0.1` */
   public sortFraction: number;
 
   private readonly mesh: FXInstancedParticle;
@@ -60,6 +74,12 @@ export class FXEmitter extends Object3D {
   private sortingAccumulator = 0;
   private readonly sortingCameraWorldPosition = new Vector3();
 
+  /**
+   * @param spawnSequence - Modules executed in order when particles are born
+   * @param behaviorSequence - Modules executed in order every frame for all live particles
+   * @param material - Particle material
+   * @param options - Emitter configuration
+   */
   constructor(
     private readonly spawnSequence: FXSpawn[],
     private readonly behaviorSequence: readonly FXBehavior[],
@@ -67,6 +87,16 @@ export class FXEmitter extends Object3D {
     options: Partial<FXEmitterOptions> = {},
   ) {
     super();
+
+    if (options.expectedCapacity !== undefined) {
+      assertValidPositiveNumber(options.expectedCapacity, "FXEmitter.constructor.options.expectedCapacity");
+    }
+    if (options.capacityStep !== undefined) {
+      assertValidPositiveNumber(options.capacityStep, "FXEmitter.constructor.options.capacityStep");
+    }
+    if (options.sortFraction !== undefined) {
+      assertValidNonNegativeNumber(options.sortFraction, "FXEmitter.constructor.options.sortFraction");
+    }
 
     const collectedProperties: Record<string, GLTypeInfo> = {
       builtin: resolveGLSLTypeInfo("Matrix4"),
@@ -107,12 +137,18 @@ export class FXEmitter extends Object3D {
     EMITTERS.push(this);
   }
 
+  /**
+   * Ticks all active emitters; call once per frame before rendering
+   *
+   * @param deltaTime - Elapsed time in seconds since the last frame
+   */
   public static onWillRender = (deltaTime: number): void => {
     for (const instance of EMITTERS) {
       instance.onRendering(deltaTime);
     }
   };
 
+  /** Unregisters the emitter, removes it from the scene, and disposes modules and material when {@link automaticallyDestroyModules} is `true` */
   public destroy(): void {
     const index = EMITTERS.indexOf(this);
     if (index !== -1) {
@@ -132,9 +168,18 @@ export class FXEmitter extends Object3D {
     this.removeFromParent();
   }
 
+  /**
+   * Spawns `count` particles immediately, or after a delay when `options.delay` is set
+   *
+   * @param count - Number of particles to spawn
+   * @param options - Burst options
+   * @returns Handler that can be passed to {@link stop} to cancel a pending delayed burst
+   */
   public burst(count: number, options: Partial<FXEmitterBurstOptions> = {}): number {
+    assertValidPositiveNumber(count, "FXEmitter.burst.count");
     const handler = this.nextHandler++;
     const delay = options.delay ?? 0;
+    assertValidNonNegativeNumber(delay, "FXEmitter.burst.options.delay");
 
     if (delay <= 0) {
       this.spawnBurst(count);
@@ -145,7 +190,18 @@ export class FXEmitter extends Object3D {
     return handler;
   }
 
+  /**
+   * Starts continuous emission at the given rate
+   *
+   * @param rate - Particles per second
+   * @param options - Play options
+   * @returns Handler that can be passed to {@link stop} to cancel
+   */
   public play(rate: number, options: Partial<FXEmitterPlayOptions> = {}): number {
+    assertValidPositiveNumber(rate, "FXEmitter.play.rate");
+    if (options.delay !== undefined) {
+      assertValidNonNegativeNumber(options.delay, "FXEmitter.play.options.delay");
+    }
     const handler = this.nextHandler++;
 
     this.activePlays.push({
@@ -160,6 +216,12 @@ export class FXEmitter extends Object3D {
     return handler;
   }
 
+  /**
+   * Stops an active play or pending burst by handler; stops all when called with no arguments
+   *
+   * @param handler - Handler returned by {@link play} or {@link burst}; omit to stop everything
+   * @returns `true` if anything was stopped
+   */
   public stop(handler?: number): boolean {
     if (handler === undefined) {
       const hadAnything = this.pendingBursts.length > 0 || this.activePlays.length > 0;
@@ -183,7 +245,15 @@ export class FXEmitter extends Object3D {
     return false;
   }
 
+  /**
+   * Simulates the emitter forward in time to avoid a cold-start on frame 0
+   *
+   * @param duration - Total time to simulate in seconds
+   * @param stepDuration - Maximum simulation step size in seconds. Defaults to `1/60`
+   */
   public prewarm(duration: number, stepDuration = EMITTER_DEFAULT_PREWARM_MIN_STEP_DURATION): void {
+    assertValidPositiveNumber(duration, "FXEmitter.prewarm.duration");
+    assertValidPositiveNumber(stepDuration, "FXEmitter.prewarm.stepDuration");
     const stepCount = Math.min(
       duration / Math.max(stepDuration, EMITTER_DEFAULT_PREWARM_MIN_STEP_DURATION),
       EMITTER_DEFAULT_PREWARM_MAX_STEP_COUNT,
@@ -198,6 +268,7 @@ export class FXEmitter extends Object3D {
     }
   }
 
+  /** Kills all live particles and cancels all active plays and pending bursts */
   public reset(): void {
     this.pendingBursts.length = 0;
     this.activePlays.length = 0;

@@ -10,11 +10,17 @@ import {
 } from "../../miscellaneous/miscellaneous";
 import { FXSpawn } from "./FXSpawn";
 
+/**
+ * Spawns all particles at a single fixed position
+ */
 export class FXSpawnPoint extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private positionInternal: Vector3Like;
 
+  /**
+   * @param position - World-space spawn position. Defaults to `{ x: 0, y: 0, z: 0 }`
+   */
   constructor(position: FXVector3Config = { x: 0, y: 0, z: 0 }) {
     super();
     this.positionInternal = resolveFXVector3Config(position);
@@ -23,10 +29,12 @@ export class FXSpawnPoint extends FXSpawn<{ builtin: "Matrix4" }> {
     assertValidNumber(this.positionInternal.z, "FXSpawnPoint.constructor.position.z");
   }
 
+  /** Spawn position */
   public get position(): Vector3Like {
     return this.positionInternal;
   }
 
+  /** Spawn position */
   public set position(value: FXVector3Config) {
     this.positionInternal = resolveFXVector3Config(value);
     assertValidNumber(this.positionInternal.x, "FXSpawnPoint.position.x");

@@ -10,28 +10,26 @@ import {
 import { FXSpawn } from "./FXSpawn";
 
 /**
- * Assigns random lifetime to particles.
- *
- * Lifetime is chosen uniformly from the specified range. Age is set to 0.
+ * Assigns a random lifetime to each spawned particle
  */
-export class FXSpawnRandomLifetime extends FXSpawn<{ builtin: "Matrix4" }> {
+export class FXSpawnLifetime extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private lifetimeInternal: FXRange;
 
   /**
-   * @param lifetime - Lifetime range in seconds. Accepts number, tuple, or range object
+   * @param lifetime - Lifetime range in seconds; must be positive. Defaults to `{ min: 4, max: 8 }`
    */
   constructor(lifetime: FXRangeConfig = { min: 4, max: 8 }) {
     super();
     this.lifetimeInternal = resolveFXRangeConfig(lifetime);
     assertValidPositiveNumber(
       this.lifetimeInternal.min,
-      "FXSpawnRandomLifetime.constructor.lifetime.min",
+      "FXSpawnLifetime.constructor.lifetime.min",
     );
     assertValidPositiveNumber(
       this.lifetimeInternal.max,
-      "FXSpawnRandomLifetime.constructor.lifetime.max",
+      "FXSpawnLifetime.constructor.lifetime.max",
     );
   }
 
@@ -43,8 +41,8 @@ export class FXSpawnRandomLifetime extends FXSpawn<{ builtin: "Matrix4" }> {
   /** Lifetime range in seconds */
   public set lifetime(value: FXRangeConfig) {
     this.lifetimeInternal = resolveFXRangeConfig(value);
-    assertValidPositiveNumber(this.lifetimeInternal.min, "FXSpawnRandomLifetime.lifetime.min");
-    assertValidPositiveNumber(this.lifetimeInternal.max, "FXSpawnRandomLifetime.lifetime.max");
+    assertValidPositiveNumber(this.lifetimeInternal.min, "FXSpawnLifetime.lifetime.min");
+    assertValidPositiveNumber(this.lifetimeInternal.max, "FXSpawnLifetime.lifetime.max");
   }
 
   /** @internal */

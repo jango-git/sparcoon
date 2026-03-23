@@ -10,9 +10,10 @@ import {
 import { FXBehavior } from "./FXBehavior";
 
 /**
- * Reduces particle angular velocity over time.
+ * Reduces particle angular velocity over time
  *
- * Applies exponential decay to torque. Damping of 0 means no effect, 1 means instant stop.
+ * @remarks
+ * A damping value of `0` has no effect; `1` stops the particle instantly.
  */
 export class FXBehaviorTorqueDamping extends FXBehavior<{
   builtin: "Matrix4";
@@ -24,7 +25,7 @@ export class FXBehaviorTorqueDamping extends FXBehavior<{
   /**
    * @param damping - Damping coefficient range (0-1). Accepts number, tuple, or range object
    */
-  constructor(damping: number) {
+  constructor(damping: FXRangeConfig) {
     super();
     this.dampingInternal = resolveFXRangeConfig(damping);
     assertValidNonNegativeNumber(

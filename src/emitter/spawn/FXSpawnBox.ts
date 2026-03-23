@@ -12,59 +12,35 @@ import {
 import { FXSpawn } from "./FXSpawn";
 
 /**
- * Spawns particles at random positions within an axis-aligned bounding box.
- *
- * Position is chosen uniformly within the bounds defined by min and max.
+ * Spawns particles at random positions within an axis-aligned bounding box centered at the origin
  */
 export class FXSpawnBox extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
-  private minInternal: Vector3Like;
-  private maxInternal: Vector3Like;
+  private sizeInternal: Vector3Like;
 
   /**
-   * @param min - Minimum corner of the spawn box
-   * @param max - Maximum corner of the spawn box
+   * @param size - Dimensions of the spawn box. Defaults to `{ x: 1, y: 1, z: 1 }`
    */
-  constructor(
-    min: FXVector3Config = { x: -1, y: -1, z: -1 },
-    max: FXVector3Config = { x: 1, y: 1, z: 1 },
-  ) {
+  constructor(size: FXVector3Config = { x: 1, y: 1, z: 1 }) {
     super();
-    this.minInternal = resolveFXVector3Config(min);
-    this.maxInternal = resolveFXVector3Config(max);
-    assertValidNumber(this.minInternal.x, "FXSpawnBox.constructor.min.x");
-    assertValidNumber(this.minInternal.y, "FXSpawnBox.constructor.min.y");
-    assertValidNumber(this.minInternal.z, "FXSpawnBox.constructor.min.z");
-    assertValidNumber(this.maxInternal.x, "FXSpawnBox.constructor.max.x");
-    assertValidNumber(this.maxInternal.y, "FXSpawnBox.constructor.max.y");
-    assertValidNumber(this.maxInternal.z, "FXSpawnBox.constructor.max.z");
+    this.sizeInternal = resolveFXVector3Config(size);
+    assertValidNumber(this.sizeInternal.x, "FXSpawnBox.constructor.size.x");
+    assertValidNumber(this.sizeInternal.y, "FXSpawnBox.constructor.size.y");
+    assertValidNumber(this.sizeInternal.z, "FXSpawnBox.constructor.size.z");
   }
 
-  /** Minimum corner of the spawn box */
-  public get min(): Vector3Like {
-    return this.minInternal;
+  /** Size of the spawn box */
+  public get size(): Vector3Like {
+    return this.sizeInternal;
   }
 
-  /** Maximum corner of the spawn box */
-  public get max(): Vector3Like {
-    return this.maxInternal;
-  }
-
-  /** Minimum corner of the spawn box */
-  public set min(value: FXVector3Config) {
-    this.minInternal = resolveFXVector3Config(value);
-    assertValidNumber(this.minInternal.x, "FXSpawnBox.min.x");
-    assertValidNumber(this.minInternal.y, "FXSpawnBox.min.y");
-    assertValidNumber(this.minInternal.z, "FXSpawnBox.min.z");
-  }
-
-  /** Maximum corner of the spawn box */
-  public set max(value: FXVector3Config) {
-    this.maxInternal = resolveFXVector3Config(value);
-    assertValidNumber(this.maxInternal.x, "FXSpawnBox.max.x");
-    assertValidNumber(this.maxInternal.y, "FXSpawnBox.max.y");
-    assertValidNumber(this.maxInternal.z, "FXSpawnBox.max.z");
+  /** Size of the spawn box */
+  public set size(value: FXVector3Config) {
+    this.sizeInternal = resolveFXVector3Config(value);
+    assertValidNumber(this.sizeInternal.x, "FXSpawnBox.size.x");
+    assertValidNumber(this.sizeInternal.y, "FXSpawnBox.size.y");
+    assertValidNumber(this.sizeInternal.z, "FXSpawnBox.size.z");
   }
 
   /** @internal */
@@ -75,14 +51,16 @@ export class FXSpawnBox extends FXSpawn<{ builtin: "Matrix4" }> {
   ): void {
     const { builtin } = properties;
     const { array, itemSize } = builtin;
-    const { x: minX, y: minY, z: minZ } = this.minInternal;
-    const { x: maxX, y: maxY, z: maxZ } = this.maxInternal;
+    const { x: sizeX, y: sizeY, z: sizeZ } = this.sizeInternal;
+    const halfX = sizeX * 0.5;
+    const halfY = sizeY * 0.5;
+    const halfZ = sizeZ * 0.5;
 
     for (let i = instanceBegin; i < instanceEnd; i++) {
       const itemOffset = i * itemSize;
-      array[itemOffset + BUILTIN_OFFSET_POSITION_X] = MathUtils.randFloat(minX, maxX);
-      array[itemOffset + BUILTIN_OFFSET_POSITION_Y] = MathUtils.randFloat(minY, maxY);
-      array[itemOffset + BUILTIN_OFFSET_POSITION_Z] = MathUtils.randFloat(minZ, maxZ);
+      array[itemOffset + BUILTIN_OFFSET_POSITION_X] = MathUtils.randFloat(-halfX, halfX);
+      array[itemOffset + BUILTIN_OFFSET_POSITION_Y] = MathUtils.randFloat(-halfY, halfY);
+      array[itemOffset + BUILTIN_OFFSET_POSITION_Z] = MathUtils.randFloat(-halfZ, halfZ);
     }
 
     builtin.needsUpdate = true;

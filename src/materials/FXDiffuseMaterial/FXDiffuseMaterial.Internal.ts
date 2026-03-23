@@ -2,9 +2,9 @@ import type { Blending } from "three";
 import { Color, DoubleSide, MeshLambertMaterial } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
 import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
-import type { FXColorNode } from "../../nodes/color/FXColorNode";
-import type { FXNormalNode } from "../../nodes/normal/FXNormalNode";
-import { FXTextureNode } from "../../nodes/texture/FXTextureNode";
+import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
+import type { FXNodeNormal } from "../../nodes/normal/FXNodeNormal";
+import { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
 
 export interface FXScatterUniforms {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -64,9 +64,9 @@ export function buildFXDiffuseMaterial(
   useAlphaHashing: boolean,
   alphaTest: number,
   premultipliedAlpha: boolean,
-  albedoNodes: readonly (FXColorNode | FXTextureNode)[],
-  normalNodes: readonly (FXTextureNode | FXNormalNode)[],
-  emissionNodes: readonly (FXColorNode | FXTextureNode)[],
+  albedoNodes: readonly (FXNodeColor | FXNodeTexture)[],
+  normalNodes: readonly (FXNodeTexture | FXNodeNormal)[],
+  emissionNodes: readonly (FXNodeColor | FXNodeTexture)[],
   scatterUniforms?: FXScatterUniforms,
   shadowSensitivity?: { value: number },
 ): MeshLambertMaterial {
@@ -177,7 +177,7 @@ export function buildFXDiffuseMaterial(
 
     const seenCacheKeys = new Set<string>();
     const uniqueHelpers = (
-      nodes: readonly (FXColorNode | FXTextureNode | FXNormalNode)[],
+      nodes: readonly (FXNodeColor | FXNodeTexture | FXNodeNormal)[],
     ): string =>
       nodes
         .filter((n) => {
@@ -251,7 +251,7 @@ export function buildFXDiffuseMaterial(
 
     if (useNormals) {
       const normalExpressions = normalNodes.map((node) => {
-        if (node instanceof FXTextureNode) {
+        if (node instanceof FXNodeTexture) {
           return `normalize(${node.colorExpression}.rgb * 2.0 - 1.0)`;
         }
         return node.normalExpression;

@@ -6,11 +6,9 @@ import { BUILTIN_OFFSET_TORQUE, resolveFXRangeConfig } from "../../miscellaneous
 import { FXSpawn } from "./FXSpawn";
 
 /**
- * Assigns random angular velocity to particles.
- *
- * Torque (rotation speed) is chosen uniformly from the specified range.
+ * Assigns a random initial angular velocity to each spawned particle
  */
-export class FXSpawnRandomTorque extends FXSpawn<{
+export class FXSpawnTorque extends FXSpawn<{
   builtin: "Matrix4";
 }> {
   /** @internal */
@@ -18,13 +16,13 @@ export class FXSpawnRandomTorque extends FXSpawn<{
   private torqueInternal: FXRange;
 
   /**
-   * @param torque - Angular velocity range in radians/second. Accepts number, tuple, or range object
+   * @param torque - Angular velocity range in radians/second. Defaults to `{ min: -Math.PI, max: Math.PI }`
    */
   constructor(torque: FXRangeConfig = { min: -Math.PI, max: Math.PI }) {
     super();
     this.torqueInternal = resolveFXRangeConfig(torque);
-    assertValidNumber(this.torqueInternal.min, "FXSpawnRandomTorque.constructor.torque.min");
-    assertValidNumber(this.torqueInternal.max, "FXSpawnRandomTorque.constructor.torque.max");
+    assertValidNumber(this.torqueInternal.min, "FXSpawnTorque.constructor.torque.min");
+    assertValidNumber(this.torqueInternal.max, "FXSpawnTorque.constructor.torque.max");
   }
 
   /** Angular velocity range in radians/second */
@@ -35,8 +33,8 @@ export class FXSpawnRandomTorque extends FXSpawn<{
   /** Angular velocity range in radians/second */
   public set torque(value: FXRangeConfig) {
     this.torqueInternal = resolveFXRangeConfig(value);
-    assertValidNumber(this.torqueInternal.min, "FXSpawnRandomTorque.torque.min");
-    assertValidNumber(this.torqueInternal.max, "FXSpawnRandomTorque.torque.max");
+    assertValidNumber(this.torqueInternal.min, "FXSpawnTorque.torque.min");
+    assertValidNumber(this.torqueInternal.max, "FXSpawnTorque.torque.max");
   }
 
   /** @internal */

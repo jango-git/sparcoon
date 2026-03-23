@@ -1,4 +1,7 @@
-export abstract class FXNormalNode {
+/**
+ * Abstract base class for particle normal nodes
+ */
+export abstract class FXNodeNormal {
   /** @internal */
   public abstract readonly cacheKey: string;
   /** @internal */
@@ -10,5 +13,6 @@ export abstract class FXNormalNode {
   /** @internal */
   public abstract readonly normalExpression: string;
 
+  /** Releases any GPU resources held by this node */
   public destroy?(): void;
 }

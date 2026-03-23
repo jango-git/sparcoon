@@ -1,30 +1,47 @@
-export { FXBehaviorDirectionalGravity } from "./emitter/behavior/FXBehaviorDirectionalGravity";
-export { FXBehaviorPointGravity } from "./emitter/behavior/FXBehaviorPointGravity";
+export { FXBehaviorDirectionalForce } from "./emitter/behavior/FXBehaviorDirectionalForce";
+export { FXBehaviorPointForce } from "./emitter/behavior/FXBehaviorPointForce";
 export { FXBehaviorScaleOverLife } from "./emitter/behavior/FXBehaviorScaleOverLife";
 export { FXBehaviorTorqueDamping } from "./emitter/behavior/FXBehaviorTorqueDamping";
 export { FXBehaviorTorqueNoise } from "./emitter/behavior/FXBehaviorTorqueNoise";
+export { FXBehaviorTorqueOverLife } from "./emitter/behavior/FXBehaviorTorqueOverLife";
 export { FXBehaviorVelocityDamping } from "./emitter/behavior/FXBehaviorVelocityDamping";
 export { FXBehaviorVelocityNoise } from "./emitter/behavior/FXBehaviorVelocityNoise";
+export { FXBehaviorVelocityOverLife } from "./emitter/behavior/FXBehaviorVelocityOverLife";
 export { FXEmitter } from "./emitter/FXEmitter";
 export { FXSpawnBox } from "./emitter/spawn/FXSpawnBox";
+export { FXSpawnLifetime } from "./emitter/spawn/FXSpawnLifetime";
 export { FXSpawnOffset } from "./emitter/spawn/FXSpawnOffset";
 export { FXSpawnPoint } from "./emitter/spawn/FXSpawnPoint";
-export { FXSpawnRandomLifetime } from "./emitter/spawn/FXSpawnRandomLifetime";
-export { FXSpawnRandomRotation } from "./emitter/spawn/FXSpawnRandomRotation";
-export { FXSpawnRandomScale } from "./emitter/spawn/FXSpawnRandomScale";
-export { FXSpawnRandomTorque } from "./emitter/spawn/FXSpawnRandomTorque";
-export { FXSpawnRandomVelocity } from "./emitter/spawn/FXSpawnRandomVelocity";
+export { FXSpawnRotation } from "./emitter/spawn/FXSpawnRotation";
+export { FXSpawnScale } from "./emitter/spawn/FXSpawnScale";
 export { FXSpawnSphere } from "./emitter/spawn/FXSpawnSphere";
+export { FXSpawnTorque } from "./emitter/spawn/FXSpawnTorque";
+export { FXSpawnVelocity } from "./emitter/spawn/FXSpawnVelocity";
 export { FXDiffuseMaterial } from "./materials/FXDiffuseMaterial/FXDiffuseMaterial";
 export { FXMaterial } from "./materials/FXMaterial/FXMaterial";
 export { FXUnlitMaterial } from "./materials/FXUnlitMaterial/FXUnlitMaterial";
 export { FXColor } from "./miscellaneous/color/FXColor";
-export { FXColorNode } from "./nodes/color/FXColorNode";
-export { FXColorOverLifeNode } from "./nodes/color/FXColorOverLifeNode";
-export { FXSphericalClipNode } from "./nodes/color/FXSphericalClipNode";
-export { FXFlatNormalNode } from "./nodes/normal/FXFlatNormalNode";
-export { FXNormalNode } from "./nodes/normal/FXNormalNode";
-export { FXSphericalNormalNode } from "./nodes/normal/FXSphericalNormalNode";
-export { FXAnimatedTextureNode } from "./nodes/texture/FXAnimatedTextureNode";
-export { FXStaticTextureNode } from "./nodes/texture/FXStaticTextureNode";
-export { FXTextureNode } from "./nodes/texture/FXTextureNode";
+export { FXCurve1D } from "./miscellaneous/curve/FXCurve1D";
+export type {
+  FXCurve1DAnchor,
+  FXCurve1DConfig,
+  FXCurve1DPoint,
+} from "./miscellaneous/curve/FXCurve1D";
+export { FXTextureView } from "./miscellaneous/texture/FXTextureView";
+export type {
+  FXTextureAtlasConfig,
+  FXTextureConfig,
+  FXTextureRect,
+  FXTextureSize,
+  FXTextureTrim,
+} from "./miscellaneous/texture/FXTextureView.Internal";
+export { FXNodeColor } from "./nodes/color/FXNodeColor";
+export { FXNodeColorOverLife } from "./nodes/color/FXNodeColorOverLife";
+export { FXNodeSphericalClip } from "./nodes/color/FXNodeSphericalClip";
+export { FXNodeFlatNormal } from "./nodes/normal/FXNodeFlatNormal";
+export { FXNodeNormal } from "./nodes/normal/FXNodeNormal";
+export { FXNodeSphericalNormal } from "./nodes/normal/FXNodeSphericalNormal";
+export { FXNodeAnimatedTexture } from "./nodes/texture/FXNodeAnimatedTexture";
+export type { FXNodeAnimatedTextureOptions } from "./nodes/texture/FXNodeAnimatedTexture";
+export { FXNodeStaticTexture } from "./nodes/texture/FXNodeStaticTexture";
+export { FXNodeTexture } from "./nodes/texture/FXNodeTexture";

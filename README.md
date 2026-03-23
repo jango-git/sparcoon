@@ -15,7 +15,7 @@ Interactive visual **[EDITOR](https://jango-git.github.io/sparcoon/)**
 
 - **FXEmitter** extends `Object3D`. Manages emission, lifetime, pooling, rendering. One draw call per emitter. Optional back-to-front sorting.
 - **Spawn modules** set initial particle state: position (box/sphere/point), velocity (cone), rotation, scale, lifetime. Numeric params accept ranges.
-- **Behavior modules** update particles per frame: directional/point gravity, velocity/torque damping, simplex noise, scale-over-life.
+- **Behavior modules** update particles per frame: directional/point force, velocity/torque damping, simplex noise, scale-over-life, velocity/torque over lifetime.
 - **Materials**: `FXUnlitMaterial` (MeshBasicMaterial), `FXDiffuseMaterial` (MeshLambertMaterial + optional subsurface scatter). Shadow support.
 - **Nodes** are composable material inputs: color-over-life, static/animated textures, normals (flat/spherical/map).
 
@@ -30,9 +30,9 @@ const LIFETIME = 6;
 const smoke = new FXEmitter(
   [
     new FXSpawnBox(areaMin, areaMax),
-    new FXSpawnRandomLifetime({ min: LIFETIME * 0.5, max: LIFETIME }),
-    new FXSpawnRandomScale({ min: 8, max: 16 }),
-    new FXSpawnRandomRotation(),
+    new FXSpawnLifetime({ min: LIFETIME * 0.5, max: LIFETIME }),
+    new FXSpawnScale({ min: 8, max: 16 }),
+    new FXSpawnRotation(),
   ],
   [],
   new FXDiffuseMaterial({
@@ -43,13 +43,13 @@ const smoke = new FXEmitter(
     shadowSensitivity: 0.25,
     premultipliedAlpha: true,
     albedoNodes: [
-      new FXAnimatedTextureNode({
+      new FXNodeAnimatedTexture({
         texture: smokeAtlas,
         rows: 8,
         columns: 8,
         interpolate: true,
       }),
-      new FXColorOverLifeNode([
+      new FXNodeColorOverLife([
         new FXColor(0xffffff, 0),
         new FXColor(0xffffff, 0.4),
         new FXColor(0xffffff, 0.4),

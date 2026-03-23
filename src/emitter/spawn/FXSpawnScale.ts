@@ -11,27 +11,25 @@ import {
 import { FXSpawn } from "./FXSpawn";
 
 /**
- * Assigns random scale to particles.
- *
- * Base scale is chosen uniformly from the range. Aspect ratio is applied to X scale.
+ * Assigns a random initial scale to each spawned particle
  */
-export class FXSpawnRandomScale extends FXSpawn<{ builtin: "Matrix4" }> {
+export class FXSpawnScale extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public requiredProperties = { builtin: "Matrix4" } as const;
   private scaleInternal: FXRange;
   private aspectInternal: number;
 
   /**
-   * @param scale - Base scale range. Accepts number, tuple, or range object
-   * @param aspect - Width/height ratio. Accepts number or texture
+   * @param scale - Base scale range; must be positive. Defaults to `{ min: 1, max: 2 }`
+   * @param aspect - Width/height ratio; must be positive. Defaults to `1`
    */
-  constructor(scale: FXRangeConfig = { min: 50, max: 100 }, aspect: FXAspectConfig = 1) {
+  constructor(scale: FXRangeConfig = { min: 1, max: 2 }, aspect: FXAspectConfig = 1) {
     super();
     this.scaleInternal = resolveFXRangeConfig(scale);
     this.aspectInternal = resolveAspect(aspect);
-    assertValidPositiveNumber(this.scaleInternal.min, "FXSpawnRandomScale.constructor.scale.min");
-    assertValidPositiveNumber(this.scaleInternal.max, "FXSpawnRandomScale.constructor.scale.max");
-    assertValidPositiveNumber(this.aspectInternal, "FXSpawnRandomScale.constructor.aspect");
+    assertValidPositiveNumber(this.scaleInternal.min, "FXSpawnScale.constructor.scale.min");
+    assertValidPositiveNumber(this.scaleInternal.max, "FXSpawnScale.constructor.scale.max");
+    assertValidPositiveNumber(this.aspectInternal, "FXSpawnScale.constructor.aspect");
   }
 
   /** Base scale range */
@@ -47,14 +45,14 @@ export class FXSpawnRandomScale extends FXSpawn<{ builtin: "Matrix4" }> {
   /** Base scale range */
   public set scale(value: FXRangeConfig) {
     this.scaleInternal = resolveFXRangeConfig(value);
-    assertValidPositiveNumber(this.scaleInternal.min, "FXSpawnRandomScale.scale.min");
-    assertValidPositiveNumber(this.scaleInternal.max, "FXSpawnRandomScale.scale.max");
+    assertValidPositiveNumber(this.scaleInternal.min, "FXSpawnScale.scale.min");
+    assertValidPositiveNumber(this.scaleInternal.max, "FXSpawnScale.scale.max");
   }
 
   /** Width/height aspect ratio */
   public set aspect(value: FXAspectConfig) {
     this.aspectInternal = resolveAspect(value);
-    assertValidPositiveNumber(this.aspectInternal, "FXSpawnRandomScale.aspect");
+    assertValidPositiveNumber(this.aspectInternal, "FXSpawnScale.aspect");
   }
 
   /** @internal */

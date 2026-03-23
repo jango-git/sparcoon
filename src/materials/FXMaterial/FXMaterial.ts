@@ -1,25 +1,78 @@
 import type { Blending, Material, MeshDepthMaterial, MeshDistanceMaterial } from "three";
 import { NormalBlending } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
-import type { FXColorNode } from "../../nodes/color/FXColorNode";
-import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
+import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
+import type { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
 import { buildDepthMaterial } from "./FXDepthMaterial.Internal";
 import { buildDistanceMaterial } from "./FXDistanceMaterial.Internal";
 
+/**
+ * Configuration options shared by all {@link FXMaterial} subclasses
+ */
 export interface FXMaterialOptions {
-  albedoNodes: (FXColorNode | FXTextureNode)[];
+  /**
+   * Color and texture nodes composited for particle color
+   *
+   * @defaultValue `[]`
+   */
+  albedoNodes: (FXNodeColor | FXNodeTexture)[];
+
+  /**
+   * Three.js blending mode
+   *
+   * @defaultValue `NormalBlending`
+   */
   blending: Blending;
+
+  /**
+   * Use alpha hashing instead of standard transparency
+   *
+   * @defaultValue `false`
+   */
   useAlphaHashing: boolean;
+
+  /**
+   * Alpha cutoff threshold for color passes
+   *
+   * @defaultValue `0.0075`
+   */
   alphaTest: number;
+
+  /**
+   * Alpha cutoff threshold for depth and shadow passes
+   *
+   * @defaultValue `0.5`
+   */
   depthAlphaTest: number;
+
+  /**
+   * Use alpha hashing in depth and shadow passes
+   *
+   * @defaultValue `false`
+   */
   useDepthAlphaHash: boolean;
+
+  /**
+   * Approximate spherical depth for shadow maps
+   *
+   * @defaultValue `true`
+   */
   useSphericalDepth: boolean;
+
+  /**
+   * Use premultiplied alpha blending
+   *
+   * @defaultValue `true`
+   */
   premultipliedAlpha: boolean;
 }
 
+/**
+ * Abstract base class for particle materials
+ */
 export abstract class FXMaterial {
   /** @internal */
-  public readonly albedoNodes: readonly (FXColorNode | FXTextureNode)[];
+  public readonly albedoNodes: readonly (FXNodeColor | FXNodeTexture)[];
   /** @internal */
   public readonly blending: Blending;
   /** @internal */
@@ -46,6 +99,7 @@ export abstract class FXMaterial {
     this.useSphericalDepth = options.useSphericalDepth ?? true;
   }
 
+  /** Releases resources held by all albedo nodes */
   public destroy(): void {
     for (const node of this.albedoNodes) {
       node.destroy?.();
@@ -62,6 +116,7 @@ export abstract class FXMaterial {
     );
   }
 
+  /** @internal */
   public buildDistanceMaterial(): MeshDistanceMaterial {
     return buildDistanceMaterial(
       this.albedoNodes,

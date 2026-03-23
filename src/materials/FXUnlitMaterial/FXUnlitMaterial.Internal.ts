@@ -2,8 +2,8 @@ import type { Blending } from "three";
 import { DoubleSide, MeshBasicMaterial } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
 import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
-import type { FXColorNode } from "../../nodes/color/FXColorNode";
-import type { FXTextureNode } from "../../nodes/texture/FXTextureNode";
+import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
+import type { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
 
 export function buildFXUnlitMaterial(
   varyings: Record<string, GLTypeInfo>,
@@ -11,7 +11,7 @@ export function buildFXUnlitMaterial(
   useAlphaHashing: boolean,
   alphaTest: number,
   premultipliedAlpha: boolean,
-  albedoNodes: readonly (FXColorNode | FXTextureNode)[],
+  albedoNodes: readonly (FXNodeColor | FXNodeTexture)[],
 ): MeshBasicMaterial {
   const attributeDeclarations: string[] = [];
   const varyingDeclarations: string[] = [];
@@ -84,7 +84,7 @@ export function buildFXUnlitMaterial(
         );
 
     const seenCacheKeys = new Set<string>();
-    const uniqueHelpers = (nodes: readonly (FXColorNode | FXTextureNode)[]): string =>
+    const uniqueHelpers = (nodes: readonly (FXNodeColor | FXNodeTexture)[]): string =>
       nodes
         .filter((n) => {
           if (seenCacheKeys.has(n.cacheKey)) {

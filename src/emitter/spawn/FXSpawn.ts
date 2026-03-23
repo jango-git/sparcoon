@@ -2,9 +2,10 @@ import type { InstancedBufferAttribute } from "three";
 import type { FXPropertyName } from "../../instancedParticle/shared";
 
 /**
- * Base class for particle spawn modules.
+ * Abstract base for particle spawn modules that initialize per-particle properties at birth
  *
- * Spawn modules initialize particle properties when particles are created.
+ * @typeParam T - Map of local property keys to {@link FXPropertyName} identifiers,
+ * declaring which particle attributes this spawn module writes
  */
 export abstract class FXSpawn<
   T extends Record<string, FXPropertyName> = Record<string, FXPropertyName>,
@@ -18,5 +19,6 @@ export abstract class FXSpawn<
     instanceEnd: number,
   ): void;
 
+  /** Releases any resources held by this spawn module */
   public destroy?(): void;
 }

@@ -10,11 +10,20 @@ import {
 } from "../../miscellaneous/miscellaneous";
 import { FXSpawn } from "./FXSpawn";
 
+/**
+ * Shifts particle spawn positions by a fixed offset
+ *
+ * @remarks
+ * Adds to the position set by any preceding spawn step rather than overwriting it.
+ */
 export class FXSpawnOffset extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
   private offsetInternal: Vector3Like;
 
+  /**
+   * @param offset - Position offset applied to each spawned particle. Defaults to `{ x: 0, y: 0, z: 0 }`
+   */
   constructor(offset: FXVector3Config = { x: 0, y: 0, z: 0 }) {
     super();
     this.offsetInternal = resolveFXVector3Config(offset);

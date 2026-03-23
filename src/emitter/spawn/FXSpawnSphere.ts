@@ -9,12 +9,13 @@ import {
 import { FXSpawn } from "./FXSpawn";
 
 /**
- * Spawns particles at random positions within a spherical shell.
+ * Spawns particles at random positions within a spherical shell
  *
+ * @remarks
  * The `angle` parameter controls the polar spread from the equatorial plane:
  * - `0` - flat disk (XZ plane only)
  * - `Math.PI / 2` - full sphere
- * - Values in between produce a spherical band/zone
+ * - Values in between produce a spherical band
  */
 export class FXSpawnSphere extends FXSpawn<{ builtin: "Matrix4" }> {
   /** @internal */
@@ -24,9 +25,9 @@ export class FXSpawnSphere extends FXSpawn<{ builtin: "Matrix4" }> {
   private angleInternal: number;
 
   /**
-   * @param innerRadius - Minimum spawn radius (0 = spawn from center)
-   * @param outerRadius - Maximum spawn radius
-   * @param angle - Polar half-angle from equatorial plane: 0 = disk, Math.PI/2 = full sphere
+   * @param innerRadius - Minimum spawn radius; must be non-negative. Defaults to `0`
+   * @param outerRadius - Maximum spawn radius; must be non-negative. Defaults to `1`
+   * @param angle - Polar half-angle from equatorial plane in radians. Defaults to `Math.PI / 2`
    */
   constructor(innerRadius = 0, outerRadius = 1, angle: number = Math.PI / 2) {
     super();
@@ -69,7 +70,11 @@ export class FXSpawnSphere extends FXSpawn<{ builtin: "Matrix4" }> {
     this.outerRadiusInternal = value;
   }
 
-  /** @see {@link angle} */
+  /**
+   * Polar half-angle from the equatorial plane.
+   * - `0` - flat disk
+   * - `Math.PI / 2` - full sphere
+   */
   public set angle(value: number) {
     assertValidNumber(value, "FXSpawnSphere.angle");
     this.angleInternal = value;
