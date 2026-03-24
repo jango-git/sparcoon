@@ -42,6 +42,7 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) => new FX.FXSpawnOffset(params.offset),
+    update: (instance, params) => { instance.offset = params.offset; },
   },
 
   FXSpawnPoint: {
@@ -56,6 +57,7 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) => new FX.FXSpawnPoint(params.position),
+    update: (instance, params) => { instance.position = params.position; },
   },
 
   FXSpawnBox: {
@@ -77,6 +79,13 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) => new FX.FXSpawnBox(params.min, params.max),
+    update: (instance, params) => {
+      instance.size = {
+        x: params.max.x - params.min.x,
+        y: params.max.y - params.min.y,
+        z: params.max.z - params.min.z,
+      };
+    },
   },
 
   FXSpawnSphere: {
@@ -109,6 +118,11 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) => new FX.FXSpawnSphere(params.innerRadius, params.outerRadius, params.angle),
+    update: (instance, params) => {
+      instance.innerRadius = params.innerRadius;
+      instance.outerRadius = params.outerRadius;
+      instance.angle = params.angle;
+    },
   },
 
   FXSpawnLifetime: {
@@ -123,6 +137,7 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) => new FX.FXSpawnLifetime(params.lifetime),
+    update: (instance, params) => { instance.lifetime = params.lifetime; },
   },
 
   FXSpawnRotation: {
@@ -143,6 +158,9 @@ export const SPAWN_MODULES = {
         min: -params.rotation,
         max: params.rotation,
       }),
+    update: (instance, params) => {
+      instance.rotation = { min: -params.rotation, max: params.rotation };
+    },
   },
 
   FXSpawnScale: {
@@ -166,6 +184,10 @@ export const SPAWN_MODULES = {
       },
     ],
     build: (params) => new FX.FXSpawnScale(params.scale, params.aspect),
+    update: (instance, params) => {
+      instance.scale = params.scale;
+      instance.aspect = params.aspect;
+    },
   },
 
   FXSpawnTorque: {
@@ -195,6 +217,12 @@ export const SPAWN_MODULES = {
         min: (params.base ?? 0) - (params.spread ?? Math.PI / 2),
         max: (params.base ?? 0) + (params.spread ?? Math.PI / 2),
       }),
+    update: (instance, params) => {
+      instance.torque = {
+        min: (params.base ?? 0) - (params.spread ?? Math.PI / 2),
+        max: (params.base ?? 0) + (params.spread ?? Math.PI / 2),
+      };
+    },
   },
 
   FXSpawnVelocity: {
@@ -245,6 +273,15 @@ export const SPAWN_MODULES = {
         params.magnitude,
       );
     },
+    update: (instance, params) => {
+      const angleMid = params.angleMid ?? 0.25;
+      const angleSpread = params.angleSpread ?? 0.25;
+      instance.direction = new THREE.Vector3(
+        params.direction.x, params.direction.y, params.direction.z,
+      );
+      instance.angle = { min: Math.max(0, angleMid - angleSpread), max: angleMid + angleSpread };
+      instance.magnitude = params.magnitude;
+    },
   },
 };
 
@@ -271,6 +308,10 @@ export const BEHAVIOR_MODULES = {
       },
     ],
     build: (params) => new FX.FXBehaviorDirectionalForce(params.direction, params.magnitude),
+    update: (instance, params) => {
+      instance.direction = params.direction;
+      instance.magnitude = params.magnitude;
+    },
   },
 
   FXBehaviorPointForce: {
@@ -312,6 +353,12 @@ export const BEHAVIOR_MODULES = {
         params.exponent,
         params.threshold,
       ),
+    update: (instance, params) => {
+      instance.center = params.center;
+      instance.strength = params.strength;
+      instance.exponent = params.exponent;
+      instance.threshold = params.threshold;
+    },
   },
 
   FXBehaviorScaleOverLife: {
@@ -387,6 +434,7 @@ export const BEHAVIOR_MODULES = {
       },
     ],
     build: (params) => new FX.FXBehaviorTorqueDamping(params.damping),
+    update: (instance, params) => { instance.damping = params.damping; },
   },
 
   FXBehaviorTorqueNoise: {
@@ -410,6 +458,10 @@ export const BEHAVIOR_MODULES = {
       },
     ],
     build: (params) => new FX.FXBehaviorTorqueNoise(params.scale, params.strength),
+    update: (instance, params) => {
+      instance.scale = params.scale;
+      instance.strength = params.strength;
+    },
   },
 
   FXBehaviorVelocityDamping: {
@@ -424,6 +476,7 @@ export const BEHAVIOR_MODULES = {
       },
     ],
     build: (params) => new FX.FXBehaviorVelocityDamping(params.damping),
+    update: (instance, params) => { instance.damping = params.damping; },
   },
 
   FXBehaviorVelocityNoise: {
@@ -447,6 +500,10 @@ export const BEHAVIOR_MODULES = {
       },
     ],
     build: (params) => new FX.FXBehaviorVelocityNoise(params.scale, params.strength),
+    update: (instance, params) => {
+      instance.scale = params.scale;
+      instance.strength = params.strength;
+    },
   },
 };
 
@@ -473,6 +530,12 @@ export const COLOR_NODES = {
           return new FX.FXColor(parseInt(normalized.hex.replace("#", ""), 16), normalized.alpha);
         }),
       ),
+    update: (instance, params) => {
+      instance.curve = params.colors.map((colorValue) => {
+        const normalized = normalizeColor(colorValue);
+        return new FX.FXColor(parseInt(normalized.hex.replace("#", ""), 16), normalized.alpha);
+      });
+    },
   },
   FXNodeSphericalClip: {
     label: "Spherical Clip",
@@ -488,6 +551,7 @@ export const COLOR_NODES = {
       },
     ],
     build: (params) => new FX.FXNodeSphericalClip(params.innerRadius || undefined),
+    update: (instance, params) => { instance.innerRadius = params.innerRadius || 0; },
   },
 };
 
@@ -500,6 +564,9 @@ export const TEXTURE_NODES = {
     build: (params, assets) => {
       if (!params.asset || !assets[params.asset]) return null;
       return new FX.FXNodeStaticTexture(assets[params.asset]);
+    },
+    update: (instance, params, assets) => {
+      if (params.asset && assets[params.asset]) instance.textureView = assets[params.asset];
     },
   },
 
@@ -538,6 +605,12 @@ export const TEXTURE_NODES = {
         rows: params.rows,
         interpolate: params.interpolate,
       });
+    },
+    update: (instance, params, assets) => {
+      if (params.asset && assets[params.asset]) instance.textureView = assets[params.asset];
+      instance.rows = params.rows;
+      instance.columns = params.columns;
+      // interpolate is not a live setter; changing it requires a full rebuild
     },
   },
 };
@@ -704,33 +777,35 @@ export const EMITTER_OPTIONS_PARAMS = [
 
 // Build helpers - construct live sparcoon objects from state
 
-function buildNode(nodeState, registry, assets) {
+function buildNode(nodeState, registry, assets, instanceMap) {
   const descriptor = registry[nodeState.type];
   if (!descriptor) return null;
   try {
-    return descriptor.build(nodeState.params, assets);
+    const instance = descriptor.build(nodeState.params, assets);
+    if (instance && instanceMap) instanceMap.set(nodeState.id, instance);
+    return instance;
   } catch (error) {
     console.warn(`[registry] Failed to build node "${nodeState.type}":`, error);
     return null;
   }
 }
 
-export function buildMaterial(materialState, assets = {}) {
+export function buildMaterial(materialState, assets = {}, instanceMap = null) {
   const materialParams = { ...materialState.params };
 
   const albedoNodes = (materialState.albedoNodes || [])
-    .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.albedoNodes, assets))
+    .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.albedoNodes, assets, instanceMap))
     .filter(Boolean);
 
   const options = { ...materialParams, albedoNodes };
 
   if (materialState.type === "FXDiffuseMaterial") {
     const normalNodes = (materialState.normalNodes || [])
-      .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.normalNodes, assets))
+      .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.normalNodes, assets, instanceMap))
       .filter(Boolean);
 
     const emissionNodes = (materialState.emissionNodes || [])
-      .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.emissionNodes, assets))
+      .map((nodeState) => buildNode(nodeState, NODE_REGISTRIES.emissionNodes, assets, instanceMap))
       .filter(Boolean);
 
     // Convert CSS hex string to numeric color for Three.js
@@ -744,13 +819,15 @@ export function buildMaterial(materialState, assets = {}) {
   return new FX.FXUnlitMaterial(options);
 }
 
-export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
+export function buildEmitter(emitterState, assets = {}, sceneCamera = null, instanceMap = null) {
   const spawnModules = emitterState.spawnModules
     .map((moduleState) => {
       const descriptor = SPAWN_MODULES[moduleState.type];
       if (!descriptor) return null;
       try {
-        return descriptor.build(moduleState.params);
+        const instance = descriptor.build(moduleState.params);
+        if (instance && instanceMap) instanceMap.set(moduleState.id, instance);
+        return instance;
       } catch (error) {
         console.warn(`[registry] Failed to build spawn "${moduleState.type}":`, error);
         return null;
@@ -763,7 +840,9 @@ export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
       const descriptor = BEHAVIOR_MODULES[moduleState.type];
       if (!descriptor) return null;
       try {
-        return descriptor.build(moduleState.params);
+        const instance = descriptor.build(moduleState.params);
+        if (instance && instanceMap) instanceMap.set(moduleState.id, instance);
+        return instance;
       } catch (error) {
         console.warn(`[registry] Failed to build behavior "${moduleState.type}":`, error);
         return null;
@@ -771,7 +850,7 @@ export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
     })
     .filter(Boolean);
 
-  const material = buildMaterial(emitterState.material, assets);
+  const material = buildMaterial(emitterState.material, assets, instanceMap);
 
   // Strip UI-only fields; inject sortCamera if requested
   const { useSortCamera, ...emitterOptions } = emitterState.options ?? {};
@@ -784,4 +863,29 @@ export function buildEmitter(emitterState, assets = {}, sceneCamera = null) {
   emitter.receiveShadow = !!emitterOptions.receiveShadow;
 
   return emitter;
+}
+
+// Live parameter update — applies params to an existing instance without rebuild.
+// Returns true if the update was applied, false if a full rebuild is needed.
+
+const ALL_DESCRIPTORS = {
+  ...SPAWN_MODULES,
+  ...BEHAVIOR_MODULES,
+  ...COLOR_NODES,
+  ...TEXTURE_NODES,
+  ...NORMAL_NODES,
+};
+
+export function liveUpdate(instanceMap, moduleId, type, params, assets = {}) {
+  const instance = instanceMap.get(moduleId);
+  if (!instance) return false;
+  const descriptor = ALL_DESCRIPTORS[type];
+  if (!descriptor?.update) return false;
+  try {
+    descriptor.update(instance, params, assets);
+    return true;
+  } catch (e) {
+    console.warn(`[registry] Live update failed for "${type}":`, e);
+    return false;
+  }
 }

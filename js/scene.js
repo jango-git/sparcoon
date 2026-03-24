@@ -9,13 +9,14 @@
 import * as THREE from "https://esm.sh/three@0.157";
 import { OrbitControls } from "https://esm.sh/three@0.157/examples/jsm/controls/OrbitControls.js";
 import { FXEmitter } from "https://esm.sh/sparcoon@0.6.1?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
-import { buildEmitter } from "./registry.js";
+import { buildEmitter, liveUpdate } from "./registry.js";
 
 let renderer, scene, camera, controls, clock;
 let directionalLight, hemisphereLight, humanReference, groundPlane, groundGrid;
 let customBackgroundColor = new THREE.Color(0x9abfd4);
 
 const emitterMap = new Map(); // emitter state id → FXEmitter instance
+const instanceMap = new Map(); // module/node state id → live module/node instance
 
 let timelinePaused = false;
 
@@ -233,15 +234,20 @@ export function syncEmitters(emittersState, assets = {}) {
     }
   }
   emitterMap.clear();
+  instanceMap.clear();
 
   // Phase 2: build all emitters from current state
   for (const emitterState of emittersState) {
     try {
-      const emitter = buildEmitter(emitterState, assets, camera);
+      const emitter = buildEmitter(emitterState, assets, camera, instanceMap);
       scene.add(emitter);
       emitterMap.set(emitterState.id, emitter);
     } catch (error) {
       console.error(`[scene] Failed to build emitter "${emitterState.id}":`, error);
     }
   }
+}
+
+export function tryLiveUpdate(moduleId, type, params, assets = {}) {
+  return liveUpdate(instanceMap, moduleId, type, params, assets);
 }

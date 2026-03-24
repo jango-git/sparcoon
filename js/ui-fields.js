@@ -418,7 +418,10 @@ function buildCurveField(descriptor, values, onParamChange) {
   if (!Array.isArray(values[key]) || values[key].length < 2) {
     values[key] = descriptor.default.map((p) => ({ ...p }));
   }
-  if (values[magKey] === undefined) values[magKey] = 1;
+  if (values[magKey] === undefined) {
+    const maxVal = Math.max(...values[key].map((p) => p.center + p.spread));
+    values[magKey] = maxVal > 0 ? Math.ceil(maxVal * 10) / 10 : 1;
+  }
 
   const points = values[key];
   const wrapper = makeElement("div", "curve-field");

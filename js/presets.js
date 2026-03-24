@@ -128,11 +128,20 @@ function behaviorGravity(x = 0, y = -9.8, z = 0) {
   };
 }
 
+function rangesToCurve(ranges) {
+  const n = ranges.length;
+  return ranges.map((r, i) => ({
+    position: n <= 1 ? 0 : i / (n - 1),
+    center: (r.min + r.max) / 2,
+    spread: (r.max - r.min) / 2,
+  }));
+}
+
 function behaviorScaleOverLife(scales) {
   return {
     id: generateId(),
     type: "FXBehaviorScaleOverLife",
-    params: { scales, aspect: 1 },
+    params: { curve: rangesToCurve(scales), aspect: 1 },
   };
 }
 
@@ -231,19 +240,21 @@ export const PRESETS = {
       {
         id: generateId(),
         name: "Fire",
-        timeline: [{ id: generateId(), type: "play", rate: 40, delay: 0 }],
+        timeline: [{ id: generateId(), type: "play", rate: 32, delay: 0 }],
         options: createBaseOptions(),
         spawnModules: [
-          spawnSphere(0.1, 0.15, 0),
+          spawnSphere(0, 0.05, 0),
           spawnOffset(0, 0.1, 0),
           spawnLifetime(0.75, 1),
-          spawnVelocity({ x: 0, y: 1, z: 0 }, 0.22, 0.05, 1, 1.5),
+          spawnVelocity({ x: 0, y: 1, z: 0 }, 0, 0.16, 0.5, 1.12),
         ],
         behaviorModules: [
           behaviorVelocityDamping(0.12),
           behaviorScaleOverLife([
-            { min: 0.15, max: 0.15 },
-            { min: 0.5, max: 0.5 },
+            { min: 0, max: 0 },
+            { min: 0.212, max: 0.212 },
+            { min: 0.275, max: 0.275 },
+            { min: 0.212, max: 0.212 },
             { min: 0.05, max: 0.05 },
             { min: 0, max: 0 },
           ]),
@@ -263,7 +274,7 @@ export const PRESETS = {
               colorStop("#cc2200", 0.55),
               colorStop("#330000", 0),
             ]),
-            sphericalClipNode(0.25),
+            sphericalClipNode(0.4),
           ],
           normalNodes: [],
           emissionNodes: [],

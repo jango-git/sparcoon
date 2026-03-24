@@ -7,6 +7,7 @@
 import {
   initScene,
   syncEmitters,
+  tryLiveUpdate,
   toggleSun,
   toggleHemisphere,
   toggleBackground,
@@ -52,8 +53,29 @@ function scheduleSyncEmitters() {
 
 // Callbacks: wire UI → scene
 
+function findModuleState(emitterId, moduleId) {
+  const emitter = state.emitters.find((e) => e.id === emitterId);
+  if (!emitter) return null;
+  for (const m of [...emitter.spawnModules, ...emitter.behaviorModules]) {
+    if (m.id === moduleId) return m;
+  }
+  const mat = emitter.material;
+  for (const n of [
+    ...(mat.albedoNodes || []),
+    ...(mat.normalNodes || []),
+    ...(mat.emissionNodes || []),
+  ]) {
+    if (n.id === moduleId) return n;
+  }
+  return null;
+}
+
 const callbacks = {
-  onParamChange() {
+  onParamChange(emitterId, moduleId) {
+    if (emitterId && moduleId) {
+      const mod = findModuleState(emitterId, moduleId);
+      if (mod && tryLiveUpdate(moduleId, mod.type, mod.params, state.assets)) return;
+    }
     scheduleSyncEmitters();
   },
 

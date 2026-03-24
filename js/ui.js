@@ -124,7 +124,9 @@ function buildEmitterCard(emitter) {
 
   body.appendChild(buildOptionsSection(emitter));
   body.appendChild(
-    buildStackSection("Spawn Modules", SPAWN_MODULES, emitter.spawnModules, "card-section--spawn"),
+    buildStackSection(
+      "Spawn Modules", SPAWN_MODULES, emitter.spawnModules, "card-section--spawn", emitter.id,
+    ),
   );
   body.appendChild(
     buildStackSection(
@@ -132,6 +134,7 @@ function buildEmitterCard(emitter) {
       BEHAVIOR_MODULES,
       emitter.behaviorModules,
       "card-section--behavior",
+      emitter.id,
     ),
   );
   body.appendChild(buildMaterialSection(emitter));
@@ -207,7 +210,7 @@ function buildOptionsSection(emitter) {
 
 // Stack section (spawn modules / behavior modules)
 
-function buildStackSection(title, registry, moduleList, sectionClass) {
+function buildStackSection(title, registry, moduleList, sectionClass, emitterId) {
   const section = makeElement(
     "div",
     sectionClass ? `card-section ${sectionClass}` : "card-section",
@@ -231,7 +234,7 @@ function buildStackSection(title, registry, moduleList, sectionClass) {
 
   const listContainer = makeElement("div", "sortable-list");
   for (const moduleState of moduleList) {
-    listContainer.appendChild(buildModuleCard(moduleState, registry, moduleList));
+    listContainer.appendChild(buildModuleCard(moduleState, registry, moduleList, emitterId));
   }
   section.appendChild(listContainer);
   makeSortable(listContainer, moduleList, onStructureChangeCallback, ".module-card-header");
@@ -239,7 +242,7 @@ function buildStackSection(title, registry, moduleList, sectionClass) {
   return section;
 }
 
-function buildModuleCard(moduleState, registry, moduleList) {
+function buildModuleCard(moduleState, registry, moduleList, emitterId) {
   const descriptor = registry[moduleState.type];
   const card = makeElement("div", "module-card");
 
@@ -261,7 +264,10 @@ function buildModuleCard(moduleState, registry, moduleList) {
   card.appendChild(header);
 
   if (descriptor && descriptor.params.length > 0) {
-    card.appendChild(buildParamsGrid(descriptor.params, moduleState.params, onParamChangeCallback));
+    const onChange = emitterId
+      ? () => onParamChangeCallback(emitterId, moduleState.id)
+      : onParamChangeCallback;
+    card.appendChild(buildParamsGrid(descriptor.params, moduleState.params, onChange));
   }
 
   return card;
@@ -357,7 +363,7 @@ function buildNodeStack(title, stackKey, emitter) {
 
   const nodeList = makeElement("div", "sortable-list");
   for (const node of nodes) {
-    nodeList.appendChild(buildNodeCard(node, nodeRegistry, nodes));
+    nodeList.appendChild(buildNodeCard(node, nodeRegistry, nodes, emitter.id));
   }
   section.appendChild(nodeList);
   makeSortable(nodeList, nodes, onStructureChangeCallback, ".module-card-header");
@@ -365,7 +371,7 @@ function buildNodeStack(title, stackKey, emitter) {
   return section;
 }
 
-function buildNodeCard(nodeState, nodeRegistry, nodeList) {
+function buildNodeCard(nodeState, nodeRegistry, nodeList, emitterId) {
   const descriptor = nodeRegistry[nodeState.type];
   const card = makeElement("div", "node-card");
 
@@ -387,7 +393,10 @@ function buildNodeCard(nodeState, nodeRegistry, nodeList) {
   card.appendChild(header);
 
   if (descriptor && descriptor.params.length > 0) {
-    card.appendChild(buildParamsGrid(descriptor.params, nodeState.params, onParamChangeCallback));
+    const onChange = emitterId
+      ? () => onParamChangeCallback(emitterId, nodeState.id)
+      : onParamChangeCallback;
+    card.appendChild(buildParamsGrid(descriptor.params, nodeState.params, onChange));
   }
 
   return card;
