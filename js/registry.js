@@ -14,7 +14,7 @@
  *   options  - array of { value, label } for "select" type
  */
 
-import * as FX from "https://esm.sh/sparcoon@0.6.1?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
+import * as FX from "https://esm.sh/sparcoon@0.7.0?deps=three@0.157,fast-simplex-noise@4,ferrsign@0.0.4";
 import * as THREE from "https://esm.sh/three@0.157";
 import { normalizeColor } from "./utils.js";
 
@@ -631,10 +631,43 @@ export const NORMAL_NODES = {
   },
 };
 
+// Blending Nodes
+
+export const BLENDING_NODES = {
+  FXNodeLightnessBlendingMask: {
+    label: "Lightness Blending Mask",
+    params: [
+      {
+        key: "edge0",
+        label: "Edge 0",
+        type: "slider",
+        default: 0.3,
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+      {
+        key: "edge1",
+        label: "Edge 1",
+        type: "slider",
+        default: 0.7,
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+    ],
+    build: (params) => new FX.FXNodeLightnessBlendingMask(params.edge0, params.edge1),
+    update: (instance, params) => {
+      instance.edge0 = params.edge0;
+      instance.edge1 = params.edge1;
+    },
+  },
+};
+
 // Node registries per material stack
 
 export const NODE_REGISTRIES = {
-  albedoNodes: { ...COLOR_NODES, ...TEXTURE_NODES },
+  albedoNodes: { ...COLOR_NODES, ...TEXTURE_NODES, ...BLENDING_NODES },
   normalNodes: { ...NORMAL_NODES, ...TEXTURE_NODES },
   emissionNodes: { ...COLOR_NODES, ...TEXTURE_NODES },
 };
@@ -642,11 +675,8 @@ export const NODE_REGISTRIES = {
 // Material Params
 
 const BLENDING_OPTIONS = [
-  { value: 0, label: "None" },
-  { value: 1, label: "Normal" },
-  { value: 2, label: "Additive" },
-  { value: 3, label: "Subtractive" },
-  { value: 4, label: "Multiply" },
+  { value: 0, label: "Masked Additive" },
+  { value: 1, label: "Masked Multiply" },
 ];
 
 export const MATERIAL_BASE_PARAMS = [
@@ -654,7 +684,7 @@ export const MATERIAL_BASE_PARAMS = [
     key: "blending",
     label: "Blending",
     type: "select",
-    default: 1,
+    default: 0,
     options: BLENDING_OPTIONS,
   },
   {
@@ -680,12 +710,6 @@ export const MATERIAL_BASE_PARAMS = [
     min: 0.0075,
     max: 1,
     step: 0.0025,
-  },
-  {
-    key: "premultipliedAlpha",
-    label: "Premult. Alpha",
-    type: "boolean",
-    default: true,
   },
 ];
 
@@ -874,6 +898,7 @@ const ALL_DESCRIPTORS = {
   ...COLOR_NODES,
   ...TEXTURE_NODES,
   ...NORMAL_NODES,
+  ...BLENDING_NODES,
 };
 
 export function liveUpdate(instanceMap, moduleId, type, params, assets = {}) {

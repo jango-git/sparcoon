@@ -301,6 +301,9 @@ const NODE_CODEGEN = {
 
   FXNodeFlatNormal: () => "new FXNodeFlatNormal()",
   FXNodeSphericalNormal: () => "new FXNodeSphericalNormal()",
+
+  FXNodeLightnessBlendingMask: (params) =>
+    `new FXNodeLightnessBlendingMask(${formatNumber(params.edge0 ?? 0.3)}, ${formatNumber(params.edge1 ?? 0.7)})`,
 };
 
 // --- Per-emitter block ---
@@ -345,11 +348,12 @@ function buildEmitterCode(emitter, fieldName, textureVariables) {
 
   // Material
   lines.push(`  new ${materialType}({`);
-  lines.push(`    blending: ${materialParams.blending ?? 1},`);
+  const blendingValue = materialParams.blending ?? 0;
+  const blendingName = blendingValue === 1 ? "FXBlending.MASKED_MULTIPLY" : "FXBlending.MASKED_ADDITIVE";
+  lines.push(`    blending: ${blendingName},`);
   if (materialParams.useAlphaHashing) lines.push(`    useAlphaHashing: true,`);
   lines.push(`    alphaTest: ${formatNumber(materialParams.alphaTest ?? 0.0075)},`);
   lines.push(`    depthAlphaTest: ${formatNumber(materialParams.depthAlphaTest ?? 0.5)},`);
-  lines.push(`    premultipliedAlpha: ${!!(materialParams.premultipliedAlpha ?? true)},`);
 
   if (isDiffuse) {
     if (materialParams.enableScatter) lines.push(`    enableScatter: true,`);
@@ -440,7 +444,10 @@ function generateTypeScript(emitters, className) {
   const usedThreeTypes = new Set(["Object3D"]);
 
   for (const emitter of emitters) {
-    if (emitter.material?.type) usedFxTypes.add(emitter.material.type);
+    if (emitter.material?.type) {
+      usedFxTypes.add(emitter.material.type);
+      usedFxTypes.add("FXBlending");
+    }
 
     for (const module of emitter.spawnModules ?? []) {
       if (SPAWN_CODEGEN[module.type]) {

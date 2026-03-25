@@ -39,6 +39,10 @@ function sphericalNormalNode() {
   return { id: generateId(), type: "FXNodeSphericalNormal", params: {} };
 }
 
+function lightnessBlendingMaskNode(edge0 = 0.3, edge1 = 0.7) {
+  return { id: generateId(), type: "FXNodeLightnessBlendingMask", params: { edge0, edge1 } };
+}
+
 // --- Spawn module builders ---
 
 function spawnPoint(x = 0, y = 0, z = 0) {
@@ -202,8 +206,11 @@ export const PRESETS = {
       behaviorModules: [behaviorGravity(0, -9.8, 0)],
       material: {
         type: "FXUnlitMaterial",
-        params: createUnlitParams({ blending: 2 }),
-        albedoNodes: [colorOverLifeNode([colorStop("#ffffff", 1), colorStop("#ffffff", 0)])],
+        params: createUnlitParams(),
+        albedoNodes: [
+          lightnessBlendingMaskNode(0, 0.01),
+          colorOverLifeNode([colorStop("#ffffff", 1), colorStop("#ffffff", 0)]),
+        ],
         normalNodes: [],
         emissionNodes: [],
       },
@@ -262,10 +269,8 @@ export const PRESETS = {
         material: {
           type: "FXUnlitMaterial",
           params: createUnlitParams({
-            blending: 2,
             alphaTest: 0.0075,
             depthAlphaTest: 0.5,
-            premultipliedAlpha: true,
           }),
           albedoNodes: [
             colorOverLifeNode([
@@ -274,6 +279,7 @@ export const PRESETS = {
               colorStop("#cc2200", 0.55),
               colorStop("#330000", 0),
             ]),
+            lightnessBlendingMaskNode(0, 0.25),
             sphericalClipNode(0.4),
           ],
           normalNodes: [],
@@ -303,10 +309,8 @@ export const PRESETS = {
         material: {
           type: "FXUnlitMaterial",
           params: createUnlitParams({
-            blending: 2,
             alphaTest: 0.0075,
             depthAlphaTest: 0.5,
-            premultipliedAlpha: true,
           }),
           albedoNodes: [
             colorOverLifeNode([
@@ -315,6 +319,7 @@ export const PRESETS = {
               colorStop("#ff4400", 0.3),
               colorStop("#ff0000", 0),
             ]),
+            lightnessBlendingMaskNode(0.1, 0.5),
             sphericalClipNode(),
           ],
           normalNodes: [],
@@ -348,10 +353,9 @@ export const PRESETS = {
         material: {
           type: "FXDiffuseMaterial",
           params: createDiffuseParams({
-            blending: 1,
+            blending: 0,
             alphaTest: 0.0075,
             depthAlphaTest: 0.5,
-            premultipliedAlpha: true,
             enableScatter: true,
             scatterTint: "#ffd999",
             scatterPower: 10,
@@ -398,7 +402,7 @@ export const PRESETS = {
       ],
       material: {
         type: "FXUnlitMaterial",
-        params: createUnlitParams({ blending: 2 }),
+        params: createUnlitParams(),
         albedoNodes: [
           colorOverLifeNode([
             colorStop("#ffffff", 1),
@@ -406,6 +410,7 @@ export const PRESETS = {
             colorStop("#ff4400", 0.3),
             colorStop("#ff0000", 0),
           ]),
+          lightnessBlendingMaskNode(0.1, 0.5),
           sphericalClipNode(),
         ],
         normalNodes: [],
@@ -444,10 +449,9 @@ export const PRESETS = {
       material: {
         type: "FXDiffuseMaterial",
         params: createDiffuseParams({
-          blending: 1,
+          blending: 0,
           alphaTest: 0.0075,
           depthAlphaTest: 0.15,
-          premultipliedAlpha: true,
           enableScatter: true,
           scatterTint: "#ffd999",
           scatterPower: 25,
