@@ -135,6 +135,16 @@ export class FXEmitter extends Object3D {
     EMITTERS.push(this);
   }
 
+  /** Number of currently alive particles */
+  public get particleCount(): number {
+    return this.mesh.instanceCount;
+  }
+
+  /** Maximum number of particles that fit in the currently allocated buffers */
+  public get particleCapacity(): number {
+    return this.mesh.instanceCapacity;
+  }
+
   /**
    * Ticks all active emitters; call once per frame before rendering
    *

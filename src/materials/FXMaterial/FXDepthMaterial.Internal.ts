@@ -1,5 +1,6 @@
 import { DoubleSide, MeshDepthMaterial, RGBADepthPacking } from "three";
 import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../../nodes/FXNode";
 import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
 import type { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
 
@@ -134,12 +135,15 @@ export function buildDepthMaterial(
     let fragmentShader = shader.fragmentShader;
 
     if (depthNodes.length > 0) {
-      const combinedAlphaExpression = depthNodes.map((node) => node.colorExpression).join(" * ");
-      fragmentShader = fragmentShader.replace(
-        "#include <map_fragment>",
-        `diffuseColor.a = (${combinedAlphaExpression}).a;
-         if (diffuseColor.a < ${depthAlphaTest.toFixed(4)}) discard;`,
-      );
+      const albedoLines = ["vec4 fxDepthAlbedo = vec4(1.0);"];
+      for (const node of depthNodes) {
+        albedoLines.push(
+          `fxDepthAlbedo = ${node.colorExpression.replace(CURRENT_EXPRESSION_VALUE_PLACEHOLDER, "fxDepthAlbedo")};`,
+        );
+      }
+      albedoLines.push(`diffuseColor.a = fxDepthAlbedo.a;`);
+      albedoLines.push(`if (diffuseColor.a < ${depthAlphaTest.toFixed(4)}) discard;`);
+      fragmentShader = fragmentShader.replace("#include <map_fragment>", albedoLines.join("\n"));
     }
 
     if (useSphericalDepth) {

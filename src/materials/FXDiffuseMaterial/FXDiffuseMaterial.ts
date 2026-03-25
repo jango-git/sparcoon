@@ -121,7 +121,6 @@ export class FXDiffuseMaterial extends FXMaterial {
       this.blending,
       this.useAlphaHashing,
       this.alphaTest,
-      this.premultipliedAlpha,
       this.albedoNodes,
       this.normalNodes,
       this.emissionNodes,

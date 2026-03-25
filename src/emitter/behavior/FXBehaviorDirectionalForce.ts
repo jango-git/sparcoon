@@ -54,7 +54,6 @@ export class FXBehaviorDirectionalForce extends FXBehavior<{ builtin: "Matrix4" 
     return this.magnitudeInternal;
   }
 
-  /** Direction vector (normalized) */
   public set direction(value: FXVector3Config) {
     const resolved = resolveFXVector3Config(value);
     assertValidNumber(resolved.x, "FXBehaviorDirectionalForce.direction.x");
@@ -68,7 +67,6 @@ export class FXBehaviorDirectionalForce extends FXBehavior<{ builtin: "Matrix4" 
     this.directionInternal.normalize();
   }
 
-  /** Acceleration magnitude in units/second² */
   public set magnitude(value: number) {
     assertValidNumber(value, "FXBehaviorDirectionalForce.magnitude");
     this.magnitudeInternal = value;

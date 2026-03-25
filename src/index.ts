@@ -18,7 +18,7 @@ export { FXSpawnSphere } from "./emitter/spawn/FXSpawnSphere";
 export { FXSpawnTorque } from "./emitter/spawn/FXSpawnTorque";
 export { FXSpawnVelocity } from "./emitter/spawn/FXSpawnVelocity";
 export { FXDiffuseMaterial } from "./materials/FXDiffuseMaterial/FXDiffuseMaterial";
-export { FXMaterial } from "./materials/FXMaterial/FXMaterial";
+export { FXBlending, FXMaterial } from "./materials/FXMaterial/FXMaterial";
 export { FXUnlitMaterial } from "./materials/FXUnlitMaterial/FXUnlitMaterial";
 export { FXColor } from "./miscellaneous/color/FXColor";
 export { FXCurve1D } from "./miscellaneous/curve/FXCurve1D";
@@ -35,6 +35,8 @@ export type {
   FXTextureSize,
   FXTextureTrim,
 } from "./miscellaneous/texture/FXTextureView.Internal";
+export { FXNodeBlending } from "./nodes/blending/FXNodeBlending";
+export { FXNodeLightnessBlendingMask } from "./nodes/blending/FXNodeLightnessBlendingMask";
 export { FXNodeColor } from "./nodes/color/FXNodeColor";
 export { FXNodeColorOverLife } from "./nodes/color/FXNodeColorOverLife";
 export { FXNodeSphericalClip } from "./nodes/color/FXNodeSphericalClip";

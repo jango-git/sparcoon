@@ -28,7 +28,6 @@ export class FXSpawnRotation extends FXSpawn<{ builtin: "Matrix4" }> {
     return this.rotationInternal;
   }
 
-  /** Rotation range in radians */
   public set rotation(value: FXRangeConfig) {
     this.rotationInternal = resolveFXRangeConfig(value);
     assertValidNumber(this.rotationInternal.min, "FXSpawnRotation.rotation.min");

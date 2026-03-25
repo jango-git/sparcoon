@@ -35,7 +35,6 @@ export class FXSpawnBox extends FXSpawn<{ builtin: "Matrix4" }> {
     return this.sizeInternal;
   }
 
-  /** Size of the spawn box */
   public set size(value: FXVector3Config) {
     this.sizeInternal = resolveFXVector3Config(value);
     assertValidNumber(this.sizeInternal.x, "FXSpawnBox.size.x");

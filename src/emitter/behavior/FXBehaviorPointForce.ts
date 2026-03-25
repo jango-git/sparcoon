@@ -70,7 +70,6 @@ export class FXBehaviorPointForce extends FXBehavior<{ builtin: "Matrix4" }> {
     return this.thresholdInternal;
   }
 
-  /** Force center position */
   public set center(value: FXVector3Config) {
     this.centerInternal = resolveFXVector3Config(value);
     assertValidNumber(this.centerInternal.x, "FXBehaviorPointForce.center.x");
@@ -78,19 +77,16 @@ export class FXBehaviorPointForce extends FXBehavior<{ builtin: "Matrix4" }> {
     assertValidNumber(this.centerInternal.z, "FXBehaviorPointForce.center.z");
   }
 
-  /** Force multiplier */
   public set strength(value: number) {
     assertValidNumber(value, "FXBehaviorPointForce.strength");
     this.strengthInternal = value;
   }
 
-  /** Distance power exponent */
   public set exponent(value: number) {
     assertValidNumber(value, "FXBehaviorPointForce.exponent");
     this.exponentInternal = value;
   }
 
-  /** Minimum distance */
   public set threshold(value: number) {
     assertValidNumber(value, "FXBehaviorPointForce.threshold");
     this.thresholdInternal = value;

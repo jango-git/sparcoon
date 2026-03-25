@@ -38,7 +38,6 @@ export class FXSpawnLifetime extends FXSpawn<{ builtin: "Matrix4" }> {
     return this.lifetimeInternal;
   }
 
-  /** Lifetime range in seconds */
   public set lifetime(value: FXRangeConfig) {
     this.lifetimeInternal = resolveFXRangeConfig(value);
     assertValidPositiveNumber(this.lifetimeInternal.min, "FXSpawnLifetime.lifetime.min");

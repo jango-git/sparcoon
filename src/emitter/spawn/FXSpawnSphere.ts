@@ -39,15 +39,6 @@ export class FXSpawnSphere extends FXSpawn<{ builtin: "Matrix4" }> {
     assertValidNumber(angle, "FXSpawnSphere.constructor.angle");
   }
 
-  /**
-   * Polar half-angle from the equatorial plane.
-   * - `0` - flat disk
-   * - `Math.PI / 2` - full sphere
-   */
-  public get angle(): number {
-    return this.angleInternal;
-  }
-
   /** Minimum spawn radius */
   public get innerRadius(): number {
     return this.innerRadiusInternal;
@@ -58,23 +49,25 @@ export class FXSpawnSphere extends FXSpawn<{ builtin: "Matrix4" }> {
     return this.outerRadiusInternal;
   }
 
-  /** Minimum spawn radius */
-  public set innerRadius(value: number) {
-    assertValidNonNegativeNumber(value, "FXSpawnSphere.innerRadius");
-    this.innerRadiusInternal = value;
-  }
-
-  /** Maximum spawn radius */
-  public set outerRadius(value: number) {
-    assertValidNonNegativeNumber(value, "FXSpawnSphere.outerRadius");
-    this.outerRadiusInternal = value;
-  }
-
   /**
    * Polar half-angle from the equatorial plane.
    * - `0` - flat disk
    * - `Math.PI / 2` - full sphere
    */
+  public get angle(): number {
+    return this.angleInternal;
+  }
+
+  public set innerRadius(value: number) {
+    assertValidNonNegativeNumber(value, "FXSpawnSphere.innerRadius");
+    this.innerRadiusInternal = value;
+  }
+
+  public set outerRadius(value: number) {
+    assertValidNonNegativeNumber(value, "FXSpawnSphere.outerRadius");
+    this.outerRadiusInternal = value;
+  }
+
   public set angle(value: number) {
     assertValidNumber(value, "FXSpawnSphere.angle");
     this.angleInternal = value;

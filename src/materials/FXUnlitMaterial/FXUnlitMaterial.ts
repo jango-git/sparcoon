@@ -14,7 +14,6 @@ export class FXUnlitMaterial extends FXMaterial {
       this.blending,
       this.useAlphaHashing,
       this.alphaTest,
-      this.premultipliedAlpha,
       this.albedoNodes,
     );
   }

@@ -72,14 +72,12 @@ export class FXBehaviorVelocityNoise extends FXBehavior<{ builtin: "Matrix4" }> 
     return this.strengthInternal;
   }
 
-  /** Noise frequency range */
   public set scale(value: FXRangeConfig) {
     this.scaleInternal = resolveFXRangeConfig(value);
     assertValidPositiveNumber(this.scaleInternal.min, `FXBehaviorVelocityNoise.scale.min`);
     assertValidPositiveNumber(this.scaleInternal.max, `FXBehaviorVelocityNoise.scale.max`);
   }
 
-  /** Force multiplier range */
   public set strength(value: FXRangeConfig) {
     this.strengthInternal = resolveFXRangeConfig(value);
     assertValidNonNegativeNumber(this.strengthInternal.min, `FXBehaviorVelocityNoise.strength.min`);

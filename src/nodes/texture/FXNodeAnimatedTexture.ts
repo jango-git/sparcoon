@@ -4,6 +4,7 @@ import { getNextInstanceId } from "../../miscellaneous/miscellaneous";
 import { FXTextureView } from "../../miscellaneous/texture/FXTextureView";
 import type { FXTextureConfig } from "../../miscellaneous/texture/FXTextureView.Internal";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeTexture } from "./FXNodeTexture";
 
 /**
@@ -36,7 +37,7 @@ export interface FXNodeAnimatedTextureOptions {
  */
 export class FXNodeAnimatedTexture extends FXNodeTexture {
   /** @internal */
-  public override readonly affectsDepth: boolean;
+  public override readonly affectsDepth: boolean = true;
   /** @internal */
   public override readonly cacheKey: string;
   /** @internal */
@@ -52,7 +53,7 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
   private readonly uniformUVTransform: string;
   private readonly uniformColumns: string;
   private readonly uniformRows: string;
-  private readonly textureViewInternal: FXTextureView;
+  private readonly textureInternal: FXTextureView;
 
   /**
    * @param options - Sprite sheet configuration
@@ -67,16 +68,15 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
     this.uniformColumns = `u_AnimatedTextureColumns_${idx}`;
     this.uniformRows = `u_AnimatedTextureRows_${idx}`;
 
-    this.textureViewInternal = new FXTextureView(texture);
-    const uvTransform = this.textureViewInternal.calculateUVTransform();
-    this.textureViewInternal.setTextureDirtyFalse();
-    this.textureViewInternal.setUVTransformDirtyFalse();
+    this.textureInternal = new FXTextureView(texture);
+    const uvTransform = this.textureInternal.calculateUVTransform();
+    this.textureInternal.setTextureDirtyFalse();
+    this.textureInternal.setUVTransformDirtyFalse();
 
     const gammaCorrection = checkSRGBSupport()
       ? ""
       : "color = vec4(pow(color.rgb, vec3(2.2)), color.a);";
 
-    this.affectsDepth = true;
     this.cacheKey = interpolate ? "animated-texture-interpolated" : "animated-texture";
     this.uniformDeclarations = [
       `uniform sampler2D ${this.uniformTexture};`,
@@ -85,7 +85,7 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
       `uniform float ${this.uniformRows};`,
     ];
     this.uniforms = {
-      [this.uniformTexture]: { value: this.textureViewInternal.texture },
+      [this.uniformTexture]: { value: this.textureInternal.texture },
       [this.uniformUVTransform]: { value: uvTransform },
       [this.uniformColumns]: { value: columns },
       [this.uniformRows]: { value: rows },
@@ -144,12 +144,12 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
           return color;
         }
       `;
-    this.colorExpression = `fxSampleAnimatedTexture(${this.uniformTexture}, ${this.uniformUVTransform}, p_uv, ${this.uniformColumns}, ${this.uniformRows})`;
+    this.colorExpression = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxSampleAnimatedTexture(${this.uniformTexture}, ${this.uniformUVTransform}, p_uv, ${this.uniformColumns}, ${this.uniformRows})`;
   }
 
   /** View describing the texture and its atlas region */
-  public get textureView(): FXTextureView {
-    return this.textureViewInternal;
+  public get texture(): FXTextureView {
+    return this.textureInternal;
   }
 
   /** Number of frame columns in the sprite sheet */
@@ -162,17 +162,17 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
     return this.uniforms[this.uniformRows].value as number;
   }
 
-  public set textureView(config: FXTextureConfig) {
-    this.textureViewInternal.set(config);
-    if (this.textureViewInternal.textureDirty) {
-      this.uniforms[this.uniformTexture].value = this.textureViewInternal.texture;
-      this.textureViewInternal.setTextureDirtyFalse();
+  public set texture(config: FXTextureConfig) {
+    this.textureInternal.set(config);
+    if (this.textureInternal.textureDirty) {
+      this.uniforms[this.uniformTexture].value = this.textureInternal.texture;
+      this.textureInternal.setTextureDirtyFalse();
     }
-    if (this.textureViewInternal.uvTransformDirty) {
-      this.textureViewInternal.calculateUVTransform(
+    if (this.textureInternal.uvTransformDirty) {
+      this.textureInternal.calculateUVTransform(
         this.uniforms[this.uniformUVTransform].value as Matrix3,
       );
-      this.textureViewInternal.setUVTransformDirtyFalse();
+      this.textureInternal.setUVTransformDirtyFalse();
     }
   }
 

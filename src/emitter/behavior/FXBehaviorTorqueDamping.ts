@@ -43,7 +43,6 @@ export class FXBehaviorTorqueDamping extends FXBehavior<{
     return this.dampingInternal;
   }
 
-  /** Damping coefficient range (0-1) */
   public set damping(value: FXRangeConfig) {
     this.dampingInternal = resolveFXRangeConfig(value);
     assertValidNonNegativeNumber(this.dampingInternal.min, `FXBehaviorTorqueDamping.damping.min`);

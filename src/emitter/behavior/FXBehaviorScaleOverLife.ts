@@ -20,8 +20,7 @@ import { FXBehavior } from "./FXBehavior";
 export class FXBehaviorScaleOverLife extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
-  /** Active scale curve */
-  public curve: FXCurve1D<FXRange>;
+  private curveInternal: FXCurve1D<FXRange>;
   private aspectInternal: number;
 
   /**
@@ -30,9 +29,14 @@ export class FXBehaviorScaleOverLife extends FXBehavior<{ builtin: "Matrix4" }> 
    */
   constructor(curve: FXCurve1DConfig<FXRange>, aspect: FXAspectConfig = 1) {
     super();
-    this.curve = new FXCurve1D<FXRange>(curve);
+    this.curveInternal = new FXCurve1D<FXRange>(curve);
     this.aspectInternal = resolveAspect(aspect);
     assertValidPositiveNumber(this.aspectInternal, "FXBehaviorScaleOverLife.constructor.aspect");
+  }
+
+  /** Active scale curve */
+  public get curve(): FXCurve1D<FXRange> {
+    return this.curveInternal;
   }
 
   /** Width/height aspect ratio */
@@ -40,7 +44,10 @@ export class FXBehaviorScaleOverLife extends FXBehavior<{ builtin: "Matrix4" }> 
     return this.aspectInternal;
   }
 
-  /** Width/height aspect ratio */
+  public set curve(value: FXCurve1DConfig<FXRange>) {
+    this.curveInternal = new FXCurve1D<FXRange>(value);
+  }
+
   public set aspect(value: FXAspectConfig) {
     this.aspectInternal = resolveAspect(value);
     assertValidPositiveNumber(this.aspectInternal, "FXBehaviorScaleOverLife.aspect");
@@ -59,7 +66,7 @@ export class FXBehaviorScaleOverLife extends FXBehavior<{ builtin: "Matrix4" }> 
       );
 
       const scaleT = array[itemOffset + BUILTIN_OFFSET_RANDOM_A];
-      const { a, b, t: localT } = this.curve.sample(lifeT);
+      const { a, b, t: localT } = this.curveInternal.sample(lifeT);
       const scale = MathUtils.lerp(
         MathUtils.lerp(a.min, a.max, scaleT),
         MathUtils.lerp(b.min, b.max, scaleT),

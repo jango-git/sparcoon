@@ -4,6 +4,7 @@ import type { FXCurve1DConfig } from "../../miscellaneous/curve/FXCurve1D";
 import { FXCurve1D } from "../../miscellaneous/curve/FXCurve1D";
 import { buildGradientTexture, getNextInstanceId } from "../../miscellaneous/miscellaneous";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeColor } from "./FXNodeColor";
 
 /**
@@ -11,9 +12,9 @@ import { FXNodeColor } from "./FXNodeColor";
  */
 export class FXNodeColorOverLife extends FXNodeColor {
   /** @internal */
-  public override readonly affectsDepth: boolean;
+  public override readonly affectsDepth: boolean = true;
   /** @internal */
-  public override readonly cacheKey: string;
+  public override readonly cacheKey: string = "color-over-life";
   /** @internal */
   public override readonly uniformDeclarations: string[];
   /** @internal */
@@ -38,8 +39,6 @@ export class FXNodeColorOverLife extends FXNodeColor {
     this.curveInternal = new FXCurve1D<FXColor>(curve);
     this.gradientTexture = buildGradientTexture(this.curveInternal);
 
-    this.affectsDepth = true;
-    this.cacheKey = "color-over-life";
     this.uniformDeclarations = [`uniform sampler2D ${this.uniformName};`];
     this.uniforms = {
       [this.uniformName]: { value: this.gradientTexture },
@@ -56,7 +55,7 @@ export class FXNodeColorOverLife extends FXNodeColor {
         return color;
       }
     `;
-    this.colorExpression = `fxSampleColorOverLife(${this.uniformName})`;
+    this.colorExpression = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxSampleColorOverLife(${this.uniformName})`;
   }
 
   /** Current color gradient curve */
@@ -64,11 +63,6 @@ export class FXNodeColorOverLife extends FXNodeColor {
     return this.curveInternal;
   }
 
-  /**
-   * Replaces the color gradient curve and rebuilds the backing texture
-   *
-   * @param value - New color gradient configuration
-   */
   public set curve(value: FXCurve1DConfig<FXColor>) {
     this.curveInternal = new FXCurve1D<FXColor>(value);
     this.gradientTexture.dispose();

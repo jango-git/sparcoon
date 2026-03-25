@@ -43,7 +43,6 @@ export class FXBehaviorVelocityDamping extends FXBehavior<{ builtin: "Matrix4" }
     return this.dampingInternal;
   }
 
-  /** Damping coefficient range (0-1) */
   public set damping(value: FXRangeConfig) {
     this.dampingInternal = resolveFXRangeConfig(value);
     assertValidNonNegativeNumber(this.dampingInternal.min, `FXBehaviorVelocityDamping.damping.min`);

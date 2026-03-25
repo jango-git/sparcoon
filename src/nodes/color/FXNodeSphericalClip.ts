@@ -1,5 +1,6 @@
 import { assertValidNonNegativeNumber } from "../../miscellaneous/asserts";
 import { getNextInstanceId } from "../../miscellaneous/miscellaneous";
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeColor } from "./FXNodeColor";
 
 /**
@@ -11,9 +12,9 @@ import { FXNodeColor } from "./FXNodeColor";
  */
 export class FXNodeSphericalClip extends FXNodeColor {
   /** @internal */
-  public override readonly affectsDepth: boolean;
+  public override readonly affectsDepth: boolean = true;
   /** @internal */
-  public override readonly cacheKey: string;
+  public override readonly cacheKey: string = "spherical-clip";
   /** @internal */
   public override readonly uniformDeclarations: string[];
   /** @internal */
@@ -34,8 +35,6 @@ export class FXNodeSphericalClip extends FXNodeColor {
     const id = getNextInstanceId();
     this.uniformInnerRadius = `u_SphericalClipInnerRadius_${id}`;
 
-    this.affectsDepth = true;
-    this.cacheKey = "spherical-clip";
     this.uniformDeclarations = [`uniform float ${this.uniformInnerRadius};`];
     this.uniforms = {
       [this.uniformInnerRadius]: { value: innerRadius },
@@ -46,7 +45,7 @@ export class FXNodeSphericalClip extends FXNodeColor {
         return vec4(1.0, 1.0, 1.0, 1.0 - smoothstep(innerRadius, 0.5, distanceToCenter));
       }
     `;
-    this.colorExpression = `fxApplySphericalClip(${this.uniformInnerRadius})`;
+    this.colorExpression = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxApplySphericalClip(${this.uniformInnerRadius})`;
   }
 
   /** UV radius of the fully opaque inner area */

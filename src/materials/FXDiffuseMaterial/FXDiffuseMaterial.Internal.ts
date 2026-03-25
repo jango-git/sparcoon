@@ -1,10 +1,13 @@
-import type { Blending } from "three";
-import { Color, DoubleSide, MeshLambertMaterial } from "three";
+import { Color, DoubleSide, MeshLambertMaterial, NormalBlending } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
 import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
-import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
+import type { FXNodeBlending } from "../../nodes/blending/FXNodeBlending";
+import { FXNodeColor } from "../../nodes/color/FXNodeColor";
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../../nodes/FXNode";
 import type { FXNodeNormal } from "../../nodes/normal/FXNodeNormal";
 import { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
+import { buildAlbedoAndBlendingCode } from "../FXMaterial/FXBlending.Internal";
+import { FXBlending } from "../FXMaterial/FXMaterial";
 
 export interface FXScatterUniforms {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -60,11 +63,10 @@ function wrapShadowCalls(source: string, uniformName: string): string {
 
 export function buildFXDiffuseMaterial(
   varyings: Record<string, GLTypeInfo>,
-  blending: Blending,
+  blending: FXBlending,
   useAlphaHashing: boolean,
   alphaTest: number,
-  premultipliedAlpha: boolean,
-  albedoNodes: readonly (FXNodeColor | FXNodeTexture)[],
+  albedoNodes: readonly (FXNodeColor | FXNodeTexture | FXNodeBlending)[],
   normalNodes: readonly (FXNodeTexture | FXNodeNormal)[],
   emissionNodes: readonly (FXNodeColor | FXNodeTexture)[],
   scatterUniforms?: FXScatterUniforms,
@@ -91,12 +93,12 @@ export function buildFXDiffuseMaterial(
     depthWrite: useAlphaHashing,
     depthTest: true,
     alphaHash: useAlphaHashing,
-    blending,
+    blending: NormalBlending,
     side: DoubleSide,
     forceSinglePass: true,
     alphaTest,
     emissive: emissionNodes.length > 0 ? new Color(1, 1, 1) : new Color(0, 0, 0),
-    premultipliedAlpha,
+    premultipliedAlpha: true,
   });
 
   material.onBeforeCompile = (shader): void => {
@@ -164,30 +166,19 @@ export function buildFXDiffuseMaterial(
           `,
         );
 
-    const blendReorientedNormalsHelper: string =
-      normalNodes.length > 1
-        ? `
-          vec3 blendReorientedNormals(vec3 base, vec3 detail) {
-            base += vec3(0.0, 0.0, 1.0);
-            detail *= vec3(-1.0, -1.0, 1.0);
-            return normalize(base * dot(base, detail) / base.z - detail);
-          }
-        `
-        : "";
-
     const seenCacheKeys = new Set<string>();
     const uniqueHelpers = (
-      nodes: readonly (FXNodeColor | FXNodeTexture | FXNodeNormal)[],
+      nodes: readonly (FXNodeColor | FXNodeTexture | FXNodeNormal | FXNodeBlending)[],
     ): string =>
       nodes
-        .filter((n) => {
-          if (seenCacheKeys.has(n.cacheKey)) {
+        .filter((node) => {
+          if (seenCacheKeys.has(node.cacheKey)) {
             return false;
           }
-          seenCacheKeys.add(n.cacheKey);
+          seenCacheKeys.add(node.cacheKey);
           return true;
         })
-        .map((n) => n.helperFunctions)
+        .map((node) => node.helperFunctions)
         .join("\n");
 
     const scatterDeclarations: string[] = useScatter
@@ -215,12 +206,11 @@ export function buildFXDiffuseMaterial(
       "varying vec2 p_uv;",
       useNormals ? "varying vec2 p_billboardSinCos;" : "",
       varyingDeclarations.join("\n"),
-      albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      albedoNodes.flatMap((node) => node.uniformDeclarations).join("\n"),
       uniqueHelpers(albedoNodes),
-      normalNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      normalNodes.flatMap((node) => node.uniformDeclarations).join("\n"),
       uniqueHelpers(normalNodes),
-      blendReorientedNormalsHelper,
-      emissionNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      emissionNodes.flatMap((node) => node.uniformDeclarations).join("\n"),
       uniqueHelpers(emissionNodes),
       ...scatterDeclarations,
       ...shadowSensitivityDeclarations,
@@ -250,52 +240,59 @@ export function buildFXDiffuseMaterial(
     let fragmentShader = shader.fragmentShader;
 
     if (useNormals) {
-      const normalExpressions = normalNodes.map((node) => {
-        if (node instanceof FXNodeTexture) {
-          return `normalize(${node.colorExpression}.rgb * 2.0 - 1.0)`;
-        }
-        return node.normalExpression;
-      });
-
-      const blendLines = normalExpressions
-        .slice(1)
-        .map((expression) => `normal = blendReorientedNormals(normal, ${expression});`);
-
-      const normalCode = [
+      const normalLines = [
         "float faceDirection = gl_FrontFacing ? 1.0 : -1.0;",
-        `vec3 normal = ${normalExpressions[0]};`,
-        ...blendLines,
+        "vec3 fxNormal = vec3(0.0, 0.0, 1.0);",
+      ];
+
+      for (const node of normalNodes) {
+        if (node instanceof FXNodeTexture || node instanceof FXNodeColor) {
+          normalLines.push(
+            `fxNormal = normalize((${node.colorExpression.replace(CURRENT_EXPRESSION_VALUE_PLACEHOLDER, "vec4(fxNormal, 1.0)")}).rgb * 2.0 - 1.0);`,
+          );
+        } else {
+          normalLines.push(
+            `fxNormal = ${node.normalExpression.replace(CURRENT_EXPRESSION_VALUE_PLACEHOLDER, "fxNormal")};`,
+          );
+        }
+      }
+
+      normalLines.push(
         "",
-        "// Rotate tangent-space normal XY into view space to match billboard rotation.",
-        "// p_billboardSinCos carries the exact sin/cos that rotated the quad vertices.",
         "float sinR = p_billboardSinCos.x;",
         "float cosR = p_billboardSinCos.y;",
-        "normal = vec3(",
-        "  normal.x * cosR - normal.y * sinR,",
-        "  normal.x * sinR + normal.y * cosR,",
-        "  normal.z",
+        "vec3 normal = vec3(",
+        "  fxNormal.x * cosR - fxNormal.y * sinR,",
+        "  fxNormal.x * sinR + fxNormal.y * cosR,",
+        "  fxNormal.z",
         ");",
         "",
         "normal *= faceDirection;",
-      ].join("\n");
+      );
 
-      fragmentShader = fragmentShader.replace("#include <normal_fragment_begin>", normalCode);
-    }
-
-    if (albedoNodes.length > 0) {
-      const combinedExpression = albedoNodes.map((n) => n.colorExpression).join(" * ");
-      const discardLine = useAlphaHashing ? "" : "if (diffuseColor.a < 0.0035) discard;";
       fragmentShader = fragmentShader.replace(
-        "#include <map_fragment>",
-        `diffuseColor = ${combinedExpression}; ${discardLine}`,
+        "#include <normal_fragment_begin>",
+        normalLines.join("\n"),
       );
     }
 
+    const albedoCode = buildAlbedoAndBlendingCode(albedoNodes, blending, useAlphaHashing);
+
+    if (albedoCode.mapFragment !== null) {
+      fragmentShader = fragmentShader.replace("#include <map_fragment>", albedoCode.mapFragment);
+    }
+
     if (emissionNodes.length > 0) {
-      const combinedExpression = emissionNodes.map((n) => n.colorExpression).join(" * ");
+      const emissiveLines = ["vec4 fxEmissive = vec4(1.0);"];
+      for (const node of emissionNodes) {
+        emissiveLines.push(
+          `fxEmissive = ${node.colorExpression.replace(CURRENT_EXPRESSION_VALUE_PLACEHOLDER, "fxEmissive")};`,
+        );
+      }
+      emissiveLines.push("totalEmissiveRadiance = fxEmissive.rgb;");
       fragmentShader = fragmentShader.replace(
         "#include <emissivemap_fragment>",
-        `totalEmissiveRadiance = (${combinedExpression}).rgb;`,
+        emissiveLines.join("\n"),
       );
     }
 
@@ -348,6 +345,11 @@ export function buildFXDiffuseMaterial(
       fragmentShader = wrapShadowCalls(fragmentShader, "u_shadowSensitivity");
     }
 
+    fragmentShader = fragmentShader.replace(
+      "#include <premultiplied_alpha_fragment>",
+      albedoCode.premultChunk,
+    );
+
     shader.fragmentShader = fragmentPreamble + "\n" + fragmentShader;
   };
 
@@ -357,9 +359,10 @@ export function buildFXDiffuseMaterial(
   material.customProgramCacheKey = (): string =>
     [
       "fx",
-      albedoNodes.map((n) => n.cacheKey).join("-") || "none",
-      normalNodes.map((n) => n.cacheKey).join("-") || "none",
-      emissionNodes.map((n) => n.cacheKey).join("-") || "none",
+      albedoNodes.map((node) => node.cacheKey).join("-") || "none",
+      normalNodes.map((node) => node.cacheKey).join("-") || "none",
+      emissionNodes.map((node) => node.cacheKey).join("-") || "none",
+      FXBlending[blending],
       scatterKey,
       shadowKey,
     ].join("_");

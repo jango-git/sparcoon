@@ -1,17 +1,18 @@
-import type { Blending } from "three";
-import { DoubleSide, MeshBasicMaterial } from "three";
+import { DoubleSide, MeshBasicMaterial, NormalBlending } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
 import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
+import type { FXNodeBlending } from "../../nodes/blending/FXNodeBlending";
 import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
 import type { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
+import { buildAlbedoAndBlendingCode } from "../FXMaterial/FXBlending.Internal";
+import { FXBlending } from "../FXMaterial/FXMaterial";
 
 export function buildFXUnlitMaterial(
   varyings: Record<string, GLTypeInfo>,
-  blending: Blending,
+  blending: FXBlending,
   useAlphaHashing: boolean,
   alphaTest: number,
-  premultipliedAlpha: boolean,
-  albedoNodes: readonly (FXNodeColor | FXNodeTexture)[],
+  albedoNodes: readonly (FXNodeColor | FXNodeTexture | FXNodeBlending)[],
 ): MeshBasicMaterial {
   const attributeDeclarations: string[] = [];
   const varyingDeclarations: string[] = [];
@@ -30,11 +31,11 @@ export function buildFXUnlitMaterial(
     depthWrite: useAlphaHashing,
     depthTest: true,
     alphaHash: useAlphaHashing,
-    blending,
+    blending: NormalBlending,
     side: DoubleSide,
     forceSinglePass: true,
     alphaTest,
-    premultipliedAlpha,
+    premultipliedAlpha: true,
   });
 
   material.onBeforeCompile = (shader): void => {
@@ -84,23 +85,25 @@ export function buildFXUnlitMaterial(
         );
 
     const seenCacheKeys = new Set<string>();
-    const uniqueHelpers = (nodes: readonly (FXNodeColor | FXNodeTexture)[]): string =>
+    const uniqueHelpers = (
+      nodes: readonly (FXNodeColor | FXNodeTexture | FXNodeBlending)[],
+    ): string =>
       nodes
-        .filter((n) => {
-          if (seenCacheKeys.has(n.cacheKey)) {
+        .filter((node) => {
+          if (seenCacheKeys.has(node.cacheKey)) {
             return false;
           }
-          seenCacheKeys.add(n.cacheKey);
+          seenCacheKeys.add(node.cacheKey);
           return true;
         })
-        .map((n) => n.helperFunctions)
+        .map((node) => node.helperFunctions)
         .join("\n");
 
     const fragmentPreamble = [
       PARTICLE_DEFINES,
       "varying vec2 p_uv;",
       varyingDeclarations.join("\n"),
-      albedoNodes.flatMap((n) => n.uniformDeclarations).join("\n"),
+      albedoNodes.flatMap((node) => node.uniformDeclarations).join("\n"),
       uniqueHelpers(albedoNodes),
     ].join("\n");
 
@@ -108,22 +111,26 @@ export function buildFXUnlitMaterial(
       Object.assign(shader.uniforms, node.uniforms);
     }
 
+    const albedoCode = buildAlbedoAndBlendingCode(albedoNodes, blending, useAlphaHashing);
+
     let fragmentShader = shader.fragmentShader;
 
-    if (albedoNodes.length > 0) {
-      const combinedExpression = albedoNodes.map((n) => n.colorExpression).join(" * ");
-      const discardLine = useAlphaHashing ? "" : "if (diffuseColor.a < 0.0035) discard;";
-      fragmentShader = fragmentShader.replace(
-        "#include <map_fragment>",
-        `diffuseColor = ${combinedExpression}; ${discardLine}`,
-      );
+    if (albedoCode.mapFragment !== null) {
+      fragmentShader = fragmentShader.replace("#include <map_fragment>", albedoCode.mapFragment);
     }
+
+    fragmentShader = fragmentShader.replace(
+      "#include <premultiplied_alpha_fragment>",
+      albedoCode.premultChunk,
+    );
 
     shader.fragmentShader = fragmentPreamble + "\n" + fragmentShader;
   };
 
   material.customProgramCacheKey = (): string =>
-    `fx-unlit-${albedoNodes.map((n) => n.cacheKey).join("-") || "none"}`;
+    ["fx-unlit", albedoNodes.map((node) => node.cacheKey).join("-") || "none", FXBlending[blending]].join(
+      "_",
+    );
 
   return material;
 }

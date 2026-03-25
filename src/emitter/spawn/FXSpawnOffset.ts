@@ -37,7 +37,6 @@ export class FXSpawnOffset extends FXSpawn<{ builtin: "Matrix4" }> {
     return this.offsetInternal;
   }
 
-  /** Particle position offset */
   public set offset(value: FXVector3Config) {
     this.offsetInternal = resolveFXVector3Config(value);
     assertValidNumber(this.offsetInternal.x, "FXSpawnOffset.offset.x");

@@ -57,6 +57,10 @@ export class FXInstancedParticle extends Mesh {
     return this.instancedGeometry.instanceCount;
   }
 
+  public get instanceCapacity(): number {
+    return this.capacity;
+  }
+
   public createInstances(count: number): void {
     const currentInstanceCount = this.instancedGeometry.instanceCount;
     this.ensureCapacity(currentInstanceCount + count);
@@ -219,7 +223,7 @@ export class FXInstancedParticle extends Mesh {
     //
     // _maxInstanceCount is an internal renderer cache field set by
     // WebGLBindingStates.js. It was never promoted to a public API in the
-    // r157–r180 range. Deleting it is the standard workaround used across
+    // r157-r180 range. Deleting it is the standard workaround used across
     // the Three.js ecosystem (see #19706, #26363, #27205).
     //
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

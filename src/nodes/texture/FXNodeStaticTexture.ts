@@ -3,6 +3,7 @@ import { getNextInstanceId } from "../../miscellaneous/miscellaneous";
 import { FXTextureView } from "../../miscellaneous/texture/FXTextureView";
 import type { FXTextureConfig } from "../../miscellaneous/texture/FXTextureView.Internal";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeTexture } from "./FXNodeTexture";
 
 /**
@@ -10,9 +11,9 @@ import { FXNodeTexture } from "./FXNodeTexture";
  */
 export class FXNodeStaticTexture extends FXNodeTexture {
   /** @internal */
-  public override readonly affectsDepth: boolean;
+  public override readonly affectsDepth: boolean = true;
   /** @internal */
-  public override readonly cacheKey: string;
+  public override readonly cacheKey: string = "static-texture";
   /** @internal */
   public override readonly uniformDeclarations: string[];
   /** @internal */
@@ -24,7 +25,7 @@ export class FXNodeStaticTexture extends FXNodeTexture {
 
   private readonly uniformTexture: string;
   private readonly uniformUVTransform: string;
-  private readonly textureViewInternal: FXTextureView;
+  private readonly textureInternal: FXTextureView;
 
   /**
    * @param config - Texture or atlas configuration applied to every particle
@@ -35,19 +36,17 @@ export class FXNodeStaticTexture extends FXNodeTexture {
     this.uniformTexture = `u_StaticTexture_${id}`;
     this.uniformUVTransform = `u_StaticTextureUVTransform_${id}`;
 
-    this.textureViewInternal = new FXTextureView(config);
-    const uvTransform = this.textureViewInternal.calculateUVTransform();
-    this.textureViewInternal.setTextureDirtyFalse();
-    this.textureViewInternal.setUVTransformDirtyFalse();
+    this.textureInternal = new FXTextureView(config);
+    const uvTransform = this.textureInternal.calculateUVTransform();
+    this.textureInternal.setTextureDirtyFalse();
+    this.textureInternal.setUVTransformDirtyFalse();
 
-    this.affectsDepth = true;
-    this.cacheKey = "static-texture";
     this.uniformDeclarations = [
       `uniform sampler2D ${this.uniformTexture};`,
       `uniform mat3 ${this.uniformUVTransform};`,
     ];
     this.uniforms = {
-      [this.uniformTexture]: { value: this.textureViewInternal.texture },
+      [this.uniformTexture]: { value: this.textureInternal.texture },
       [this.uniformUVTransform]: { value: uvTransform },
     };
     this.helperFunctions = `
@@ -59,25 +58,25 @@ export class FXNodeStaticTexture extends FXNodeTexture {
         return color;
       }
     `;
-    this.colorExpression = `fxSampleStaticTexture(${this.uniformTexture}, ${this.uniformUVTransform}, p_uv)`;
+    this.colorExpression = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxSampleStaticTexture(${this.uniformTexture}, ${this.uniformUVTransform}, p_uv)`;
   }
 
   /** View describing the texture and its atlas region */
-  public get textureView(): FXTextureView {
-    return this.textureViewInternal;
+  public get texture(): FXTextureView {
+    return this.textureInternal;
   }
 
-  public set textureView(config: FXTextureConfig) {
-    this.textureViewInternal.set(config);
-    if (this.textureViewInternal.textureDirty) {
-      this.uniforms[this.uniformTexture].value = this.textureViewInternal.texture;
-      this.textureViewInternal.setTextureDirtyFalse();
+  public set texture(config: FXTextureConfig) {
+    this.textureInternal.set(config);
+    if (this.textureInternal.textureDirty) {
+      this.uniforms[this.uniformTexture].value = this.textureInternal.texture;
+      this.textureInternal.setTextureDirtyFalse();
     }
-    if (this.textureViewInternal.uvTransformDirty) {
-      this.textureViewInternal.calculateUVTransform(
+    if (this.textureInternal.uvTransformDirty) {
+      this.textureInternal.calculateUVTransform(
         this.uniforms[this.uniformUVTransform].value as Matrix3,
       );
-      this.textureViewInternal.setUVTransformDirtyFalse();
+      this.textureInternal.setUVTransformDirtyFalse();
     }
   }
 }

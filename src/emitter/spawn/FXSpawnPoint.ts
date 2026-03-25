@@ -34,7 +34,6 @@ export class FXSpawnPoint extends FXSpawn<{ builtin: "Matrix4" }> {
     return this.positionInternal;
   }
 
-  /** Spawn position */
   public set position(value: FXVector3Config) {
     this.positionInternal = resolveFXVector3Config(value);
     assertValidNumber(this.positionInternal.x, "FXSpawnPoint.position.x");

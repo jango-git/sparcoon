@@ -1,5 +1,6 @@
 import { DoubleSide, MeshDistanceMaterial } from "three";
 import { PARTICLE_DEFINES } from "../../miscellaneous/miscellaneous";
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../../nodes/FXNode";
 import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
 import type { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
 
@@ -153,10 +154,15 @@ export function buildDistanceMaterial(
     // <map_fragment> depending on the Three.js version. If the chunk is
     // absent, insert the alpha discard before the distance calculation.
     if (distanceNodes.length > 0) {
-      const combinedAlphaExpression = distanceNodes.map((node) => node.colorExpression).join(" * ");
+      const albedoLines = ["vec4 fxDistAlbedo = vec4(1.0);"];
+      for (const node of distanceNodes) {
+        albedoLines.push(
+          `fxDistAlbedo = ${node.colorExpression.replace(CURRENT_EXPRESSION_VALUE_PLACEHOLDER, "fxDistAlbedo")};`,
+        );
+      }
+      albedoLines.push(`float nodeAlpha = fxDistAlbedo.a;`);
       const alphaDiscardCode =
-        `float nodeAlpha = (${combinedAlphaExpression}).a;\n` +
-        `if (nodeAlpha < ${distanceAlphaTest.toFixed(4)}) discard;`;
+        albedoLines.join("\n") + `\nif (nodeAlpha < ${distanceAlphaTest.toFixed(4)}) discard;`;
 
       if (fragmentShader.includes("#include <map_fragment>")) {
         fragmentShader = fragmentShader.replace("#include <map_fragment>", alphaDiscardCode);

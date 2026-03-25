@@ -30,7 +30,6 @@ export class FXSpawnTorque extends FXSpawn<{
     return this.torqueInternal;
   }
 
-  /** Angular velocity range in radians/second */
   public set torque(value: FXRangeConfig) {
     this.torqueInternal = resolveFXRangeConfig(value);
     assertValidNumber(this.torqueInternal.min, "FXSpawnTorque.torque.min");

@@ -22,15 +22,23 @@ import { FXBehavior } from "./FXBehavior";
 export class FXBehaviorVelocityOverLife extends FXBehavior<{ builtin: "Matrix4" }> {
   /** @internal */
   public readonly requiredProperties = { builtin: "Matrix4" } as const;
-  /** Active speed curve */
-  public curve: FXCurve1D<FXRange>;
+  private curveInternal: FXCurve1D<FXRange>;
 
   /**
    * @param curve - Speed curve; accepts a {@link FXCurve1D} instance or a `FXRange[]` shorthand
    */
   constructor(curve: FXCurve1DConfig<FXRange>) {
     super();
-    this.curve = new FXCurve1D<FXRange>(curve);
+    this.curveInternal = new FXCurve1D<FXRange>(curve);
+  }
+
+  /** Active speed curve */
+  public get curve(): FXCurve1D<FXRange> {
+    return this.curveInternal;
+  }
+
+  public set curve(value: FXCurve1DConfig<FXRange>) {
+    this.curveInternal = new FXCurve1D<FXRange>(value);
   }
 
   /** @internal */
@@ -57,7 +65,7 @@ export class FXBehaviorVelocityOverLife extends FXBehavior<{ builtin: "Matrix4" 
       }
 
       const velocityT = array[itemOffset + BUILTIN_OFFSET_RANDOM_A];
-      const { a, b, t: localT } = this.curve.sample(lifeT);
+      const { a, b, t: localT } = this.curveInternal.sample(lifeT);
       const targetSpeed = MathUtils.lerp(
         MathUtils.lerp(a.min, a.max, velocityT),
         MathUtils.lerp(b.min, b.max, velocityT),

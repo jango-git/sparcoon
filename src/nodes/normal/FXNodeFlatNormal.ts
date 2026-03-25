@@ -1,3 +1,4 @@
+import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeNormal } from "./FXNodeNormal";
 
 /**
@@ -5,23 +6,7 @@ import { FXNodeNormal } from "./FXNodeNormal";
  */
 export class FXNodeFlatNormal extends FXNodeNormal {
   /** @internal */
-  public override readonly cacheKey: string;
+  public override readonly cacheKey: string = "flat-normal";
   /** @internal */
-  public override readonly uniformDeclarations: string[];
-  /** @internal */
-  public override readonly uniforms: Record<string, { value: unknown }>;
-  /** @internal */
-  public override readonly helperFunctions: string;
-  /** @internal */
-  public override readonly normalExpression: string;
-
-  constructor() {
-    super();
-
-    this.cacheKey = "flat-normal";
-    this.uniformDeclarations = [];
-    this.uniforms = {};
-    this.helperFunctions = "";
-    this.normalExpression = "vec3(0.0, 0.0, 1.0)";
-  }
+  public override readonly normalExpression: string = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * vec3(0.0, 0.0, 1.0)`;
 }

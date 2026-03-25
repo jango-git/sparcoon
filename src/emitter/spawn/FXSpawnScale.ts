@@ -42,14 +42,12 @@ export class FXSpawnScale extends FXSpawn<{ builtin: "Matrix4" }> {
     return this.aspectInternal;
   }
 
-  /** Base scale range */
   public set scale(value: FXRangeConfig) {
     this.scaleInternal = resolveFXRangeConfig(value);
     assertValidPositiveNumber(this.scaleInternal.min, "FXSpawnScale.scale.min");
     assertValidPositiveNumber(this.scaleInternal.max, "FXSpawnScale.scale.max");
   }
 
-  /** Width/height aspect ratio */
   public set aspect(value: FXAspectConfig) {
     this.aspectInternal = resolveAspect(value);
     assertValidPositiveNumber(this.aspectInternal, "FXSpawnScale.aspect");

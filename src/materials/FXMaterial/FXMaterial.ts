@@ -1,10 +1,26 @@
-import type { Blending, Material, MeshDepthMaterial, MeshDistanceMaterial } from "three";
-import { NormalBlending } from "three";
+import type { Material, MeshDepthMaterial, MeshDistanceMaterial } from "three";
 import type { GLTypeInfo } from "../../instancedParticle/shared";
-import type { FXNodeColor } from "../../nodes/color/FXNodeColor";
-import type { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
+import type { FXNodeBlending } from "../../nodes/blending/FXNodeBlending";
+import { FXNodeColor } from "../../nodes/color/FXNodeColor";
+import { FXNodeTexture } from "../../nodes/texture/FXNodeTexture";
 import { buildDepthMaterial } from "./FXDepthMaterial.Internal";
 import { buildDistanceMaterial } from "./FXDistanceMaterial.Internal";
+
+/**
+ * Per-particle blend mode used when compositing particles into the scene
+ */
+export enum FXBlending {
+  /**
+   * Premultiplied additive blend - particle color is pre-multiplied by alpha and added to the
+   * destination with zero alpha contribution
+   */
+  MASKED_ADDITIVE = 0,
+  /**
+   * Luminance-aware multiply blend - dark areas darken the destination while bright areas
+   * normal-blend through a mask
+   */
+  MASKED_MULTIPLY = 1,
+}
 
 /**
  * Configuration options shared by all {@link FXMaterial} subclasses
@@ -17,12 +33,7 @@ export interface FXMaterialOptions {
    */
   albedoNodes: (FXNodeColor | FXNodeTexture)[];
 
-  /**
-   * Three.js blending mode
-   *
-   * @defaultValue `NormalBlending`
-   */
-  blending: Blending;
+  blending: FXBlending;
 
   /**
    * Use alpha hashing instead of standard transparency
@@ -58,13 +69,6 @@ export interface FXMaterialOptions {
    * @defaultValue `true`
    */
   useSphericalDepth: boolean;
-
-  /**
-   * Use premultiplied alpha blending
-   *
-   * @defaultValue `true`
-   */
-  premultipliedAlpha: boolean;
 }
 
 /**
@@ -72,15 +76,13 @@ export interface FXMaterialOptions {
  */
 export abstract class FXMaterial {
   /** @internal */
-  public readonly albedoNodes: readonly (FXNodeColor | FXNodeTexture)[];
+  public readonly albedoNodes: readonly (FXNodeColor | FXNodeTexture | FXNodeBlending)[];
   /** @internal */
-  public readonly blending: Blending;
+  public readonly blending: FXBlending;
   /** @internal */
   public readonly useAlphaHashing: boolean;
   /** @internal */
   public readonly alphaTest: number;
-  /** @internal */
-  public readonly premultipliedAlpha: boolean;
 
   private readonly depthAlphaTest: number;
   private readonly useDepthAlphaHash: boolean;
@@ -88,11 +90,9 @@ export abstract class FXMaterial {
 
   constructor(options: Partial<FXMaterialOptions> = {}) {
     this.albedoNodes = options.albedoNodes ?? [];
-    this.blending = options.blending ?? NormalBlending;
+    this.blending = options.blending ?? FXBlending.MASKED_ADDITIVE;
     this.useAlphaHashing = options.useAlphaHashing ?? false;
     this.alphaTest = options.alphaTest ?? 0.0075;
-    this.premultipliedAlpha =
-      (options.useAlphaHashing === undefined && options.premultipliedAlpha) ?? true;
 
     this.depthAlphaTest = options.depthAlphaTest ?? 0.5;
     this.useDepthAlphaHash = options.useDepthAlphaHash ?? false;
@@ -109,7 +109,10 @@ export abstract class FXMaterial {
   /** @internal */
   public buildDepthMaterial(): MeshDepthMaterial {
     return buildDepthMaterial(
-      this.albedoNodes,
+      this.albedoNodes.filter(
+        (node): node is FXNodeColor | FXNodeTexture =>
+          node instanceof FXNodeColor || node instanceof FXNodeTexture,
+      ),
       this.depthAlphaTest,
       this.useDepthAlphaHash,
       this.useSphericalDepth,
@@ -119,7 +122,10 @@ export abstract class FXMaterial {
   /** @internal */
   public buildDistanceMaterial(): MeshDistanceMaterial {
     return buildDistanceMaterial(
-      this.albedoNodes,
+      this.albedoNodes.filter(
+        (node): node is FXNodeColor | FXNodeTexture =>
+          node instanceof FXNodeColor || node instanceof FXNodeTexture,
+      ),
       this.depthAlphaTest,
       this.useDepthAlphaHash,
       this.useSphericalDepth,
