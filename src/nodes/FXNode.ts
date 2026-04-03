@@ -14,5 +14,8 @@ export abstract class FXNode {
   /** @internal */
   public abstract readonly cacheKey: string;
 
+  /** @internal */
+  public prepare?(index: number): void;
+
   public destroy?(): void;
 }

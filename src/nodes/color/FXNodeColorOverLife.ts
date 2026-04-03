@@ -2,7 +2,7 @@ import type { DataTexture } from "three";
 import type { FXColor } from "../../miscellaneous/color/FXColor";
 import type { FXCurve1DConfig } from "../../miscellaneous/curve/FXCurve1D";
 import { FXCurve1D } from "../../miscellaneous/curve/FXCurve1D";
-import { buildGradientTexture, getNextInstanceId } from "../../miscellaneous/miscellaneous";
+import { buildGradientTexture } from "../../miscellaneous/miscellaneous";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
 import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeColor } from "./FXNodeColor";
@@ -16,28 +16,52 @@ export class FXNodeColorOverLife extends FXNodeColor {
   /** @internal */
   public override readonly cacheKey: string = "color-over-life";
   /** @internal */
-  public override readonly uniformDeclarations: string[];
+  public override uniformDeclarations!: string[];
   /** @internal */
-  public override readonly uniforms: Record<string, { value: unknown }>;
+  public override uniforms!: Record<string, { value: unknown }>;
   /** @internal */
-  public override readonly helperFunctions: string;
+  public override helperFunctions!: string;
   /** @internal */
-  public override readonly colorExpression: string;
+  public override colorExpression!: string;
 
-  /** @internal */
+  private uniformName!: string;
   private gradientTexture: DataTexture;
-  private readonly uniformName: string;
   private curveInternal: FXCurve1D<FXColor>;
+
+  private isPrepared = false;
 
   /**
    * @param curve - Color gradient defining the animation over the particle lifetime
    */
   constructor(curve: FXCurve1DConfig<FXColor>) {
     super();
-    const id = getNextInstanceId();
-    this.uniformName = `u_ColorOverLife_${id}`;
     this.curveInternal = new FXCurve1D<FXColor>(curve);
     this.gradientTexture = buildGradientTexture(this.curveInternal);
+  }
+
+  /** Current color gradient curve */
+  public get curve(): FXCurve1D<FXColor> {
+    return this.curveInternal;
+  }
+
+  public set curve(value: FXCurve1DConfig<FXColor>) {
+    this.curveInternal = new FXCurve1D<FXColor>(value);
+    this.gradientTexture.dispose();
+    this.gradientTexture = buildGradientTexture(this.curveInternal);
+
+    if (this.isPrepared) {
+      this.uniforms[this.uniformName].value = this.gradientTexture;
+    }
+  }
+
+  /** Releases the backing gradient texture */
+  public override destroy(): void {
+    this.gradientTexture.dispose();
+  }
+
+  /** @internal */
+  public override prepare(index: number): void {
+    this.uniformName = `u_ColorOverLife_${index}`;
 
     this.uniformDeclarations = [`uniform sampler2D ${this.uniformName};`];
     this.uniforms = {
@@ -56,22 +80,7 @@ export class FXNodeColorOverLife extends FXNodeColor {
       }
     `;
     this.colorExpression = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxSampleColorOverLife(${this.uniformName})`;
-  }
 
-  /** Current color gradient curve */
-  public get curve(): FXCurve1D<FXColor> {
-    return this.curveInternal;
-  }
-
-  public set curve(value: FXCurve1DConfig<FXColor>) {
-    this.curveInternal = new FXCurve1D<FXColor>(value);
-    this.gradientTexture.dispose();
-    this.gradientTexture = buildGradientTexture(this.curveInternal);
-    this.uniforms[this.uniformName].value = this.gradientTexture;
-  }
-
-  /** Releases the backing gradient texture */
-  public override destroy(): void {
-    this.gradientTexture.dispose();
+    this.isPrepared = true;
   }
 }

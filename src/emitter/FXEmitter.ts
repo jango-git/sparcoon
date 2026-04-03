@@ -108,6 +108,7 @@ export class FXEmitter extends Object3D {
       "FXEmitter.constructor.behaviorSequence",
     );
 
+    material.prepare();
     const threeMaterial = material.buildThreeMaterial(collectedProperties);
 
     this.mesh = new FXInstancedParticle(

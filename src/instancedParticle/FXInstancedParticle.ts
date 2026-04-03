@@ -1,5 +1,12 @@
-import type { InstancedBufferGeometry, Material, Vector3 } from "three";
-import { InstancedBufferAttribute, Mesh, StreamDrawUsage } from "three";
+import type { Material, Vector3 } from "three";
+import {
+  BufferAttribute,
+  Float32BufferAttribute,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
+  Mesh,
+  StreamDrawUsage,
+} from "three";
 import {
   BUILTIN_OFFSET_AGE,
   BUILTIN_OFFSET_LIFETIME,
@@ -7,7 +14,6 @@ import {
   BUILTIN_OFFSET_POSITION_Y,
   BUILTIN_OFFSET_POSITION_Z,
 } from "../miscellaneous/miscellaneous";
-import { INSTANCED_PARTICLE_GEOMETRY } from "./FXInstancedParticle.Internal";
 import type { GLTypeInfo } from "./shared";
 
 export class FXInstancedParticle extends Mesh {
@@ -27,7 +33,16 @@ export class FXInstancedParticle extends Mesh {
     private readonly capacityStep: number,
     material: Material,
   ) {
-    const instancedGeometry = INSTANCED_PARTICLE_GEOMETRY.clone();
+    const instancedGeometry = new InstancedBufferGeometry();
+
+    const indices = new Uint16Array([0, 2, 1, 2, 3, 1]);
+    instancedGeometry.setIndex(new BufferAttribute(indices, 1));
+
+    const positions = new Float32Array([-0.5, 0.5, 0, 0.5, 0.5, 0, -0.5, -0.5, 0, 0.5, -0.5, 0]);
+    instancedGeometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
+
+    const uvs = new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]);
+    instancedGeometry.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
 
     super(instancedGeometry, material);
 

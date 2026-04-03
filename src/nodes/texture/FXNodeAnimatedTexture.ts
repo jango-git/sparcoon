@@ -1,6 +1,5 @@
 import type { Matrix3 } from "three";
 import { assertValidPositiveNumber } from "../../miscellaneous/asserts";
-import { getNextInstanceId } from "../../miscellaneous/miscellaneous";
 import { FXTextureView } from "../../miscellaneous/texture/FXTextureView";
 import type { FXTextureConfig } from "../../miscellaneous/texture/FXTextureView.Internal";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
@@ -39,21 +38,28 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
   /** @internal */
   public override readonly affectsDepth: boolean = true;
   /** @internal */
-  public override readonly cacheKey: string;
+  public override cacheKey!: string;
   /** @internal */
-  public override readonly uniformDeclarations: string[];
+  public override uniformDeclarations!: string[];
   /** @internal */
-  public override readonly uniforms: Record<string, { value: unknown }>;
+  public override uniforms!: Record<string, { value: unknown }>;
   /** @internal */
-  public override readonly helperFunctions: string;
+  public override helperFunctions!: string;
   /** @internal */
-  public override readonly colorExpression: string;
+  public override colorExpression!: string;
 
-  private readonly uniformTexture: string;
-  private readonly uniformUVTransform: string;
-  private readonly uniformColumns: string;
-  private readonly uniformRows: string;
+  private uniformTexture!: string;
+  private uniformUVTransform!: string;
+  private uniformColumns!: string;
+  private uniformRows!: string;
   private readonly textureInternal: FXTextureView;
+
+  private readonly isInterpolate: boolean;
+
+  private columnsInternal: number;
+  private rowsInternal: number;
+
+  private isPrepared = false;
 
   /**
    * @param options - Sprite sheet configuration
@@ -62,13 +68,67 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
     super();
     assertValidPositiveNumber(columns, "FXNodeAnimatedTexture.constructor.columns");
     assertValidPositiveNumber(rows, "FXNodeAnimatedTexture.constructor.rows");
-    const idx = getNextInstanceId();
-    this.uniformTexture = `u_AnimatedTexture_${idx}`;
-    this.uniformUVTransform = `u_AnimatedTextureUVTransform_${idx}`;
-    this.uniformColumns = `u_AnimatedTextureColumns_${idx}`;
-    this.uniformRows = `u_AnimatedTextureRows_${idx}`;
+
+    this.columnsInternal = columns;
+    this.rowsInternal = rows;
 
     this.textureInternal = new FXTextureView(texture);
+    this.isInterpolate = interpolate;
+  }
+
+  /** View describing the texture and its atlas region */
+  public get texture(): FXTextureView {
+    return this.textureInternal;
+  }
+
+  /** Number of frame columns in the sprite sheet */
+  public get columns(): number {
+    return this.columnsInternal;
+  }
+
+  /** Number of frame rows in the sprite sheet */
+  public get rows(): number {
+    return this.rowsInternal;
+  }
+
+  public set texture(config: FXTextureConfig) {
+    this.textureInternal.set(config);
+    if (this.isPrepared) {
+      if (this.textureInternal.textureDirty) {
+        this.uniforms[this.uniformTexture].value = this.textureInternal.texture;
+        this.textureInternal.setTextureDirtyFalse();
+      }
+      if (this.textureInternal.uvTransformDirty) {
+        this.textureInternal.calculateUVTransform(
+          this.uniforms[this.uniformUVTransform].value as Matrix3,
+        );
+        this.textureInternal.setUVTransformDirtyFalse();
+      }
+    }
+  }
+
+  public set columns(value: number) {
+    assertValidPositiveNumber(value, "FXNodeAnimatedTexture.columns");
+    this.columnsInternal = value;
+    if (this.isPrepared) {
+      this.uniforms[this.uniformColumns].value = value;
+    }
+  }
+
+  public set rows(value: number) {
+    assertValidPositiveNumber(value, "FXNodeAnimatedTexture.rows");
+    this.rowsInternal = value;
+    if (this.isPrepared) {
+      this.uniforms[this.uniformRows].value = value;
+    }
+  }
+
+  public override prepare(index: number): void {
+    this.uniformTexture = `u_AnimatedTexture_${index}`;
+    this.uniformUVTransform = `u_AnimatedTextureUVTransform_${index}`;
+    this.uniformColumns = `u_AnimatedTextureColumns_${index}`;
+    this.uniformRows = `u_AnimatedTextureRows_${index}`;
+
     const uvTransform = this.textureInternal.calculateUVTransform();
     this.textureInternal.setTextureDirtyFalse();
     this.textureInternal.setUVTransformDirtyFalse();
@@ -77,7 +137,7 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
       ? ""
       : "color = vec4(pow(color.rgb, vec3(2.2)), color.a);";
 
-    this.cacheKey = interpolate ? "animated-texture-interpolated" : "animated-texture";
+    this.cacheKey = this.isInterpolate ? "animated-texture-interpolated" : "animated-texture";
     this.uniformDeclarations = [
       `uniform sampler2D ${this.uniformTexture};`,
       `uniform mat3 ${this.uniformUVTransform};`,
@@ -87,10 +147,10 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
     this.uniforms = {
       [this.uniformTexture]: { value: this.textureInternal.texture },
       [this.uniformUVTransform]: { value: uvTransform },
-      [this.uniformColumns]: { value: columns },
-      [this.uniformRows]: { value: rows },
+      [this.uniformColumns]: { value: this.columnsInternal },
+      [this.uniformRows]: { value: this.rowsInternal },
     };
-    this.helperFunctions = interpolate
+    this.helperFunctions = this.isInterpolate
       ? `
         vec2 fxFrameToUV(vec2 uv, float frame, float columns, float rows) {
           float column = mod(frame, columns);
@@ -145,44 +205,7 @@ export class FXNodeAnimatedTexture extends FXNodeTexture {
         }
       `;
     this.colorExpression = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxSampleAnimatedTexture(${this.uniformTexture}, ${this.uniformUVTransform}, p_uv, ${this.uniformColumns}, ${this.uniformRows})`;
-  }
 
-  /** View describing the texture and its atlas region */
-  public get texture(): FXTextureView {
-    return this.textureInternal;
-  }
-
-  /** Number of frame columns in the sprite sheet */
-  public get columns(): number {
-    return this.uniforms[this.uniformColumns].value as number;
-  }
-
-  /** Number of frame rows in the sprite sheet */
-  public get rows(): number {
-    return this.uniforms[this.uniformRows].value as number;
-  }
-
-  public set texture(config: FXTextureConfig) {
-    this.textureInternal.set(config);
-    if (this.textureInternal.textureDirty) {
-      this.uniforms[this.uniformTexture].value = this.textureInternal.texture;
-      this.textureInternal.setTextureDirtyFalse();
-    }
-    if (this.textureInternal.uvTransformDirty) {
-      this.textureInternal.calculateUVTransform(
-        this.uniforms[this.uniformUVTransform].value as Matrix3,
-      );
-      this.textureInternal.setUVTransformDirtyFalse();
-    }
-  }
-
-  public set columns(value: number) {
-    assertValidPositiveNumber(value, "FXNodeAnimatedTexture.columns");
-    this.uniforms[this.uniformColumns].value = value;
-  }
-
-  public set rows(value: number) {
-    assertValidPositiveNumber(value, "FXNodeAnimatedTexture.rows");
-    this.uniforms[this.uniformRows].value = value;
+    this.isPrepared = true;
   }
 }

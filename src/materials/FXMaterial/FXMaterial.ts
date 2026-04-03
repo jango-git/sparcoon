@@ -134,4 +134,7 @@ export abstract class FXMaterial {
 
   /** @internal */
   public abstract buildThreeMaterial(varyings: Record<string, GLTypeInfo>): Material;
+
+  /** @internal */
+  public abstract prepare(): void;
 }

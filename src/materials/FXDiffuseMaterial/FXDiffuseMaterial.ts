@@ -128,4 +128,21 @@ export class FXDiffuseMaterial extends FXMaterial {
       this.shadowSensitivity,
     );
   }
+
+  public override prepare(): void {
+    let i = 0;
+
+    for (const node of this.albedoNodes) {
+      node.prepare?.(i);
+      i += 1;
+    }
+    for (const node of this.normalNodes) {
+      node.prepare?.(i);
+      i += 1;
+    }
+    for (const node of this.emissionNodes) {
+      node.prepare?.(i);
+      i += 1;
+    }
+  }
 }

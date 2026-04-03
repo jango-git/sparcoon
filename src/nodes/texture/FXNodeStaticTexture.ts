@@ -1,5 +1,4 @@
 import type { Matrix3 } from "three";
-import { getNextInstanceId } from "../../miscellaneous/miscellaneous";
 import { FXTextureView } from "../../miscellaneous/texture/FXTextureView";
 import type { FXTextureConfig } from "../../miscellaneous/texture/FXTextureView.Internal";
 import { checkSRGBSupport } from "../../miscellaneous/webglCapabilities";
@@ -15,28 +14,54 @@ export class FXNodeStaticTexture extends FXNodeTexture {
   /** @internal */
   public override readonly cacheKey: string = "static-texture";
   /** @internal */
-  public override readonly uniformDeclarations: string[];
+  public override uniformDeclarations!: string[];
   /** @internal */
-  public override readonly uniforms: Record<string, { value: unknown }>;
+  public override uniforms!: Record<string, { value: unknown }>;
   /** @internal */
-  public override readonly helperFunctions: string;
+  public override helperFunctions!: string;
   /** @internal */
-  public override readonly colorExpression: string;
+  public override colorExpression!: string;
 
-  private readonly uniformTexture: string;
-  private readonly uniformUVTransform: string;
+  private uniformTexture!: string;
+  private uniformUVTransform!: string;
   private readonly textureInternal: FXTextureView;
+
+  private isPrepared = false;
 
   /**
    * @param config - Texture or atlas configuration applied to every particle
    */
   constructor(config: FXTextureConfig) {
     super();
-    const id = getNextInstanceId();
-    this.uniformTexture = `u_StaticTexture_${id}`;
-    this.uniformUVTransform = `u_StaticTextureUVTransform_${id}`;
-
     this.textureInternal = new FXTextureView(config);
+  }
+
+  /** View describing the texture and its atlas region */
+  public get texture(): FXTextureView {
+    return this.textureInternal;
+  }
+
+  public set texture(config: FXTextureConfig) {
+    this.textureInternal.set(config);
+
+    if (this.isPrepared) {
+      if (this.textureInternal.textureDirty) {
+        this.uniforms[this.uniformTexture].value = this.textureInternal.texture;
+        this.textureInternal.setTextureDirtyFalse();
+      }
+      if (this.textureInternal.uvTransformDirty) {
+        this.textureInternal.calculateUVTransform(
+          this.uniforms[this.uniformUVTransform].value as Matrix3,
+        );
+        this.textureInternal.setUVTransformDirtyFalse();
+      }
+    }
+  }
+
+  public override prepare(index: number): void {
+    this.uniformTexture = `u_StaticTexture_${index}`;
+    this.uniformUVTransform = `u_StaticTextureUVTransform_${index}`;
+
     const uvTransform = this.textureInternal.calculateUVTransform();
     this.textureInternal.setTextureDirtyFalse();
     this.textureInternal.setUVTransformDirtyFalse();
@@ -59,24 +84,6 @@ export class FXNodeStaticTexture extends FXNodeTexture {
       }
     `;
     this.colorExpression = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxSampleStaticTexture(${this.uniformTexture}, ${this.uniformUVTransform}, p_uv)`;
-  }
-
-  /** View describing the texture and its atlas region */
-  public get texture(): FXTextureView {
-    return this.textureInternal;
-  }
-
-  public set texture(config: FXTextureConfig) {
-    this.textureInternal.set(config);
-    if (this.textureInternal.textureDirty) {
-      this.uniforms[this.uniformTexture].value = this.textureInternal.texture;
-      this.textureInternal.setTextureDirtyFalse();
-    }
-    if (this.textureInternal.uvTransformDirty) {
-      this.textureInternal.calculateUVTransform(
-        this.uniforms[this.uniformUVTransform].value as Matrix3,
-      );
-      this.textureInternal.setUVTransformDirtyFalse();
-    }
+    this.isPrepared = true;
   }
 }

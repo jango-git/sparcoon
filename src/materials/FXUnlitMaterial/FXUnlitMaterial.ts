@@ -17,4 +17,12 @@ export class FXUnlitMaterial extends FXMaterial {
       this.albedoNodes,
     );
   }
+
+  public override prepare(): void {
+    let i = 0;
+    for (const node of this.albedoNodes) {
+      node.prepare?.(i);
+      i += 1;
+    }
+  }
 }

@@ -128,9 +128,11 @@ export function buildFXUnlitMaterial(
   };
 
   material.customProgramCacheKey = (): string =>
-    ["fx-unlit", albedoNodes.map((node) => node.cacheKey).join("-") || "none", FXBlending[blending]].join(
-      "_",
-    );
+    [
+      "fx-unlit",
+      albedoNodes.map((node) => node.cacheKey).join("-") || "none",
+      FXBlending[blending],
+    ].join("_");
 
   return material;
 }

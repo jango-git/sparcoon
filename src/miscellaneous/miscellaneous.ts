@@ -14,12 +14,6 @@ import type { FXTextureConfig } from "../miscellaneous/texture/FXTextureView.Int
 import type { FXColor } from "./color/FXColor";
 import type { FXCurve1D } from "./curve/FXCurve1D";
 
-let nextInstanceId = 0;
-
-export function getNextInstanceId(): number {
-  return nextInstanceId++;
-}
-
 export interface FXRange {
   min: number;
   max: number;
