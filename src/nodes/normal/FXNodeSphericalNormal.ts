@@ -1,4 +1,3 @@
-import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeNormal } from "./FXNodeNormal";
 
 /**
@@ -15,5 +14,5 @@ export class FXNodeSphericalNormal extends FXNodeNormal {
     }
   `;
   /** @internal */
-  public override readonly normalExpression: string = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * fxComputeSphericalNormal(p_uv)`;
+  public override readonly normalExpression: string = `fxComputeSphericalNormal(p_uv)`;
 }

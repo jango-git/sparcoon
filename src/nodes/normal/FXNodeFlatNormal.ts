@@ -1,4 +1,3 @@
-import { CURRENT_EXPRESSION_VALUE_PLACEHOLDER } from "../FXNode";
 import { FXNodeNormal } from "./FXNodeNormal";
 
 /**
@@ -8,5 +7,5 @@ export class FXNodeFlatNormal extends FXNodeNormal {
   /** @internal */
   public override readonly cacheKey: string = "flat-normal";
   /** @internal */
-  public override readonly normalExpression: string = `${CURRENT_EXPRESSION_VALUE_PLACEHOLDER} * vec3(0.0, 0.0, 1.0)`;
+  public override readonly normalExpression: string = `vec3(0.0, 0.0, 1.0)`;
 }
