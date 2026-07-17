@@ -176,7 +176,7 @@ export class FXEmitter extends Object3D {
     this.assertCanSpawn("FXEmitter.constructor");
 
     this.add(this.mesh);
-    this.world.registerEmitter(this);
+    this.world.registerObject(this);
   }
 
   public get particleCount(): number {
@@ -188,8 +188,10 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * @internal Builds an emitter into `world` from a precompiled effect. Called by {@link FXEffect};
-   * the editor emits the two artifacts as an ESM module and the effect hands them here.
+   * Builds an emitter into `world` from a precompiled effect - the low-level building block behind
+   * {@link FXEffect}. Exposed for editor tooling through the `sparcoon/editor` entry (live preview
+   * rebuilds a single emitter per graph edit); not part of the main package surface, where the
+   * runtime path is running whole projects through `FXEffect`.
    */
   public static fromArtifacts(
     render: FXRenderArtifact,
@@ -226,7 +228,7 @@ export class FXEmitter extends Object3D {
     }
     this.destroyed = true;
 
-    this.world.unregisterEmitter(this);
+    this.world.unregisterObject(this);
 
     // Drop scheduled work and the buffer cache so nothing references the mesh's buffers after teardown.
     this.pendingBursts.length = 0;

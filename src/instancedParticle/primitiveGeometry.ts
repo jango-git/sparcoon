@@ -20,7 +20,7 @@ export function buildPrimitiveGeometry(primitive: FXGeometryPrimitive): BufferGe
 }
 
 /**
- * @internal Resolves an artifact's {@link FXGeometrySource} to a concrete `BufferGeometry`: a
+ * Resolves an artifact's {@link FXGeometrySource} to a concrete `BufferGeometry`: a
  * built-in primitive is built fresh; a `"custom"` slot is looked up by name in `customGeometries`
  * (app-supplied, e.g. from the exported module's `assets` or the editor's own live content
  * library) - falling back to the `"plane"` primitive when the name is unbound, the same graceful

@@ -42,6 +42,11 @@ export type { FXGeometryPrimitive } from "./artifact/FXArtifact.js";
 export { FXEffect } from "./effect/FXEffect.js";
 export type { FXEffectOptions, FXEffectSpec } from "./effect/FXEffectSpec.js";
 
+// Type-only: the return type of `FXEffect.getEmitter`. Exported so an emitted module can name it in
+// a typed `getEmitter` override; the emitter cannot be constructed from the main surface (its
+// factory lives in the `sparcoon/editor` entry).
+export type { FXEmitter } from "./emitter/FXEmitter.js";
+
 // The tick domain: an effect joins one on construction; a single FXWorld.update per frame drives
 // every effect's timeline and the shared particle pool.
 export { FXWorld } from "./world/FXWorld.js";
