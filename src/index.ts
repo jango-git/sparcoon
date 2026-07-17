@@ -1,49 +1,62 @@
-export { FXBehaviorDirectionalForce } from "./emitter/behavior/FXBehaviorDirectionalForce";
-export { FXBehaviorPointForce } from "./emitter/behavior/FXBehaviorPointForce";
-export { FXBehaviorScaleOverLife } from "./emitter/behavior/FXBehaviorScaleOverLife";
-export { FXBehaviorTorqueDamping } from "./emitter/behavior/FXBehaviorTorqueDamping";
-export { FXBehaviorTorqueNoise } from "./emitter/behavior/FXBehaviorTorqueNoise";
-export { FXBehaviorTorqueOverLife } from "./emitter/behavior/FXBehaviorTorqueOverLife";
-export { FXBehaviorVelocityDamping } from "./emitter/behavior/FXBehaviorVelocityDamping";
-export { FXBehaviorVelocityNoise } from "./emitter/behavior/FXBehaviorVelocityNoise";
-export { FXBehaviorVelocityOverLife } from "./emitter/behavior/FXBehaviorVelocityOverLife";
-export { FXEmitter } from "./emitter/FXEmitter";
-export { FXSpawnBox } from "./emitter/spawn/FXSpawnBox";
-export { FXSpawnLifetime } from "./emitter/spawn/FXSpawnLifetime";
-export { FXSpawnOffset } from "./emitter/spawn/FXSpawnOffset";
-export { FXSpawnPoint } from "./emitter/spawn/FXSpawnPoint";
-export { FXSpawnRotation } from "./emitter/spawn/FXSpawnRotation";
-export { FXSpawnScale } from "./emitter/spawn/FXSpawnScale";
-export { FXSpawnSphere } from "./emitter/spawn/FXSpawnSphere";
-export { FXSpawnTorque } from "./emitter/spawn/FXSpawnTorque";
-export { FXSpawnVelocity } from "./emitter/spawn/FXSpawnVelocity";
-export { FXDiffuseMaterial } from "./materials/FXDiffuseMaterial/FXDiffuseMaterial";
-export { FXBlending, FXMaterial } from "./materials/FXMaterial/FXMaterial";
-export { FXUnlitMaterial } from "./materials/FXUnlitMaterial/FXUnlitMaterial";
-export { FXColor } from "./miscellaneous/color/FXColor";
-export { FXCurve1D } from "./miscellaneous/curve/FXCurve1D";
+// Public surface of the thin runtime: an editor-emitted module subclasses FXEffect, joins an
+// FXWorld, and is driven by a single FXWorld.update per frame - plus the runtime-owned types the
+// editor imports (artifact contracts and the core layout). No graph, compiler, validator, or live
+// protocol lives here.
+
 export type {
-  FXCurve1DAnchor,
-  FXCurve1DConfig,
-  FXCurve1DPoint,
-} from "./miscellaneous/curve/FXCurve1D";
-export { FXTextureView } from "./miscellaneous/texture/FXTextureView";
+  FXAttributeDecl,
+  FXBehaviorArtifact,
+  FXBufferLayout,
+  FXGeometrySource,
+  FXKernelBuffers,
+  FXRenderArtifact,
+  FXShaderStageSource,
+  FXUniformInit,
+  FXValueSlot,
+} from "./artifact/FXArtifact.js";
+
+export {
+  FX_AGE,
+  FX_CORE_LIFECYCLE,
+  FX_CORE_LIFECYCLE_STRIDE,
+  FX_CORE_LIFECYCLE_VARYING,
+  FX_CORE_PARTICLE_DEFINES,
+  FX_CORE_POSITION,
+  FX_CORE_POSITION_STRIDE,
+  FX_CORE_POSITION_VARYING,
+  FX_LIFETIME,
+  FX_POSITION_X,
+  FX_POSITION_Y,
+  FX_POSITION_Z,
+} from "./coreLayout.js";
+
 export type {
-  FXTextureAtlasConfig,
-  FXTextureConfig,
-  FXTextureRect,
-  FXTextureSize,
-  FXTextureTrim,
-} from "./miscellaneous/texture/FXTextureView.Internal";
-export { FXNodeBlending } from "./nodes/blending/FXNodeBlending";
-export { FXNodeLightnessBlendingMask } from "./nodes/blending/FXNodeLightnessBlendingMask";
-export { FXNodeColor } from "./nodes/color/FXNodeColor";
-export { FXNodeColorOverLife } from "./nodes/color/FXNodeColorOverLife";
-export { FXNodeSphericalClip } from "./nodes/color/FXNodeSphericalClip";
-export { FXNodeFlatNormal } from "./nodes/normal/FXNodeFlatNormal";
-export { FXNodeNormal } from "./nodes/normal/FXNodeNormal";
-export { FXNodeSphericalNormal } from "./nodes/normal/FXNodeSphericalNormal";
-export { FXNodeAnimatedTexture } from "./nodes/texture/FXNodeAnimatedTexture";
-export type { FXNodeAnimatedTextureOptions } from "./nodes/texture/FXNodeAnimatedTexture";
-export { FXNodeStaticTexture } from "./nodes/texture/FXNodeStaticTexture";
-export { FXNodeTexture } from "./nodes/texture/FXNodeTexture";
+  FXGraphLambertMaterialOptions,
+  FXGraphUnlitMaterialOptions,
+  FXRenderMode,
+} from "./render/FXMaterialOptions.js";
+export type { FXGeometryPrimitive } from "./artifact/FXArtifact.js";
+
+// Whole-project playback: the generic runtime behind every editor-emitted project module (base
+// class + scene specification). An emitted module supplies only its `FXEffectSpec` data and a thin subclass.
+export { FXEffect } from "./effect/FXEffect.js";
+export type { FXEffectOptions, FXEffectSpec } from "./effect/FXEffectSpec.js";
+
+// The tick domain: an effect joins one on construction; a single FXWorld.update per frame drives
+// every effect's timeline and the shared particle pool.
+export { FXWorld } from "./world/FXWorld.js";
+
+export {
+  fxFbm,
+  fxFract,
+  fxHash,
+  fxMix,
+  fxMod,
+  fxSampleLut,
+  fxSmoothstep,
+  fxSnoise2,
+  fxSnoise3,
+  fxValueNoise,
+} from "./miscellaneous/fxMath.js";
+export { fxDataTexture } from "./miscellaneous/texture/fxDataTexture.js";
+export type { FXDataTextureOptions } from "./miscellaneous/texture/fxDataTexture.js";

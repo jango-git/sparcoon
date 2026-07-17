@@ -1,9 +1,0 @@
-import { FXNode } from "../FXNode";
-
-/**
- * Abstract base class for particle color nodes
- */
-export abstract class FXNodeColor extends FXNode {
-  /** @internal */
-  public abstract readonly colorExpression: string;
-}

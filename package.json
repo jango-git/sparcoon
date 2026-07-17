@@ -1,60 +1,76 @@
 {
   "name": "sparcoon",
-  "version": "0.7.3",
-  "description": "Instanced-mesh particle system for Three.js.",
+  "version": "0.9.0",
+  "description": "Runtime for VFX artifacts authored in the Sparcoon Editor.",
   "keywords": [
+    "three",
+    "threejs",
+    "three.js",
     "particles",
     "particle-system",
-    "three.js",
-    "3d",
-    "webgl",
+    "vfx",
+    "visual-effects",
+    "fx",
     "instanced",
+    "instancing",
     "billboard",
-    "typescript"
+    "webgl",
+    "3d",
+    "animation",
+    "typescript",
+    "sparcoon"
   ],
-  "author": "jango",
-  "license": "MIT",
+  "homepage": "https://github.com/jango-git/sparcoon#readme",
+  "bugs": {
+    "url": "https://github.com/jango-git/sparcoon/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jango-git/sparcoon.git"
   },
+  "license": "MIT",
+  "author": "jango",
   "type": "module",
-  "sideEffects": false,
-  "scripts": {
-    "clean": "rm -rf dist",
-    "build": "npm run clean && rollup -c",
-    "prepublishOnly": "npm run build"
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
-  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "format": "prettier --write . && eslint src --fix",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "fast-simplex-noise": "^4.0.0",
-    "ferrsign": "^0.0.4",
     "three": ">=0.157.0 <0.180.0"
   },
   "devDependencies": {
-    "@rollup/plugin-node-resolve": "^16.0.1",
-    "@rollup/plugin-commonjs": "^29.0.2",
-    "@types/node": "^25.0.2",
+    "@types/node": "^20.0.0",
     "@types/three": "^0.157.0",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
+    "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^9.26.0",
-    "rollup": "^4.40.2",
-    "rollup-plugin-string": "^3.0.0",
-    "rollup-plugin-typescript2": "^0.36.0",
-    "ts-transformer-minify-privates": "^1.0.0",
-    "typescript": "^5.8.3"
+    "prettier": "^3.9.5",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.9"
   }
 }

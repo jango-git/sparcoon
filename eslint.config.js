@@ -92,6 +92,9 @@ export default [
           format: ["camelCase"],
           leadingUnderscore: "allow",
         },
+        // A property key that requires quotes (a hyphenated string, a reserved word) carries an
+        // external contract/ABI shape - it is data, not an identifier - so casing does not apply.
+        { selector: "property", modifiers: ["requiresQuotes"], format: null },
         {
           selector: "classProperty",
           format: ["camelCase"],
@@ -105,6 +108,26 @@ export default [
           overrides: { constructors: "no-public" },
         },
       ],
+    },
+  },
+  {
+    files: ["tests/**/*.ts"],
+    ignores: ["dist/**", "node_modules/**"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        project: "./tests/tsconfig.json",
+        tsconfigRootDir: process.cwd(),
+        sourceType: "module",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+    },
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
     },
   },
 ];

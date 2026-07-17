@@ -1,13 +1,12 @@
-import { EPSILON } from "./math";
+import { EPSILON } from "./math.js";
 
-/**
- * Validates value is finite number within safe range.
- * @param value Number to validate
- * @param subject Value name for error messages
- * @throws If value is not finite or exceeds safe range
- */
+// `typeof process` short-circuits before `process.env`, so the published ESM never throws a
+// ReferenceError under import maps / a CDN (no bundler `process` shim). Bundlers still inline
+// `process.env.NODE_ENV`, so DEV validation drops out of production builds.
+const DEV = typeof process === "undefined" || process.env.NODE_ENV !== "production";
+
 export function assertValidNumber(value: number, subject: string): void {
-  if (process.env.NODE_ENV !== "production") {
+  if (DEV) {
     if (!Number.isFinite(value)) {
       throw new Error(`${subject}: value must be a finite number`);
     }
@@ -18,14 +17,8 @@ export function assertValidNumber(value: number, subject: string): void {
   }
 }
 
-/**
- * Validates value is positive (>= EPSILON).
- * @param value Number to validate
- * @param subject Value name for error messages
- * @throws If value is invalid or below EPSILON
- */
 export function assertValidPositiveNumber(value: number, subject: string): void {
-  if (process.env.NODE_ENV !== "production") {
+  if (DEV) {
     assertValidNumber(value, subject);
     if (value < EPSILON) {
       throw new Error(`${subject}: value must be greater than or equal to ${EPSILON}`);
@@ -33,17 +26,22 @@ export function assertValidPositiveNumber(value: number, subject: string): void 
   }
 }
 
-/**
- * Validates value is non-negative (>= 0).
- * @param value Number to validate
- * @param subject Value name for error messages
- * @throws If value is invalid or negative
- */
 export function assertValidNonNegativeNumber(value: number, subject: string): void {
-  if (process.env.NODE_ENV !== "production") {
+  if (DEV) {
     assertValidNumber(value, subject);
     if (value < 0) {
       throw new Error(`${subject}: value must be greater than or equal to 0`);
+    }
+  }
+}
+
+// Guards counts/capacities that reach `instanceCount` or a `Float32Array` length, where a
+// fractional value would draw a truncated instance count or throw a `RangeError`.
+export function assertValidPositiveInteger(value: number, subject: string): void {
+  if (DEV) {
+    assertValidPositiveNumber(value, subject);
+    if (!Number.isInteger(value)) {
+      throw new Error(`${subject}: value must be an integer`);
     }
   }
 }
