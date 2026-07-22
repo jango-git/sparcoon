@@ -87,7 +87,11 @@ describe("FXMesh lifecycle", () => {
 describe("FXMesh shadows and live values", () => {
   it("wires shadow flags and a depth material, freed on destroy", () => {
     const world = new FXWorld();
-    const mesh = FXMesh.fromArtifact(unlitArtifact(), { castShadow: true, receiveShadow: true }, world);
+    const mesh = FXMesh.fromArtifact(
+      unlitArtifact(),
+      { castShadow: true, receiveShadow: true },
+      world,
+    );
     expect(mesh.castShadow).toBe(true);
     expect(mesh.receiveShadow).toBe(true);
     expect(mesh.customDepthMaterial).toBeDefined();

@@ -1,8 +1,9 @@
-import type { Camera } from "three";
+import type { Camera, WebGLRenderer } from "three";
 import type {
   FXBehaviorArtifact,
   FXGeometrySource,
-  FXRenderArtifact,
+  FXParticleKernelArtifact,
+  FXRenderArtifactsByGLSLTier,
 } from "../artifact/FXArtifact.js";
 import type { FXWorld } from "../world/FXWorld.js";
 
@@ -59,8 +60,19 @@ export type FXEffectEvent =
 export interface FXEffectEmitterSpec {
   /** The editor-authored name, addressing this emitter through {@link FXEffect.getEmitter} etc. */
   readonly name: string;
-  readonly render: FXRenderArtifact;
+  readonly render: FXRenderArtifactsByGLSLTier;
   readonly behavior: FXBehaviorArtifact;
+  /**
+   * The standard-tier (WebGL2, transform-feedback) behavior artifact - present only when this
+   * emitter's spawn node had "Try GPU simulation" on and the graph compiled to GLSL. `behavior`
+   * above is always present regardless - the mandatory JS fallback, including for the
+   * WebGL2->WebGL1 emergency downgrade - so a spec is never left with only this field and no JS
+   * twin. {@link FXEffect} passes this to
+   * `FXEmitter.fromArtifacts` only when the live renderer actually negotiated WebGL2 (the same
+   * `isWebGL2` signal that already picks `render`'s "standard" tier); the runtime decides for
+   * itself whether GPU setup then actually succeeds, falling back to `behavior` in place if not.
+   */
+  readonly gpuBehavior?: FXParticleKernelArtifact;
   readonly expectedCapacity: number;
   readonly sortInterval: number;
   /** Casts a shape-aware shadow; omitted (treated as false) by pre-shadow exports. */
@@ -84,7 +96,7 @@ export interface FXEffectEmitterSpec {
 export interface FXEffectMeshSpec {
   /** The editor-authored name, addressing this mesh through {@link FXEffect.getMesh} etc. */
   readonly name: string;
-  readonly render: FXRenderArtifact;
+  readonly render: FXRenderArtifactsByGLSLTier;
   readonly geometry: FXGeometrySource;
   /** See {@link FXEffectEmitterSpec.castShadow}. */
   readonly castShadow?: boolean;
@@ -126,4 +138,10 @@ export interface FXEffectOptions {
    * own clock and particle pool (an independent time scale, or a group you tick separately).
    */
   readonly world?: FXWorld;
+  /**
+   * The renderer this effect will draw through: `renderer.capabilities.isWebGL2` picks each
+   * emitter/mesh's `"standard"` or `"baseline"` artifact (see {@link FXRenderArtifactsByGLSLTier}).
+   * Omit to get the `"baseline"` artifact unconditionally (the pre-split behavior).
+   */
+  readonly renderer?: WebGLRenderer;
 }

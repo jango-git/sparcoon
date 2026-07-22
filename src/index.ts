@@ -9,6 +9,7 @@ export type {
   FXBufferLayout,
   FXGeometrySource,
   FXKernelBuffers,
+  FXParticleKernelArtifact,
   FXRenderArtifact,
   FXShaderStageSource,
   FXUniformInit,
@@ -24,11 +25,24 @@ export {
   FX_CORE_POSITION,
   FX_CORE_POSITION_STRIDE,
   FX_CORE_POSITION_VARYING,
+  FX_ID,
   FX_LIFETIME,
   FX_POSITION_X,
   FX_POSITION_Y,
   FX_POSITION_Z,
 } from "./coreLayout.js";
+
+export {
+  FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
+} from "./behaviorTransformFeedbackLayout.js";
 
 export type {
   FXGraphLambertMaterialOptions,
@@ -53,15 +67,15 @@ export { FXWorld } from "./world/FXWorld.js";
 
 export {
   fxFbm,
+  fxFbm3,
   fxFract,
-  fxHash,
   fxMix,
   fxMod,
+  fxNoise1,
+  fxNoise2,
+  fxNoise3,
   fxSampleLut,
   fxSmoothstep,
-  fxSnoise2,
-  fxSnoise3,
-  fxValueNoise,
 } from "./miscellaneous/fxMath.js";
 export { fxDataTexture } from "./miscellaneous/texture/fxDataTexture.js";
 export type { FXDataTextureOptions } from "./miscellaneous/texture/fxDataTexture.js";

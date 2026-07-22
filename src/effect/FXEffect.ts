@@ -8,7 +8,11 @@ import {
   type Object3D,
   type Texture,
 } from "three";
-import type { FXBehaviorArtifact, FXRenderArtifact } from "../artifact/FXArtifact.js";
+import type {
+  FXBehaviorArtifact,
+  FXRenderArtifact,
+  FXRenderArtifactsByGLSLTier,
+} from "../artifact/FXArtifact.js";
 import { FXEmitter } from "../emitter/FXEmitter.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
@@ -57,6 +61,14 @@ function applyTransform(
 /** Materializes a possibly-readonly keyframe value into the mutable shape the value writers expect. */
 function materializeValue(value: number | readonly number[]): number | number[] {
   return typeof value === "number" ? value : [...value];
+}
+
+/** Picks one emitter/mesh's compiled artifact by render target (see {@link FXEffectOptions.renderer}). */
+function resolveRenderArtifact(
+  render: FXRenderArtifactsByGLSLTier,
+  isWebGL2: boolean,
+): FXRenderArtifact {
+  return render[isWebGL2 ? "standard" : "baseline"];
 }
 
 /** One asset slot: an external texture OR (per {@link FXGeometrySource}) an external geometry, keyed by the same flat `assets` namespace. */
@@ -173,6 +185,11 @@ export abstract class FXEffect extends Group {
   private readonly specification: FXEffectSpec;
   private readonly world: FXWorld;
   private readonly emitters: FXEmitter[] = [];
+  // The single artifact resolved (by render target) from each emitter/mesh spec's
+  // FXRenderArtifactsByGLSLTier - parallel to `emitters`/`meshes`, read by the parameter-drive path
+  // instead of re-resolving the spec's map on every call.
+  private readonly emitterRenders: FXRenderArtifact[] = [];
+  private readonly meshRenders: FXRenderArtifact[] = [];
   private readonly meshMaterials: FXMeshMaterial[] = [];
   private readonly meshes: Mesh[] = [];
   // World-space velocity/angular-velocity tracker per mesh, parallel to `meshes`.
@@ -206,11 +223,13 @@ export abstract class FXEffect extends Group {
     this.world = options.world ?? FXWorld.getDefault();
     applyTransform(this, specification.transform);
     const geometries = geometriesFromAssets(assets);
+    const isWebGL2 = options.renderer?.capabilities.isWebGL2 ?? false;
 
     for (const emitterSpec of specification.emitters) {
       const textures = texturesForSlots(emitterSpec.externalSlots, assets);
+      const render = resolveRenderArtifact(emitterSpec.render, isWebGL2);
       const emitter = FXEmitter.fromArtifacts(
-        emitterSpec.render,
+        render,
         emitterSpec.behavior,
         {
           textures,
@@ -218,6 +237,12 @@ export abstract class FXEffect extends Group {
           expectedCapacity: emitterSpec.expectedCapacity,
           castShadow: emitterSpec.castShadow ?? false,
           receiveShadow: emitterSpec.receiveShadow ?? false,
+          // Only offered on an actual WebGL2 negotiation - the same `isWebGL2` signal already
+          // picking `render`'s "standard" tier above. FXEmitter itself decides whether GPU setup
+          // then actually succeeds, falling back to `emitterSpec.behavior` in place if not - this
+          // effect never needs to know which one ends up driving a given emitter.
+          gpuKernel: isWebGL2 ? emitterSpec.gpuBehavior : undefined,
+          renderer: options.renderer,
         },
         this.world,
       );
@@ -229,12 +254,14 @@ export abstract class FXEffect extends Group {
       this.add(emitter);
       this.emitterIndexByName.set(emitterSpec.name, this.emitters.length);
       this.emitters.push(emitter);
+      this.emitterRenders.push(render);
       this.emitterDriven.push(new Set<string>());
     }
 
     for (const meshSpec of specification.meshes) {
       const textures = texturesForSlots(meshSpec.externalSlots, assets);
-      const material = new FXMeshMaterial(meshSpec.render, textures);
+      const render = resolveRenderArtifact(meshSpec.render, isWebGL2);
+      const material = new FXMeshMaterial(render, textures);
       const mesh = new Mesh(
         resolveGeometrySource(meshSpec.geometry, geometries),
         material.buildThreeMaterial(),
@@ -250,6 +277,7 @@ export abstract class FXEffect extends Group {
       this.add(mesh);
       this.meshIndexByName.set(meshSpec.name, this.meshes.length);
       this.meshes.push(mesh);
+      this.meshRenders.push(render);
       this.meshMaterials.push(material);
       this.meshMotionTrackers.push(new FXObjectMotionTracker());
       this.meshDriven.push(new Set<string>());
@@ -375,7 +403,7 @@ export abstract class FXEffect extends Group {
     const uniforms: Record<string, number | number[]> = {};
     const bindings: Record<string, number | Float32Array> = {};
     writeParameterSlots(
-      specification.render,
+      this.emitterRenders[index],
       specification.behavior,
       parameter,
       materializeValue(value),
@@ -396,11 +424,10 @@ export abstract class FXEffect extends Group {
     if (index === undefined) {
       return;
     }
-    const specification = this.specification.meshes[index];
     const uniforms: Record<string, number | number[]> = {};
     const bindings: Record<string, number | Float32Array> = {};
     writeParameterSlots(
-      specification.render,
+      this.meshRenders[index],
       NO_BEHAVIOR_BINDINGS,
       parameter,
       materializeValue(value),
@@ -536,29 +563,17 @@ export abstract class FXEffect extends Group {
 
   private driveEmitterValues(index: number, values: Map<string, number | number[]>): void {
     const specification = this.specification.emitters[index];
+    const render = this.emitterRenders[index];
     const driven = this.emitterDriven[index];
     const uniforms: Record<string, number | number[]> = {};
     const bindings: Record<string, number | Float32Array> = {};
     for (const [name, value] of values) {
-      writeParameterSlots(
-        specification.render,
-        specification.behavior,
-        name,
-        value,
-        uniforms,
-        bindings,
-      );
+      writeParameterSlots(render, specification.behavior, name, value, uniforms, bindings);
       driven.add(name);
     }
     for (const name of [...driven]) {
       if (!values.has(name)) {
-        writeParameterBaseline(
-          specification.render,
-          specification.behavior,
-          name,
-          uniforms,
-          bindings,
-        );
+        writeParameterBaseline(render, specification.behavior, name, uniforms, bindings);
         driven.delete(name);
       }
     }
@@ -568,30 +583,17 @@ export abstract class FXEffect extends Group {
   }
 
   private driveMeshValues(index: number, values: Map<string, number | number[]>): void {
-    const specification = this.specification.meshes[index];
+    const render = this.meshRenders[index];
     const driven = this.meshDriven[index];
     const uniforms: Record<string, number | number[]> = {};
     const bindings: Record<string, number | Float32Array> = {};
     for (const [name, value] of values) {
-      writeParameterSlots(
-        specification.render,
-        NO_BEHAVIOR_BINDINGS,
-        name,
-        value,
-        uniforms,
-        bindings,
-      );
+      writeParameterSlots(render, NO_BEHAVIOR_BINDINGS, name, value, uniforms, bindings);
       driven.add(name);
     }
     for (const name of [...driven]) {
       if (!values.has(name)) {
-        writeParameterBaseline(
-          specification.render,
-          NO_BEHAVIOR_BINDINGS,
-          name,
-          uniforms,
-          bindings,
-        );
+        writeParameterBaseline(render, NO_BEHAVIOR_BINDINGS, name, uniforms, bindings);
         driven.delete(name);
       }
     }

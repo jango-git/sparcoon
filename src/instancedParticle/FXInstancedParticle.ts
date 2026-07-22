@@ -108,7 +108,7 @@ export class FXInstancedParticle extends Mesh {
   }
 
   public removeDeadParticles(): void {
-    // Cull against core `lifecycle` (vec2 [age, lifetime]); alive while `age < lifetime`. Rides the
+    // Cull against core `lifecycle` (vec3 [age, lifetime, id]); alive while `age < lifetime`. Rides the
     // same copy-down as every other property buffer.
     const lifecycleBuffer = this.propertyBuffers[FX_CORE_LIFECYCLE] as
       InstancedBufferAttribute | undefined;
@@ -255,6 +255,36 @@ export class FXInstancedParticle extends Mesh {
 
   public drop(): void {
     this.instancedGeometry.instanceCount = 0;
+  }
+
+  /**
+   * Swaps the mounted material and base geometry in place for a render-only structural edit -
+   * every per-particle buffer in {@link propertyBuffers} and the current instance count are left
+   * completely untouched, so live particles never reset. Never called when the varyings shape
+   * itself changed (the driver's own `applyRenderArtifact` guards that) - only the constructor
+   * path handles a real buffer-layout change.
+   */
+  public replaceMaterialAndBaseGeometry(material: Material, baseGeometry: BufferGeometry): void {
+    // Detach the previous base attributes first, same as destroy()'s dance: they were borrowed by
+    // reference from a caller-owned geometry (possibly shared with other live consumers), so they
+    // must never be disposed here.
+    this.instancedGeometry.deleteAttribute("position");
+    this.instancedGeometry.deleteAttribute("uv");
+    this.instancedGeometry.deleteAttribute("normal");
+    this.instancedGeometry.setIndex(null);
+
+    const baseIndex = baseGeometry.getIndex();
+    if (baseIndex !== null) {
+      this.instancedGeometry.setIndex(baseIndex);
+    }
+    this.instancedGeometry.setAttribute("position", baseGeometry.getAttribute("position"));
+    this.instancedGeometry.setAttribute("uv", baseGeometry.getAttribute("uv"));
+    this.instancedGeometry.setAttribute("normal", baseGeometry.getAttribute("normal"));
+
+    // The mounted material IS disposable here (unlike the base geometry attributes above) - it was
+    // built exclusively for this mesh, never shared.
+    (this.material as Material | undefined)?.dispose();
+    this.material = material;
   }
 
   // Disposes the instanced geometry and the currently mounted material - not the constructor one,

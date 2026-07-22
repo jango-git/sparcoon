@@ -5,12 +5,11 @@ import type {
   FXEmitterTransform,
   FXKernelBuffers,
 } from "../artifact/FXArtifact.js";
-import { FX_CORE_LIFECYCLE, FX_CORE_POSITION } from "../coreLayout.js";
-
-const CORE_BUFFER_NAMES: ReadonlySet<string> = new Set([FX_CORE_POSITION, FX_CORE_LIFECYCLE]);
+import { isCoreBufferName } from "../coreLayout.js";
 
 /**
- * @internal The runtime's behavior driver: holds a precompiled {@link FXBehaviorArtifact} and just
+ * @internal The runtime's JS (CPU) behavior driver - the GPU sibling is
+ * `FXTransformFeedbackSimulationHolder`. Holds a precompiled {@link FXBehaviorArtifact} and just
  * calls its `spawn`/`update` each tick (no graph, compiler, or `new Function`). The artifact's
  * `bindings` record is passed through on every call, so a value scrub is read next tick.
  */
@@ -19,7 +18,7 @@ export class FXSimulationHolder {
 
   /** Declared buffers minus the fixed core `position`/`lifecycle` - one per user attribute. */
   public get attributeBuffers(): readonly FXBufferLayout[] {
-    return this.artifact.buffers.filter((buffer) => !CORE_BUFFER_NAMES.has(buffer.name));
+    return this.artifact.buffers.filter((buffer) => !isCoreBufferName(buffer.name));
   }
 
   public get attributeWrites(): readonly FXAttributeDecl[] {
@@ -57,7 +56,9 @@ export class FXSimulationHolder {
     this.artifact.update(buffers, count, deltaTime, this.artifact.bindings, emitter);
   }
 
-  /** Behavior half of {@link FXEmitter.applyValues}: mutate each named slot in place; unknown name = no-op. */
+  /** Behavior half of {@link FXEmitter.applyValues}: mutate each named slot in place; unknown name
+   *  = no-op. Mirrored by `FXTransformFeedbackSimulationHolder.applyBindingValues` for the GPU
+   *  tier - `FXEmitter.applyValues` scrubs both, since either backend may be the active one. */
   public applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void {
     for (const name in values) {
       if (name in this.artifact.bindings) {

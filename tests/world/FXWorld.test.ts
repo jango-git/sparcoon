@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FXEffect } from "../../src/effect/FXEffect";
 import { FXWorld } from "../../src/world/FXWorld";
-import type {
-  FXEffectEmitterSpec,
-  FXEffectSpec,
-  FXTransform,
-} from "../../src/effect/FXEffectSpec";
-import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
+import type { FXEffectEmitterSpec, FXEffectSpec, FXTransform } from "../../src/effect/FXEffectSpec";
+import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 
 const IDENTITY_TRANSFORM: FXTransform = {
   position: [0, 0, 0],
@@ -17,7 +13,7 @@ const IDENTITY_TRANSFORM: FXTransform = {
 function emitterSpec(name: string): FXEffectEmitterSpec {
   return {
     name,
-    render: unlitArtifact(),
+    render: renderForBothTargets(unlitArtifact()),
     behavior: behaviorArtifact({ lifetime: 100 }),
     expectedCapacity: 64,
     sortInterval: 0,

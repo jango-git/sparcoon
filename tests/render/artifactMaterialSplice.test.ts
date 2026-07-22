@@ -8,21 +8,27 @@ import { unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts"
 function varyings(attrs: Record<string, GLTypeInfo> = {}): Record<string, GLTypeInfo> {
   return {
     position: VEC3_VARYING,
-    lifecycle: VEC2_VARYING,
+    lifecycle: VEC3_VARYING,
     ...attrs,
   };
 }
 
-/** Builds the (ShaderMaterial-based) artifact material and returns its assembled shader source. */
+/** Builds the (ShaderMaterial-based) artifact material and returns its assembled shader source
+ *  plus the extension flags Three reads to decide whether to inject `#extension` pragmas. */
 function assembledShaders(
   render: FXRenderArtifact,
   props: Record<string, GLTypeInfo>,
-): { vertexShader: string; fragmentShader: string } {
+): { vertexShader: string; fragmentShader: string; extensions: { derivatives?: boolean } } {
   const material = new FXArtifactMaterial(render).buildThreeMaterial(props) as unknown as {
     vertexShader: string;
     fragmentShader: string;
+    extensions: { derivatives?: boolean };
   };
-  return { vertexShader: material.vertexShader, fragmentShader: material.fragmentShader };
+  return {
+    vertexShader: material.vertexShader,
+    fragmentShader: material.fragmentShader,
+    extensions: material.extensions,
+  };
 }
 
 describe("unlit ShaderMaterial assembly", () => {
@@ -45,20 +51,27 @@ describe("unlit ShaderMaterial assembly", () => {
     expect(fragmentShader).toContain("#include <fog_fragment>");
   });
 
+  it("pushes a dead particle's vertex outside the clip volume, unconditionally on render mode", () => {
+    // A GPU-driven emitter always draws its full fixed capacity, dead slots included (no
+    // compaction, unlike FXInstancedParticle's removeDeadParticles) - this line is what keeps
+    // those slots from actually rendering. Checked here (unlit) and not re-checked per render
+    // mode: the injection sits before alphaDiscardLines' own per-mode branching entirely.
+    const { vertexShader } = assembledShaders(unlitArtifact(), varyings());
+    expect(vertexShader).toContain(
+      "if (PARTICLE_AGE >= PARTICLE_LIFETIME) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }",
+    );
+  });
+
   it("always sets up the world-space surface frame for the geometryNormal builtin", () => {
     const { vertexShader, fragmentShader } = assembledShaders(unlitArtifact(), varyings());
     // The world frame is built even with no lighting, so a surface-normal / normal-map / fresnel node
-    // resolves. Normals are authored in WORLD space (NORMAL_SPACE_PLAN); view stays behind the ABI.
+    // resolves. Normals are authored in WORLD space; view stays behind the ABI.
     expect(vertexShader).toContain("vec3 objectNormal = fxNormalXform * normal;");
+    expect(vertexShader).toContain("vWorldNormal  = normalize( objectNormal );");
     expect(vertexShader).toContain(
-      "vWorldNormal  = normalize( mat3( modelMatrix ) * objectNormal );",
+      "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
     );
-    expect(vertexShader).toContain(
-      "vWorldTangent = normalize( mat3( modelMatrix ) * ( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) ) );",
-    );
-    expect(vertexShader).toContain(
-      "vWorldPos     = ( modelMatrix * vec4( fxModelPos, 1.0 ) ).xyz;",
-    );
+    expect(vertexShader).toContain("vWorldPos     = fxModelPos;");
     expect(fragmentShader).toContain(
       "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
     );
@@ -117,7 +130,7 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
     expect(fragmentShader).toContain("#include <lights_lambert_pars_fragment>");
     expect(fragmentShader).toContain("#include <shadowmap_pars_fragment>");
     expect(vertexShader).toContain("vec3 objectNormal = fxNormalXform * normal;");
-    expect(vertexShader).toContain("vec4 worldPosition = modelMatrix * vec4(particleCenter, 1.0);");
+    expect(vertexShader).toContain("vec4 worldPosition = vec4(particleCenter, 1.0);");
     expect(vertexShader).toContain("#include <shadowmap_vertex>");
 
     // Both fx_ intrinsics are defined whenever lit (the GPU strips the unused one). They take a WORLD
@@ -192,6 +205,21 @@ describe("render mode + additivity blend tail", () => {
     );
     expect(fragmentShader).not.toContain("discard");
     expect(fragmentShader).not.toContain("clamp(");
+  });
+
+  it("alphaHash mode requests the derivatives extension (dFdx/dFdy need it under WebGL1)", () => {
+    const { extensions } = assembledShaders(
+      artifact({ options: { renderMode: "alphaHash" } }),
+      varyings(),
+    );
+    expect(extensions.derivatives).toBe(true);
+  });
+
+  it("every other render mode leaves the derivatives extension unset", () => {
+    for (const renderMode of ["blending", "alphaTest", "opaque"] as const) {
+      const { extensions } = assembledShaders(artifact({ options: { renderMode } }), varyings());
+      expect(extensions.derivatives).toBe(false);
+    }
   });
 });
 

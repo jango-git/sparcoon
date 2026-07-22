@@ -1,11 +1,4 @@
-import {
-  Mesh,
-  Quaternion,
-  Vector3,
-  type BufferGeometry,
-  type Material,
-  type Texture,
-} from "three";
+import { Mesh, Quaternion, Vector3, type BufferGeometry, type Material, type Texture } from "three";
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
@@ -82,9 +75,8 @@ export class FXMesh extends Mesh {
     const driver = new FXMeshMaterial(render, options.textures);
     const geometry = resolveGeometrySource(render.geometry, options.geometries ?? {});
     const ownsGeometry = render.geometry === undefined || render.geometry.type === "primitive";
-    const depthMaterial = (options.castShadow ?? false)
-      ? driver.buildThreeDepthMaterial()
-      : undefined;
+    const depthMaterial =
+      (options.castShadow ?? false) ? driver.buildThreeDepthMaterial() : undefined;
     const mesh = new FXMesh(
       geometry,
       driver,

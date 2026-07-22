@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   fxFbm,
+  fxFbm3,
   fxFract,
-  fxHash,
   fxMix,
   fxMod,
+  fxNoise1,
+  fxNoise2,
+  fxNoise3,
   fxSampleLut,
   fxSmoothstep,
-  fxSnoise2,
-  fxSnoise3,
-  fxValueNoise,
 } from "../../src/miscellaneous/fxMath";
 
 // These are the CPU twins of the compiler's GLSL builtins and a frozen ABI: the editor's
@@ -81,38 +81,68 @@ describe("fxSmoothstep", () => {
   });
 });
 
-describe("fxHash", () => {
-  it("stays within [0, 1)", () => {
-    for (let i = -50; i < 50; i++) {
-      const h = fxHash(i * 0.37);
-      expect(h).toBeGreaterThanOrEqual(0);
-      expect(h).toBeLessThan(1);
+describe("fxNoise1", () => {
+  it("is deterministic", () => {
+    expect(fxNoise1(1.3)).toBe(fxNoise1(1.3));
+  });
+
+  it("pins its current output (frozen contract)", () => {
+    expect(fxNoise1(3)).toBeCloseTo(0.03882420063, 8);
+    expect(fxNoise1(0)).toBeCloseTo(-0.93075406551, 8);
+  });
+
+  it("stays within [-1, 1] across a wide sweep", () => {
+    for (let i = 0; i < 5000; i++) {
+      const v = fxNoise1(i * 0.137 - 300);
+      expect(v).toBeGreaterThanOrEqual(-1.0001);
+      expect(v).toBeLessThanOrEqual(1.0001);
     }
   });
 
-  it("is deterministic and pins its current output (frozen contract)", () => {
-    expect(fxHash(1)).toBe(fxHash(1));
-    expect(fxHash(1)).toBeCloseTo(0.325623616, 8);
+  it("varies across space but is continuous (small step -> small change)", () => {
+    const a = fxNoise1(3.2);
+    const far = fxNoise1(9.8);
+    const near = fxNoise1(3.2 + 1e-3);
+    expect(Math.abs(a - far)).toBeGreaterThan(1e-3);
+    expect(Math.abs(a - near)).toBeLessThan(1e-2);
   });
 });
 
-describe("fxValueNoise", () => {
-  it("equals fxHash(i) * 2 - 1 exactly at an integer (the smoothing weight is 0 there)", () => {
-    for (const i of [0, 3, 7, -4]) {
-      expect(fxValueNoise(i)).toBe(fxHash(i) * 2 - 1);
-    }
+describe("fxNoise2 / fxNoise3", () => {
+  it("are deterministic", () => {
+    expect(fxNoise2(3.1, 4.2)).toBe(fxNoise2(3.1, 4.2));
+    expect(fxNoise3(3.1, 4.2, -1.7)).toBe(fxNoise3(3.1, 4.2, -1.7));
   });
 
-  it("pins its current output at a non-integer (frozen contract)", () => {
-    expect(fxValueNoise(3)).toBeCloseTo(0.4523313459, 8);
+  it("pin their current output (frozen contract)", () => {
+    expect(fxNoise2(1.5, -2.3)).toBeCloseTo(0.68699060917, 8);
+    // At an integer coordinate the smoothing weight is 0, so noise(0,0) collapses to the same
+    // corner hash fxNoise1(0) reads at i=0 - a cheap cross-dimension consistency check.
+    expect(fxNoise2(0, 0)).toBeCloseTo(fxNoise1(0), 8);
+    expect(fxNoise3(1.5, -2.3, 0.8)).toBeCloseTo(-0.49545084859, 8);
   });
 
-  it("stays within [-1, 1]", () => {
-    for (let i = 0; i < 5000; i++) {
-      const v = fxValueNoise(i * 0.137 - 300);
-      expect(v).toBeGreaterThanOrEqual(-1);
-      expect(v).toBeLessThanOrEqual(1);
+  it("stay in [-1, 1] and actually vary across space", () => {
+    let lo2 = Infinity;
+    let hi2 = -Infinity;
+    let lo3 = Infinity;
+    let hi3 = -Infinity;
+    for (let i = 0; i < 8000; i++) {
+      const v2 = fxNoise2(i * 0.113 - 400, i * 0.071 + 3);
+      const v3 = fxNoise3(i * 0.113 - 400, i * 0.071 + 3, i * 0.037 - 50);
+      lo2 = Math.min(lo2, v2);
+      hi2 = Math.max(hi2, v2);
+      lo3 = Math.min(lo3, v3);
+      hi3 = Math.max(hi3, v3);
     }
+    expect(lo2).toBeGreaterThanOrEqual(-1.0001);
+    expect(hi2).toBeLessThanOrEqual(1.0001);
+    expect(lo2).toBeLessThan(-0.3);
+    expect(hi2).toBeGreaterThan(0.3);
+    expect(lo3).toBeGreaterThanOrEqual(-1.0001);
+    expect(hi3).toBeLessThanOrEqual(1.0001);
+    expect(lo3).toBeLessThan(-0.3);
+    expect(hi3).toBeGreaterThan(0.3);
   });
 });
 
@@ -122,8 +152,8 @@ describe("fxFbm", () => {
     expect(fxFbm(1.3, -5)).toBe(0);
   });
 
-  it("equals a single value-noise octave at octaves = 1", () => {
-    expect(fxFbm(2.7, 1)).toBe(fxValueNoise(2.7));
+  it("equals a single noise octave at octaves = 1", () => {
+    expect(fxFbm(2.7, 1)).toBe(fxNoise1(2.7));
   });
 
   it("floors a fractional octave count", () => {
@@ -132,6 +162,32 @@ describe("fxFbm", () => {
 
   it("clamps to the 8-octave maximum", () => {
     expect(fxFbm(2.7, 100)).toBe(fxFbm(2.7, 8));
+  });
+});
+
+describe("fxFbm3", () => {
+  it("is zero with no octaves and with a negative octave count (clamped to 0)", () => {
+    expect(fxFbm3(1.3, -0.4, 2.2, 0)).toBe(0);
+    expect(fxFbm3(1.3, -0.4, 2.2, -5)).toBe(0);
+  });
+
+  it("equals a single noise3 octave at octaves = 1", () => {
+    expect(fxFbm3(2.7, -1.1, 0.4, 1)).toBe(fxNoise3(2.7, -1.1, 0.4));
+  });
+
+  it("floors a fractional octave count", () => {
+    expect(fxFbm3(2.7, -1.1, 0.4, 2.9)).toBe(fxFbm3(2.7, -1.1, 0.4, 2));
+  });
+
+  it("clamps to the 8-octave maximum", () => {
+    expect(fxFbm3(2.7, -1.1, 0.4, 100)).toBe(fxFbm3(2.7, -1.1, 0.4, 8));
+  });
+
+  it("varies with every axis, not just the first", () => {
+    const base = fxFbm3(1.0, 1.0, 1.0, 4);
+    expect(fxFbm3(1.7, 1.0, 1.0, 4)).not.toBeCloseTo(base, 6);
+    expect(fxFbm3(1.0, 1.7, 1.0, 4)).not.toBeCloseTo(base, 6);
+    expect(fxFbm3(1.0, 1.0, 1.7, 4)).not.toBeCloseTo(base, 6);
   });
 });
 
@@ -164,54 +220,5 @@ describe("fxSampleLut", () => {
 
   it("accepts a Float32Array LUT (the shape a curve binding carries)", () => {
     expect(fxSampleLut(new Float32Array([0, 4]), 0.5)).toBeCloseTo(2, 6);
-  });
-});
-
-describe("fxSnoise2", () => {
-  it("is exactly 0 at the origin and pins a sample point (frozen contract)", () => {
-    expect(fxSnoise2(0, 0)).toBe(0);
-    expect(fxSnoise2(1.5, -2.3)).toBeCloseTo(-0.0343609108, 8);
-  });
-
-  it("is deterministic", () => {
-    expect(fxSnoise2(3.1, 4.2)).toBe(fxSnoise2(3.1, 4.2));
-  });
-
-  it("stays in roughly [-1, 1] and actually varies across the plane", () => {
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (let i = 0; i < 8000; i++) {
-      const v = fxSnoise2(i * 0.113 - 400, i * 0.071 + 3);
-      lo = Math.min(lo, v);
-      hi = Math.max(hi, v);
-    }
-    expect(lo).toBeGreaterThanOrEqual(-1.05);
-    expect(hi).toBeLessThanOrEqual(1.05);
-    expect(lo).toBeLessThan(-0.3);
-    expect(hi).toBeGreaterThan(0.3);
-  });
-});
-
-describe("fxSnoise3", () => {
-  it("pins a sample point (frozen contract)", () => {
-    expect(fxSnoise3(1.5, -2.3, 0.8)).toBeCloseTo(0.0735885175, 8);
-  });
-
-  it("is deterministic", () => {
-    expect(fxSnoise3(3.1, 4.2, -1.7)).toBe(fxSnoise3(3.1, 4.2, -1.7));
-  });
-
-  it("stays in roughly [-1, 1] and actually varies across the volume", () => {
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (let i = 0; i < 8000; i++) {
-      const v = fxSnoise3(i * 0.113 - 400, i * 0.071 + 3, i * 0.037 - 50);
-      lo = Math.min(lo, v);
-      hi = Math.max(hi, v);
-    }
-    expect(lo).toBeGreaterThanOrEqual(-1.05);
-    expect(hi).toBeLessThanOrEqual(1.05);
-    expect(lo).toBeLessThan(-0.3);
-    expect(hi).toBeGreaterThan(0.3);
   });
 });

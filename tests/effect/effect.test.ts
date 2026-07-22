@@ -11,7 +11,7 @@ import type {
   FXTransformTrack,
 } from "../../src/effect/FXEffectSpec";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
-import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
+import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 
 const IDENTITY_TRANSFORM: FXTransform = {
   position: [0, 0, 0],
@@ -30,7 +30,7 @@ interface EmitterOverrides {
 function emitterSpec(name: string, over: EmitterOverrides = {}): FXEffectEmitterSpec {
   return {
     name,
-    render: over.render ?? unlitArtifact(),
+    render: renderForBothTargets(over.render ?? unlitArtifact()),
     behavior: behaviorArtifact({ lifetime: 100 }),
     expectedCapacity: 64,
     sortInterval: 0,
@@ -205,7 +205,15 @@ describe("FXEffect parameter drive", () => {
         emitters: [
           emitterSpec("e", {
             render,
-            tracks: [{ name: "size", keys: [{ time: 0, value: 1 }, { time: 1, value: 5 }] }],
+            tracks: [
+              {
+                name: "size",
+                keys: [
+                  { time: 0, value: 1 },
+                  { time: 1, value: 5 },
+                ],
+              },
+            ],
           }),
         ],
       }),

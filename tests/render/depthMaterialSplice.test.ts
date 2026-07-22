@@ -104,3 +104,21 @@ describe.each(BUILDERS)("$kind depth material assembly", ({ build }) => {
     expect(fragmentShader).toContain("gl_FragColor = packDepthToRGBA( fragCoordZ );");
   });
 });
+
+describe("dead-particle hiding (GPU-driven emitters draw their full fixed capacity, JS-driven ones never reach this)", () => {
+  it("pushes a dead particle's vertex outside the clip volume, after gl_Position is first computed", () => {
+    const { vertexShader } = particleDepthShaders(unlitArtifact());
+    const degenerate =
+      "if (PARTICLE_AGE >= PARTICLE_LIFETIME) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }";
+    expect(vertexShader).toContain(degenerate);
+    expect(vertexShader.indexOf("gl_Position = projectionMatrix * mvPosition;")).toBeLessThan(
+      vertexShader.indexOf(degenerate),
+    );
+  });
+
+  it("does not apply to a VFX mesh - a mesh has no particle age/lifetime state at all", () => {
+    const { vertexShader } = meshDepthShaders(unlitArtifact());
+    expect(vertexShader).not.toContain("PARTICLE_AGE");
+    expect(vertexShader).not.toContain("gl_Position = vec4(2.0, 2.0, 2.0, 1.0)");
+  });
+});

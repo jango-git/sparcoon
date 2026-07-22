@@ -13,7 +13,8 @@ ships to your app.
 ## Features
 
 - Instanced billboard and 3D-mesh particles in a single draw call.
-- Per-particle simulation from a precompiled kernel -- no `eval`, no codegen.
+- Per-particle simulation from a precompiled kernel, on the CPU or -- on a
+  WebGL2 renderer -- the GPU (transform feedback); no `eval`, no codegen either way.
 - Whole-project playback: an editor module subclasses `FXEffect`.
 - One `FXWorld.update` per frame drives every effect.
 - Optional depth sorting, shadows, and custom-geometry particles.
@@ -102,10 +103,14 @@ give it its own world. `world.dispose()` disposes every effect in it.
 
 The **Sparcoon Editor** compiles a node graph into a plain ES module exporting
 a render artifact (GLSL, uniforms, textures) and a behavior artifact (authored
-spawn/update functions). This runtime executes them -- your bundler compiles
-the authored functions like any other source, so nothing is evaluated at
-runtime. The editor/runtime boundary is a frozen ABI: two core per-particle
-buffers, `position` and `lifecycle` (`[age, lifetime]`).
+spawn/update functions), plus -- when the graph opts into GPU simulation -- a
+fused WebGL2 transform-feedback kernel. This runtime executes them: your bundler
+compiles the authored functions like any other source and the behavior runs on
+the CPU, or, when you pass a WebGL2 `renderer` in the effect options, the
+precompiled kernel runs the simulation on the GPU instead (falling back to the
+CPU behavior if GPU setup fails). Nothing is evaluated at runtime either way.
+The editor/runtime boundary is a frozen ABI: two core per-particle buffers,
+`position` and `lifecycle` (`[age, lifetime, id]`).
 
 ## Requirements
 
@@ -126,7 +131,7 @@ buffers, `position` and `lifecycle` (`[age, lifetime]`).
 - `FXWorld` -- the tick domain. `FXWorld.update(deltaTime)` per frame drives the
   default world; `new FXWorld()` is an isolated clock and pool.
 - Artifact contract types, the `FX_*` core-layout constants, CPU math helpers
-  (`fxMix`, `fxSnoise3`, ...), and `fxDataTexture`.
+  (`fxMix`, `fxNoise3`, ...), and `fxDataTexture`.
 
 ## License
 

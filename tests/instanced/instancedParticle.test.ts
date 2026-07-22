@@ -3,20 +3,20 @@ import { MeshBasicMaterial } from "three";
 import { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
 import { FX_AGE, FX_LIFETIME } from "../../src/coreLayout";
-import { FLOAT_VARYING, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
+import { FLOAT_VARYING, VEC3_VARYING } from "../helpers/artifacts";
 
-/** The core lifecycle buffer is a vec2 `[age, lifetime]`. */
-const LIFECYCLE_STRIDE = 2;
+/** The core lifecycle buffer is a vec3 `[age, lifetime, id]`. */
+const LIFECYCLE_STRIDE = 3;
 
 /**
- * A mesh with the two fixed core buffers (position vec3 + lifecycle vec2) plus a
+ * A mesh with the two fixed core buffers (position vec3 + lifecycle vec3) plus a
  * one-float `fx_seed` attribute buffer.
  */
 function makeMesh(): FXInstancedParticle {
   return new FXInstancedParticle(
     {
       position: VEC3_VARYING,
-      lifecycle: VEC2_VARYING,
+      lifecycle: VEC3_VARYING,
       fx_seed: FLOAT_VARYING,
     },
     4,

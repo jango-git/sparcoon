@@ -4,7 +4,7 @@ import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FXWorld } from "../../src/world/FXWorld";
 import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
-import { FX_AGE, FX_LIFETIME } from "../../src/coreLayout";
+import { FX_AGE, FX_ID, FX_LIFETIME } from "../../src/coreLayout";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 
 function meshOf(emitter: FXEmitter): FXInstancedParticle {
@@ -109,6 +109,67 @@ describe("respawn into reused buffer rows (audit-4 B1)", () => {
       // tick culled them straight back to zero.
       tick(emitter, 0.01);
       expect(emitter.particleCount).toBe(2);
+    } finally {
+      emitter.destroy();
+    }
+  });
+});
+
+describe("per-particle id (JS/CPU backend, host-owned like age)", () => {
+  function tick(emitter: FXEmitter, deltaTime: number): void {
+    (emitter as unknown as { tick(dt: number): void }).tick(deltaTime);
+  }
+
+  function lifecycleAt(emitter: FXEmitter, row: number, offset: number): number {
+    const { array, itemSize } = meshOf(emitter).propertyBuffers.lifecycle;
+    return array[row * itemSize + offset];
+  }
+
+  it("assigns each newly spawned particle a monotonically increasing id, never reused across bursts", () => {
+    const emitter = plainEmitter();
+    try {
+      emitter.burst(3);
+      expect(lifecycleAt(emitter, 0, FX_ID)).toBe(0);
+      expect(lifecycleAt(emitter, 1, FX_ID)).toBe(1);
+      expect(lifecycleAt(emitter, 2, FX_ID)).toBe(2);
+
+      emitter.burst(2);
+      expect(lifecycleAt(emitter, 3, FX_ID)).toBe(3);
+      expect(lifecycleAt(emitter, 4, FX_ID)).toBe(4);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("keeps a surviving particle's own id when an earlier row's death compacts it down", () => {
+    const emitter = plainEmitter();
+    try {
+      emitter.burst(3); // ids 0, 1, 2 at rows 0, 1, 2
+      const { array, itemSize } = meshOf(emitter).propertyBuffers.lifecycle;
+      // Force row 0 alone to die - the fixture's fixed lifetime (4) would otherwise kill all
+      // three together.
+      array[0 * itemSize + FX_AGE] = 100;
+      tick(emitter, 0.01);
+
+      expect(emitter.particleCount).toBe(2);
+      // Compaction copies surviving rows 1/2 down over the dead row 0 - each id travels with
+      // its own row.
+      expect(lifecycleAt(emitter, 0, FX_ID)).toBe(1);
+      expect(lifecycleAt(emitter, 1, FX_ID)).toBe(2);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("does not reset the id counter on reset() - a stop/replay must not reissue ids already handed out", () => {
+    const emitter = plainEmitter();
+    try {
+      emitter.burst(2); // ids 0, 1
+      emitter.reset();
+      expect(emitter.particleCount).toBe(0);
+
+      emitter.burst(1);
+      expect(lifecycleAt(emitter, 0, FX_ID)).toBe(2);
     } finally {
       emitter.destroy();
     }

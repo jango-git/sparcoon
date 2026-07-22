@@ -85,11 +85,23 @@ function transformPreamble(outputs: Readonly<Record<string, string>>, withNormal
 }
 
 // `#include <project_vertex>` replacement: projects `fxModelPos`, records camera distance, feeds alpha-hash.
+// World -> view via `viewMatrix` only, deliberately skipping `modelMatrix`: particle simulation
+// authors `fxModelPos` directly in world space (reference space == world by convention), so the
+// emitter's own scene transform must never re-enter here - see fxWorldMatrix for the explicit
+// opt-in a graph uses when it wants particles attached to the emitter instead.
 function projectFromModelPos(): string {
   return [
-    "vec4 mvPosition = modelViewMatrix * vec4(fxModelPos, 1.0);",
+    "vec4 mvPosition = viewMatrix * vec4(fxModelPos, 1.0);",
     "p_cameraDistance = length(mvPosition.xyz);",
     "gl_Position = projectionMatrix * mvPosition;",
+    // A dead particle (age >= lifetime, coreLayout.ts's convention) is pushed outside the clip
+    // volume on every axis so the GPU's trivial-reject clip test drops the whole primitive before
+    // rasterization - a fragment discard would defeat opaque mode's early-Z instead (see
+    // alphaDiscardLines, which already skips discard for that reason). A JS-driven emitter never
+    // draws a dead particle at all (removeDeadParticles keeps it out of the instance range), so
+    // this is a no-op there; a GPU-driven emitter always draws its full fixed capacity with no
+    // such compaction (FXTransformFeedbackParticle), which is what this actually guards.
+    "if (PARTICLE_AGE >= PARTICLE_LIFETIME) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }",
     "#ifdef USE_ALPHAHASH",
     "  vPosition = fxModelPos;",
     "#endif",
@@ -229,7 +241,7 @@ export function buildUnlitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position (NORMAL_SPACE_PLAN): the canonical author space for
+    // World-space surface frame + position: the canonical author space for
     // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
     // builtins in the fragment stage.
     "varying vec3 vWorldNormal;",
@@ -253,12 +265,13 @@ export function buildUnlitArtifactMaterial(
     "vec3 objectNormal = fxNormalXform * normal;",
     "#include <defaultnormal_vertex>",
     "#include <normal_vertex>",
-    // World-space surface frame + position (NORMAL_SPACE_PLAN): mat3(modelMatrix) is exact for a
-    // plane's frame under uniform scale; the tangent is the plane's local +X (the u axis), so billboard
-    // roll/orientation is baked in here ONCE for every consumer (normal maps, spherical normal, fresnel).
-    "vWorldNormal  = normalize( mat3( modelMatrix ) * objectNormal );",
-    "vWorldTangent = normalize( mat3( modelMatrix ) * ( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) ) );",
-    "vWorldPos     = ( modelMatrix * vec4( fxModelPos, 1.0 ) ).xyz;",
+    // World-space surface frame + position: fxModelPos/objectNormal are already world space (no
+    // modelMatrix step - see fxWorldMatrix for the explicit emitter-attach opt-in). The tangent is
+    // the plane's local +X (the u axis), so billboard roll/orientation is baked in here ONCE for
+    // every consumer (normal maps, spherical normal, fresnel).
+    "vWorldNormal  = normalize( objectNormal );",
+    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
+    "vWorldPos     = fxModelPos;",
     projectFromModelPos(),
     "#include <fog_vertex>",
     "}",
@@ -274,7 +287,7 @@ export function buildUnlitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position (NORMAL_SPACE_PLAN): the canonical author space for
+    // World-space surface frame + position: the canonical author space for
     // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
     // builtins in the fragment stage.
     "varying vec3 vWorldNormal;",
@@ -292,7 +305,7 @@ export function buildUnlitArtifactMaterial(
     "void main() {",
     // Front-facing sign for the surface frame below (a back-facing fragment flips the normal).
     "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    // World-space surface frame + position - the canonical author space (NORMAL_SPACE_PLAN). The
+    // World-space surface frame + position - the canonical author space. The
     // lighting intrinsics convert world->view at their own boundary; geometryTangent/worldPosition feed
     // normal maps and camera-correct fresnel. Declared before the node body so any reader resolves.
     "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
@@ -330,6 +343,11 @@ export function buildUnlitArtifactMaterial(
     premultipliedAlpha: true,
   });
 
+  // `alphaHash` pulls in Three's own alphahash_pars_fragment chunk, which calls dFdx/dFdy - under
+  // a real WebGL1 context those need an explicit extension request or the shader fails to
+  // compile ("extension is disabled"); under WebGL2 this is a no-op (dFdx/dFdy are core there,
+  // and three skips extension generation entirely for a WebGL2 context either way).
+  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
   material.customProgramCacheKey = (): string => `fx-unlit_${cacheKey}`;
 
   return material;
@@ -337,8 +355,8 @@ export function buildUnlitArtifactMaterial(
 
 // The lighting-node intrinsics the graph calls by name (`fn.raw(... "fxLambertShade" ...)`) but never
 // defines - the frozen `fx_` cross-repo ABI. Each wraps the exact stock Lambert light sequence in a
-// function of (color, WORLD-space normal) -> shaded color: the graph authors normals in world space
-// (NORMAL_SPACE_PLAN), and each intrinsic converts world->view on its first line before Three's
+// function of (color, WORLD-space normal) -> shaded color: the graph authors normals in world
+// space, and each intrinsic converts world->view on its first line before Three's
 // view-space light chain runs, so view space stays a private detail behind this ABI. A node emits a
 // plain expression that can sit anywhere in the graph (mid-graph mix included). Placed AFTER the pars chunks (which supply the
 // `ReflectedLight`/`LambertMaterial` types, the `RE_*` macros, `vViewPosition`, the light uniforms) and
@@ -416,7 +434,7 @@ function buildLitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position (NORMAL_SPACE_PLAN): the canonical author space for
+    // World-space surface frame + position: the canonical author space for
     // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
     // builtins in the fragment stage.
     "varying vec3 vWorldNormal;",
@@ -439,17 +457,18 @@ function buildLitArtifactMaterial(
     "vec3 objectNormal = fxNormalXform * normal;",
     "#include <defaultnormal_vertex>",
     "#include <normal_vertex>",
-    // World-space surface frame + position (NORMAL_SPACE_PLAN): mat3(modelMatrix) is exact for a
-    // plane's frame under uniform scale; the tangent is the plane's local +X (the u axis), so billboard
-    // roll/orientation is baked in here ONCE for every consumer (normal maps, spherical normal, fresnel).
-    "vWorldNormal  = normalize( mat3( modelMatrix ) * objectNormal );",
-    "vWorldTangent = normalize( mat3( modelMatrix ) * ( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) ) );",
-    "vWorldPos     = ( modelMatrix * vec4( fxModelPos, 1.0 ) ).xyz;",
+    // World-space surface frame + position: fxModelPos/objectNormal are already world space (no
+    // modelMatrix step - see fxWorldMatrix for the explicit emitter-attach opt-in). The tangent is
+    // the plane's local +X (the u axis), so billboard roll/orientation is baked in here ONCE for
+    // every consumer (normal maps, spherical normal, fresnel).
+    "vWorldNormal  = normalize( objectNormal );",
+    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
+    "vWorldPos     = fxModelPos;",
     "vec3 transformed = position;",
     projectFromModelPos(),
     "vViewPosition = - mvPosition.xyz;",
     "#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined( USE_SHADOWMAP ) || defined( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0",
-    "  vec4 worldPosition = modelMatrix * vec4(particleCenter, 1.0);",
+    "  vec4 worldPosition = vec4(particleCenter, 1.0);",
     "#endif",
     "#include <shadowmap_vertex>",
     "#include <fog_vertex>",
@@ -465,7 +484,7 @@ function buildLitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position (NORMAL_SPACE_PLAN): the canonical author space for
+    // World-space surface frame + position: the canonical author space for
     // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
     // builtins in the fragment stage.
     "varying vec3 vWorldNormal;",
@@ -489,7 +508,7 @@ function buildLitArtifactMaterial(
     // Front-facing sign (matching `normal_fragment_begin` under DOUBLE_SIDED): a back-facing fragment
     // flips the surface frame below.
     "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    // World-space surface frame + position - the canonical author space (NORMAL_SPACE_PLAN). The
+    // World-space surface frame + position - the canonical author space. The
     // lighting intrinsics convert world->view at their own boundary; geometryTangent/worldPosition feed
     // normal maps and camera-correct fresnel. Declared before the node body so any reader resolves.
     "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
@@ -529,6 +548,8 @@ function buildLitArtifactMaterial(
     premultipliedAlpha: true,
   });
 
+  // See buildUnlitArtifactMaterial's identical line for why this is needed.
+  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
   material.customProgramCacheKey = (): string => `fx-lit-nodes_${cacheKey}`;
 
   return material;
@@ -586,11 +607,12 @@ function meshTransformPreamble(
   return lines.join("\n");
 }
 
-// Mesh `#include <project_vertex>` replacement: plain object-space projection. No `p_cameraDistance`
-// (a mesh has no per-particle camera-distance builtin); still feeds alpha-hash `vPosition`.
+// Mesh `#include <project_vertex>` replacement: plain world-space projection (`viewMatrix` only,
+// no `modelMatrix` - see {@link projectFromModelPos}). No `p_cameraDistance` (a mesh has no
+// per-particle camera-distance builtin); still feeds alpha-hash `vPosition`.
 function meshProjectFromModelPos(): string {
   return [
-    "vec4 mvPosition = modelViewMatrix * vec4(fxModelPos, 1.0);",
+    "vec4 mvPosition = viewMatrix * vec4(fxModelPos, 1.0);",
     "gl_Position = projectionMatrix * mvPosition;",
     "#ifdef USE_ALPHAHASH",
     "  vPosition = fxModelPos;",
@@ -641,9 +663,9 @@ function buildMeshUnlitArtifactMaterial(
     "vec3 objectNormal = fxNormalXform * normal;",
     "#include <defaultnormal_vertex>",
     "#include <normal_vertex>",
-    "vWorldNormal  = normalize( mat3( modelMatrix ) * objectNormal );",
-    "vWorldTangent = normalize( mat3( modelMatrix ) * ( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) ) );",
-    "vWorldPos     = ( modelMatrix * vec4( fxModelPos, 1.0 ) ).xyz;",
+    "vWorldNormal  = normalize( objectNormal );",
+    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
+    "vWorldPos     = fxModelPos;",
     meshProjectFromModelPos(),
     "#include <fog_vertex>",
     "}",
@@ -700,6 +722,8 @@ function buildMeshUnlitArtifactMaterial(
     premultipliedAlpha: true,
   });
 
+  // See buildUnlitArtifactMaterial's identical line for why this is needed.
+  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
   material.customProgramCacheKey = (): string => `fx-mesh-unlit_${cacheKey}`;
 
   return material;
@@ -751,14 +775,14 @@ function buildMeshLitArtifactMaterial(
     "vec3 objectNormal = fxNormalXform * normal;",
     "#include <defaultnormal_vertex>",
     "#include <normal_vertex>",
-    "vWorldNormal  = normalize( mat3( modelMatrix ) * objectNormal );",
-    "vWorldTangent = normalize( mat3( modelMatrix ) * ( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) ) );",
-    "vWorldPos     = ( modelMatrix * vec4( fxModelPos, 1.0 ) ).xyz;",
+    "vWorldNormal  = normalize( objectNormal );",
+    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
+    "vWorldPos     = fxModelPos;",
     "vec3 transformed = position;",
     meshProjectFromModelPos(),
     "vViewPosition = - mvPosition.xyz;",
     "#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined( USE_SHADOWMAP ) || defined( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0",
-    "  vec4 worldPosition = modelMatrix * vec4(fxModelPos, 1.0);",
+    "  vec4 worldPosition = vec4(fxModelPos, 1.0);",
     "#endif",
     "#include <shadowmap_vertex>",
     "#include <fog_vertex>",
@@ -827,6 +851,8 @@ function buildMeshLitArtifactMaterial(
     premultipliedAlpha: true,
   });
 
+  // See buildUnlitArtifactMaterial's identical line for why this is needed.
+  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
   material.customProgramCacheKey = (): string => `fx-mesh-lit-nodes_${cacheKey}`;
 
   return material;
@@ -927,16 +953,16 @@ export function buildArtifactDepthMaterial(
     "vec3 objectNormal = fxNormalXform * normal;",
     "#include <defaultnormal_vertex>",
     "#include <normal_vertex>",
-    "vWorldNormal  = normalize( mat3( modelMatrix ) * objectNormal );",
-    "vWorldTangent = normalize( mat3( modelMatrix ) * ( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) ) );",
-    "vWorldPos     = ( modelMatrix * vec4( fxModelPos, 1.0 ) ).xyz;",
+    "vWorldNormal  = normalize( objectNormal );",
+    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
+    "vWorldPos     = fxModelPos;",
     ...(lit ? ["vec3 transformed = position;"] : []),
     projectFromModelPos(),
     ...(lit
       ? [
           "vViewPosition = - mvPosition.xyz;",
           "#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined( USE_SHADOWMAP ) || defined( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0",
-          "  vec4 worldPosition = modelMatrix * vec4(particleCenter, 1.0);",
+          "  vec4 worldPosition = vec4(particleCenter, 1.0);",
           "#endif",
           "#include <shadowmap_vertex>",
         ]
@@ -1059,16 +1085,16 @@ export function buildMeshArtifactDepthMaterial(
     "vec3 objectNormal = fxNormalXform * normal;",
     "#include <defaultnormal_vertex>",
     "#include <normal_vertex>",
-    "vWorldNormal  = normalize( mat3( modelMatrix ) * objectNormal );",
-    "vWorldTangent = normalize( mat3( modelMatrix ) * ( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) ) );",
-    "vWorldPos     = ( modelMatrix * vec4( fxModelPos, 1.0 ) ).xyz;",
+    "vWorldNormal  = normalize( objectNormal );",
+    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
+    "vWorldPos     = fxModelPos;",
     ...(lit ? ["vec3 transformed = position;"] : []),
     meshProjectFromModelPos(),
     ...(lit
       ? [
           "vViewPosition = - mvPosition.xyz;",
           "#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined( USE_SHADOWMAP ) || defined( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0",
-          "  vec4 worldPosition = modelMatrix * vec4(fxModelPos, 1.0);",
+          "  vec4 worldPosition = vec4(fxModelPos, 1.0);",
           "#endif",
           "#include <shadowmap_vertex>",
         ]

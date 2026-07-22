@@ -8,6 +8,7 @@
 
 export { FXEmitter } from "../emitter/FXEmitter.js";
 export type { FXFromArtifactsOptions } from "../emitter/FXFromArtifactsOptions.js";
+export type { FXApplyRenderArtifactOptions } from "../emitter/FXApplyRenderArtifactOptions.js";
 export type {
   FXApplyValues,
   FXEmitterOptions,
@@ -25,7 +26,7 @@ export { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 export { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 
 // Shared keyframe/transform sampling: the editor bakes keyframes and the runtime samples them, so
-// both sides must sample identically. See the frozen-contract note in CLAUDE.md.
+// both sides must sample identically - a frozen contract, never a one-sided edit.
 export {
   frameOfTime,
   keyframeSegment,

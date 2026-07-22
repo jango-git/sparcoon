@@ -4,8 +4,14 @@ import type {
   FXBufferLayout,
   FXKernelBuffers,
   FXRenderArtifact,
+  FXRenderArtifactsByGLSLTier,
 } from "../../src/artifact/FXArtifact";
-import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_LIFETIME } from "../../src/coreLayout";
+import {
+  FX_CORE_LIFECYCLE,
+  FX_CORE_LIFECYCLE_STRIDE,
+  FX_CORE_POSITION,
+  FX_LIFETIME,
+} from "../../src/coreLayout";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 
 /** Fixture `GLTypeInfo` values for the varying types tests wire up (position/lifecycle/attributes). */
@@ -48,6 +54,17 @@ export function unlitArtifact(
   };
 }
 
+/**
+ * Wraps one artifact for both render targets - an `FXEffectSpec`'s `render` field. Most tests don't
+ * exercise the baseline/standard split itself, so the same artifact stands in for both by default.
+ */
+export function renderForBothTargets(
+  render: FXRenderArtifact,
+  override: Partial<FXRenderArtifactsByGLSLTier> = {},
+): FXRenderArtifactsByGLSLTier {
+  return { baseline: render, standard: render, ...override };
+}
+
 /** One attribute the behavior artifact seeds at spawn (fixed or per-particle value). */
 export interface SeedAttr {
   name: string;
@@ -76,7 +93,7 @@ export function behaviorArtifact(
 
   const buffers: FXBufferLayout[] = [
     { name: FX_CORE_POSITION, stride: 3 },
-    { name: FX_CORE_LIFECYCLE, stride: 2 },
+    { name: FX_CORE_LIFECYCLE, stride: FX_CORE_LIFECYCLE_STRIDE },
     ...attributes.map((a) => ({ name: a.name, stride: a.components })),
   ];
   const attributeWrites: FXAttributeDecl[] = attributes.map((a) => ({
@@ -91,7 +108,7 @@ export function behaviorArtifact(
         spawn(buffers2: FXKernelBuffers, start: number, count: number): void {
           const lifecycle = buffers2[FX_CORE_LIFECYCLE];
           for (let i = start; i < start + count; i++) {
-            lifecycle[i * 2 + FX_LIFETIME] = lifetime;
+            lifecycle[i * FX_CORE_LIFECYCLE_STRIDE + FX_LIFETIME] = lifetime;
           }
           for (const attr of attributes) {
             const buf = buffers2[attr.name];

@@ -1,7 +1,10 @@
 import type { Material, Texture } from "three";
 import type { FXAttributeDecl, FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
-import { buildArtifactDepthMaterial, buildArtifactMaterial } from "./FXArtifactMaterial.Internal.js";
+import {
+  buildArtifactDepthMaterial,
+  buildArtifactMaterial,
+} from "./FXArtifactMaterial.Internal.js";
 import type { FXFrameTimeUniform, FXFrameVec3Uniform } from "./FXArtifactMaterial.Internal.js";
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FXEffect } from "../../src/effect/FXEffect";
 import { FXWorld } from "../../src/world/FXWorld";
 import type { FXEffectMeshSpec, FXEffectSpec, FXTransform } from "../../src/effect/FXEffectSpec";
-import { unlitArtifact } from "../helpers/artifacts";
+import { renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 
 // `FXEffect` drives the per-mesh `object-velocity`/`object-angular-velocity` uniforms once per world
 // tick, from the mesh's own `matrixWorld` - whether posed by a baked transform track or (as here)
@@ -17,7 +17,7 @@ const IDENTITY_TRANSFORM: FXTransform = {
 function meshSpec(name: string): FXEffectMeshSpec {
   return {
     name,
-    render: unlitArtifact(),
+    render: renderForBothTargets(unlitArtifact()),
     geometry: { type: "primitive", primitive: "plane" },
     externalSlots: [],
     transform: IDENTITY_TRANSFORM,
