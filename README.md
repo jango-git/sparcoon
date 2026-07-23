@@ -8,7 +8,9 @@ and this thin runtime loads and runs it -- instanced-particle rendering in one
 draw call plus a small timeline player. No graph, compiler, or live protocol
 ships to your app.
 
-> Editor: link coming soon.
+- Editor: <https://jango-git.github.io/sparcoon-editor/> (runs in the browser,
+  nothing to install)
+- Editor source: <https://github.com/jango-git/sparcoon-editor>
 
 ## Features
 
@@ -28,6 +30,20 @@ npm install sparcoon three
 
 `three` (>= 0.157) is a peer dependency.
 
+## Authoring
+
+Effects are built in the [Sparcoon
+Editor](https://jango-git.github.io/sparcoon-editor/) -- a browser-based node
+editor with a timeline and a three.js viewport. Per emitter you author two
+graphs: a behavior graph (per-particle simulation) and a render graph (material
+properties). GPU simulation via transform feedback is an opt-in per emitter.
+
+Exporting a project writes a TypeScript module of precompiled artifacts -- drop
+it in your source tree and import it, as in the quick start below. Transform
+channels and timeline values can be marked as excluded from the export, which
+leaves them to be driven from your code at runtime (see [Live
+parameters](#live-parameters)).
+
 ## Quick start
 
 An editor project exports an `FXEffect` subclass plus a typed map of the
@@ -44,7 +60,7 @@ const assets = {
   heart: loader.load("heart.png"),
   fire: loader.load("fire.png"),
 };
-const effect = new VFXDemo0(assets);
+const effect = new VFXDemo0(assets, { renderer });
 
 scene.add(effect); // FXEffect is a THREE.Group
 effect.play();
@@ -58,6 +74,12 @@ function frame(deltaTime: number): void {
 The effect is an `Object3D` -- position, rotate, and scale it like any other.
 Call `effect.dispose()` to remove it, free its GPU resources, and unsubscribe it
 from the world.
+
+Passing `renderer` is what lets an effect use its WebGL2 assets: the editor
+emits every material in two GLSL tiers -- `"standard"` (GLSL ES 3.00) and
+`"baseline"` (GLSL ES 1.00) -- and `renderer.capabilities.isWebGL2` picks
+between them. It also gates GPU simulation. Omit it and every effect falls back
+to the baseline tier and CPU simulation.
 
 ### Live parameters
 
@@ -101,7 +123,8 @@ give it its own world. `world.dispose()` disposes every effect in it.
 
 ## How it works
 
-The **Sparcoon Editor** compiles a node graph into a plain ES module exporting
+The [Sparcoon Editor](https://github.com/jango-git/sparcoon-editor) compiles a
+node graph into a plain ES module exporting
 a render artifact (GLSL, uniforms, textures) and a behavior artifact (authored
 spawn/update functions), plus -- when the graph opts into GPU simulation -- a
 fused WebGL2 transform-feedback kernel. This runtime executes them: your bundler
@@ -118,6 +141,8 @@ The editor/runtime boundary is a frozen ABI: two core per-particle buffers,
   unbundled, unminified ES2020 modules plus types; your bundler tree-shakes and
   minifies them, the same way three.js is consumed. Not a drop-in `<script>`.
 - **`three` >= 0.157**, as a peer dependency.
+- **WebGL1 or WebGL2.** Both tiers render; WebGL2 additionally unlocks the
+  `"standard"` materials and GPU (transform-feedback) simulation.
 - **Old devices.** Output targets ES2020; to run on pre-2015 hardware (for
   example a first-generation iPad Pro), downlevel it in your own build
   (Babel / SWC / your bundler's `target`). `sparcoon` leaves that final step
