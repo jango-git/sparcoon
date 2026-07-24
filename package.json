@@ -1,7 +1,7 @@
 {
   "name": "sparcoon",
   "version": "0.9.2",
-  "description": "Runtime for VFX artifacts authored in the Sparcoon Editor.",
+  "description": "Three.js runtime for visual effects authored in the Sparcoon Editor - precompiled artifacts, one draw call per emitter, no eval.",
   "keywords": [
     "three",
     "threejs",
@@ -14,13 +14,18 @@
     "instanced",
     "instancing",
     "billboard",
+    "transform-feedback",
     "webgl",
+    "webgl2",
+    "glsl",
     "3d",
     "animation",
+    "playable-ads",
+    "esm",
     "typescript",
     "sparcoon"
   ],
-  "homepage": "https://github.com/jango-git/sparcoon#readme",
+  "homepage": "https://jango-git.github.io/sparcoon-editor/",
   "bugs": {
     "url": "https://github.com/jango-git/sparcoon/issues"
   },
@@ -50,6 +55,9 @@
     "LICENSE"
   ],
   "sideEffects": false,
+  "publishConfig": {
+    "tag": "experimental"
+  },
   "engines": {
     "node": ">=18.18.0"
   },
