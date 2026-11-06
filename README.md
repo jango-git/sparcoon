@@ -1,4 +1,4 @@
-# <img src="https://raw.githubusercontent.com/jango-git/sparcoon/experimental/assets/logo.svg" width="30" height="30" alt="" align="top" /> Sparcoon
+# <img src="https://raw.githubusercontent.com/jango-git/sparcoon/main/assets/logo.svg" width="30" height="30" alt="" align="top" /> Sparcoon
 
 A three.js runtime that plays visual effects authored in the
 [Sparcoon Editor](https://github.com/jango-git/sparcoon-editor). The editor compiles a node graph
@@ -8,11 +8,10 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.9.5)
+[npm](https://www.npmjs.com/package/sparcoon/v/0.10.0)
 
-> **Pre-release.** The artifact format is not frozen yet - breaking changes are possible before the
-> first stable release. The package is published under the `experimental` tag: npm's `latest` holds
-> an older release that the current editor does not work with.
+> **0.x.** The artifact format is not frozen yet - a minor release may still break it, so play an
+> effect with the runtime version the editor that exported it names.
 
 ## Who this is for
 
@@ -36,7 +35,7 @@ What is worth knowing before you install:
 ## Install
 
 ```sh
-npm install sparcoon@experimental three
+npm install sparcoon three
 ```
 
 `three` is a peer dependency; the supported range is `>=0.157 <0.180`.
