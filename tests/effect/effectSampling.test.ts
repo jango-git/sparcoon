@@ -7,6 +7,9 @@ import type {
   FXTransformTrack,
 } from "../../src/effect/FXEffectSpec";
 import {
+  asKeyEase,
+  easeFraction,
+  FX_KEY_EASES,
   frameOfTime,
   keyframeSegment,
   normalizeQuaternion,
@@ -200,5 +203,54 @@ describe("sampleTransform", () => {
     expect(result.rotation[2]).toBeCloseTo(Math.sin(Math.PI / 8), 6);
     expect(result.rotation[3]).toBeCloseTo(Math.cos(Math.PI / 8), 6);
     expect(result.position).toEqual(base.position); // no position track -> held at base
+  });
+});
+
+describe("key easing", () => {
+  it("bends the fraction along each cubic curve, keeping the ends", () => {
+    for (const ease of FX_KEY_EASES) {
+      expect(easeFraction(ease, 0)).toBe(0);
+      expect(easeFraction(ease, 1)).toBeCloseTo(1, 12);
+    }
+    expect(easeFraction("linear", 0.25)).toBe(0.25);
+    expect(easeFraction(undefined, 0.25)).toBe(0.25);
+    expect(easeFraction("in", 0.5)).toBeCloseTo(0.125);
+    expect(easeFraction("out", 0.5)).toBeCloseTo(0.875);
+    expect(easeFraction("inOut", 0.25)).toBeCloseTo(0.0625);
+    expect(easeFraction("inOut", 0.5)).toBeCloseTo(0.5);
+    expect(easeFraction("inOut", 0.75)).toBeCloseTo(0.9375);
+  });
+
+  it("reads a raw value as a curve only when it names one", () => {
+    expect(FX_KEY_EASES).toEqual(["linear", "in", "out", "inOut"]);
+    expect(asKeyEase("inOut")).toBe("inOut");
+    expect(asKeyEase("bounce")).toBeUndefined();
+    expect(asKeyEase(undefined)).toBeUndefined();
+  });
+
+  it("applies the earlier key's curve to values and transforms alike", () => {
+    const track = {
+      name: "glow",
+      keys: [
+        { time: 0, value: 0, ease: "in" as const },
+        { time: 1, value: 8 },
+      ],
+    };
+    expect(sampleTrack(track, 0.5)).toBeCloseTo(1); // 8 * 0.125
+    const base: FXTransform = { position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] };
+    const moved = sampleTransform(
+      base,
+      [
+        {
+          channel: "position",
+          keys: [
+            { time: 0, value: [0, 0, 0], ease: "out" },
+            { time: 1, value: [8, 0, 0] },
+          ],
+        },
+      ],
+      0.5,
+    );
+    expect(moved.position[0]).toBeCloseTo(7); // 8 * 0.875
   });
 });

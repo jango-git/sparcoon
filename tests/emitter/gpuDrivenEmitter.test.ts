@@ -16,8 +16,8 @@ import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 
 interface MockGLOptions {
   readonly failLink?: boolean;
-  /** MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS; the WebGL2 minimum, 4, by default. */
-  readonly maxFeedbackBuffers?: number;
+  /** MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS; the WebGL2 minimum, 64, by default. */
+  readonly maxFeedbackComponents?: number;
 }
 
 function mockGL(options: MockGLOptions = {}): unknown {
@@ -32,7 +32,7 @@ function mockGL(options: MockGLOptions = {}): unknown {
     FRAGMENT_SHADER: 2,
     COMPILE_STATUS: 3,
     LINK_STATUS: 4,
-    SEPARATE_ATTRIBS: 5,
+    INTERLEAVED_ATTRIBS: 5,
     ARRAY_BUFFER: 6,
     TRANSFORM_FEEDBACK_BUFFER: 7,
     FLOAT: 8,
@@ -41,9 +41,9 @@ function mockGL(options: MockGLOptions = {}): unknown {
     DYNAMIC_DRAW: 11,
     COPY_READ_BUFFER: 12,
     COPY_WRITE_BUFFER: 13,
-    MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: 14,
-    MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS: 15,
-    getParameter: (name: number) => (name === 14 ? (options.maxFeedbackBuffers ?? 4) : 4),
+    MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS: 14,
+    MAX_VERTEX_ATTRIBS: 15,
+    getParameter: (name: number) => (name === 14 ? (options.maxFeedbackComponents ?? 64) : 16),
     createBuffer: () => {
       const buffer = { id: nextId++ };
       liveBuffers.add(buffer);
@@ -199,9 +199,9 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     }
   });
 
-  it("falls back to the JS driver when the kernel needs more transform-feedback buffers than the GPU has", () => {
+  it("falls back to the JS driver when the kernel writes more than the GPU's transform feedback captures", () => {
     // Regression: past the limit, WebGL fails nothing visible - the program links without its
-    // outputs and every pass silently writes nothing. The holder now refuses it up front.
+    // outputs and every pass silently writes nothing. The holder refuses it up front.
     const kernel: FXParticleKernelArtifact = {
       ...minimalKernel(),
       buffers: [
@@ -213,7 +213,7 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       ],
       transformFeedbackVaryings: ["out_position", "out_lifecycle", "out_a", "out_b", "out_c"],
     };
-    const renderer = mockRenderer({ maxFeedbackBuffers: 4 });
+    const renderer = mockRenderer({ maxFeedbackComponents: 8 });
     const gl = renderer.getContext() as unknown as { __liveBuffers: Set<unknown> };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
@@ -224,8 +224,8 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       });
       expect(isGPUMesh(emitter)).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0]?.[1])).toMatch(/5 buffers.*at most 4/);
-      // The GPU mesh built before the refusal released its buffers.
+      expect(String(warn.mock.calls[0]?.[1])).toMatch(/9 components per particle.*at most 8/);
+      // Refused before any particle buffer was allocated.
       expect(gl.__liveBuffers.size).toBe(0);
       emitter.destroy();
     } finally {
@@ -361,11 +361,11 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       // One draw over exactly the claimed slots, captured into exactly those slots, then copied
       // into the read half - the side the renderer draws.
       expect(callsNamed(gl, "drawArrays").map((call) => call.args.slice(1))).toEqual([[0, 5]]);
+      // A slot is position + lifecycle: 6 floats, 24 bytes.
       expect(callsNamed(gl, "bindBufferRange").map((call) => call.args.slice(3))).toEqual([
-        [0, 5 * 3 * 4], // position
-        [0, 5 * 3 * 4], // lifecycle
+        [0, 5 * 24],
       ]);
-      expect(callsNamed(gl, "copyBufferSubData")).toHaveLength(2);
+      expect(callsNamed(gl, "copyBufferSubData")).toHaveLength(1);
       expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(0);
       expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(5);
 
@@ -413,10 +413,8 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
         [6, 2],
         [0, 3],
       ]);
-      const slotBytes = 3 * 4;
+      const slotBytes = 6 * 4;
       expect(callsNamed(gl, "copyBufferSubData").map((call) => call.args.slice(2))).toEqual([
-        [6 * slotBytes, 6 * slotBytes, 2 * slotBytes],
-        [0, 0, 3 * slotBytes],
         [6 * slotBytes, 6 * slotBytes, 2 * slotBytes],
         [0, 0, 3 * slotBytes],
       ]);

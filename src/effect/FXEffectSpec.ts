@@ -1,4 +1,4 @@
-import type { Camera, WebGLRenderer } from "three";
+import type { Camera, Object3DEventMap, WebGLRenderer } from "three";
 import type {
   FXBehaviorArtifact,
   FXGeometrySource,
@@ -28,9 +28,17 @@ export interface FXTransform {
   readonly scale: FXVec3;
 }
 
+/**
+ * How a value moves from a key to the next one: at a constant rate (`"linear"`), or easing in
+ * (starting slow), out (arriving slow) or both - cubic curves, as animation tools usually offer.
+ */
+export type FXKeyEase = "linear" | "in" | "out" | "inOut";
+
 export interface FXKeyframe {
   readonly time: number;
   readonly value: number | readonly number[];
+  /** The curve from this key to the next; `"linear"` when absent. */
+  readonly ease?: FXKeyEase;
 }
 
 /** A named value track (drives a render uniform / behavior binding by parameter name). */
@@ -116,6 +124,11 @@ export interface FXEffectMeshSpec {
 export interface FXEffectSpec {
   readonly duration: number;
   readonly fps: number;
+  /**
+   * Whether the timeline loops (the default, and what a module exported before this field existed
+   * does) or plays once and holds its last frame. `FXEffect.play` can override it per playback.
+   */
+  readonly loop?: boolean;
   readonly transform: FXTransform;
   /**
    * Always empty: the editor forces every root transform channel "fake", so the root pose is
@@ -126,6 +139,23 @@ export interface FXEffectSpec {
   readonly transformTracks: readonly FXTransformTrack[];
   readonly emitters: readonly FXEffectEmitterSpec[];
   readonly meshes: readonly FXEffectMeshSpec[];
+}
+
+/** How one {@link FXEffect.play} plays the timeline. */
+export interface FXEffectPlayOptions {
+  /** Overrides the authored {@link FXEffectSpec.loop} for this playback. */
+  readonly loop?: boolean;
+}
+
+/** The events an {@link FXEffect} dispatches, on top of three's own `Object3D` ones. */
+export interface FXEffectEventMap extends Object3DEventMap {
+  /**
+   * A timeline that does not loop reached its end: every event has fired and the last frame is
+   * posed. Particles already alive keep flying until their lifetimes run out - the effect is not
+   * cleared, so hide or dispose it when they are done. Never dispatched by a looping timeline, or
+   * by one of zero duration.
+   */
+  finished: object;
 }
 
 /** Options shared by every {@link FXEffect}. */

@@ -19,7 +19,9 @@ import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js
 import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 import { FXWorld } from "../world/FXWorld.js";
 import type {
+  FXEffectEventMap,
   FXEffectOptions,
+  FXEffectPlayOptions,
   FXEffectSpec,
   FXTransform,
   FXTransformChannel,
@@ -181,7 +183,7 @@ const NO_BEHAVIOR_BINDINGS = { bindings: {} } as unknown as FXBehaviorArtifact;
  * The timeline drive mirrors the editor's own transport: burst/play events fire across the
  * continuous swept interval, while value + transform tracks are frame-stepped onto the `fps` grid.
  */
-export abstract class FXEffect extends Group {
+export abstract class FXEffect extends Group<FXEffectEventMap> {
   private readonly specification: FXEffectSpec;
   private readonly world: FXWorld;
   private readonly emitters: FXEmitter[] = [];
@@ -205,6 +207,10 @@ export abstract class FXEffect extends Group {
   private lastFrame = -1;
   private meshClock = 0;
   private playing = false;
+  // This playback's loop choice (see play()), and whether a once-through timeline has ended: its
+  // timeline then holds the last frame while particles and mesh clocks run on.
+  private looping = true;
+  private ended = false;
   private disposed = false;
 
   // Reused decompose scratch for the per-mesh motion diff (avoids a per-tick allocation); scale
@@ -291,12 +297,17 @@ export abstract class FXEffect extends Group {
     this.world.registerEffect(this);
   }
 
-  /** Restarts the timeline from the top: clears live particles and begins playback. */
-  public play(): void {
+  /**
+   * Restarts the timeline from the top: clears live particles and begins playback - looping, or
+   * once through as authored ({@link FXEffectSpec.loop}) unless `options.loop` says otherwise. A
+   * once-through timeline holds its last frame at the end and dispatches `"finished"`.
+   */
+  public play(options: FXEffectPlayOptions = {}): void {
     if (this.disposed) {
       return;
     }
     this.resetTransport();
+    this.looping = options.loop ?? this.specification.loop ?? true;
     this.playing = true;
     this.driveFrame(0);
   }
@@ -323,7 +334,7 @@ export abstract class FXEffect extends Group {
     // Gate the simulation on playback, exactly like the editor's transport: stopped => 0, so live
     // particles and mesh clocks hold instead of drifting while the effect is not playing.
     const simulationDelta = this.playing ? deltaSeconds : 0;
-    if (this.playing) {
+    if (this.playing && !this.ended) {
       this.advance(deltaSeconds);
     }
     this.meshClock += simulationDelta;
@@ -472,6 +483,7 @@ export abstract class FXEffect extends Group {
     this.time = 0;
     this.lastTime = 0;
     this.lastFrame = -1;
+    this.ended = false;
     // meshClock is deliberately NOT reset: a mesh's time-driven shader runs on monotonic sim time,
     // decoupled from the timeline playhead, so a replay does not snap its phase back. The motion
     // trackers ARE reset - unlike meshClock's phase, a restarted effect should not report a
@@ -489,12 +501,20 @@ export abstract class FXEffect extends Group {
     const duration = this.specification.duration;
     let now = this.time + deltaSeconds;
     if (duration > 0 && now >= duration) {
-      // Loop wrap: finish this lap's tail from the lap's last pose, then run on into the next lap
-      // without clearing what is alive - a looping effect never pops at the seam. The pose jumps
-      // back to the start, which is no motion: every motion baseline is dropped, or the jump would
-      // read as a one-frame velocity spike.
+      // The end of the timeline: finish the tail from the last frame's pose.
       this.poseAt(duration);
       this.fire(this.lastTime, duration);
+      if (!this.looping) {
+        // Once through: hold the last frame. Nothing is cleared - what is alive flies on.
+        this.lastTime = duration;
+        this.time = duration;
+        this.ended = true;
+        this.dispatchEvent({ type: "finished" });
+        return;
+      }
+      // Loop wrap: run on into the next lap without clearing what is alive - a looping effect
+      // never pops at the seam. The pose jumps back to the start, which is no motion: every motion
+      // baseline is dropped, or the jump would read as a one-frame velocity spike.
       for (const emitter of this.emitters) {
         emitter.loopTimeline();
       }

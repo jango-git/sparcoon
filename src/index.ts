@@ -54,7 +54,13 @@ export type { FXGeometryPrimitive } from "./artifact/FXArtifact.js";
 // Whole-project playback: the generic runtime behind every editor-emitted project module (base
 // class + scene specification). An emitted module supplies only its `FXEffectSpec` data and a thin subclass.
 export { FXEffect } from "./effect/FXEffect.js";
-export type { FXEffectOptions, FXEffectSpec } from "./effect/FXEffectSpec.js";
+export type {
+  FXEffectEventMap,
+  FXEffectOptions,
+  FXEffectPlayOptions,
+  FXEffectSpec,
+  FXKeyEase,
+} from "./effect/FXEffectSpec.js";
 
 // Type-only: the return type of `FXEffect.getEmitter`. Exported so an emitted module can name it in
 // a typed `getEmitter` override; the emitter cannot be constructed from the main surface (its

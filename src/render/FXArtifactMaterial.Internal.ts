@@ -1,7 +1,7 @@
 import type { IUniform, Texture } from "three";
 import { DoubleSide, NormalBlending, ShaderMaterial, UniformsLib, UniformsUtils } from "three";
 import type { FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
-import { FX_CORE_PARTICLE_DEFINES } from "../coreLayout.js";
+import { FX_CORE_LIFECYCLE, FX_CORE_PARTICLE_DEFINES, FX_CORE_POSITION } from "../coreLayout.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";
 
@@ -32,24 +32,70 @@ function materialFlags(renderMode: FXRenderMode): {
   return { transparent: blended, depthWrite: !blended, alphaHash: renderMode === "alphaHash" };
 }
 
-// Each property becomes an `a_<name>` attribute mirrored into a `p_<name>` varying. Shared by both adapters.
-function declareVaryings(varyings: Record<string, GLTypeInfo>): {
+/** The GLSL names a render artifact uses for a particle property, in either stage. */
+function propertyTokens(name: string): RegExp {
+  // The core buffers are read through FX_CORE_PARTICLE_DEFINES' macros as well as directly.
+  const macros =
+    name === FX_CORE_POSITION
+      ? "|PARTICLE_POSITION(?:_[XYZ])?"
+      : name === FX_CORE_LIFECYCLE
+        ? "|PARTICLE_AGE|PARTICLE_LIFETIME|PARTICLE_ID"
+        : "";
+  return new RegExp(`\\b(?:p_${name}${macros})\\b`);
+}
+
+/**
+ * The particle properties the fragment stage reads: those named anywhere in the artifact's
+ * fragment code, its helper functions or its outputs (a vertex-side output naming one only costs
+ * a varying it could have spared - never a missing one).
+ */
+function fragmentReadProperties(
+  render: FXRenderArtifact,
+  varyings: Record<string, GLTypeInfo>,
+): ReadonlySet<string> {
+  const code = [
+    ...render.fragment.body,
+    ...render.fragment.helperFunctions,
+    ...Object.values(render.outputs),
+  ].join("\n");
+  return new Set(Object.keys(varyings).filter((name) => propertyTokens(name).test(code)));
+}
+
+/**
+ * Each property becomes an `a_<name>` attribute mirrored into `p_<name>`, which the generated code
+ * reads (directly, or through FX_CORE_PARTICLE_DEFINES' macros). Only a property the fragment stage
+ * reads makes `p_<name>` a varying; for the rest it is a plain vertex-shader global, so it costs
+ * none of the GPU's few varying vectors. Shared by both adapters.
+ */
+function declareVaryings(
+  render: FXRenderArtifact,
+  varyings: Record<string, GLTypeInfo>,
+): {
   attributeDeclarations: string;
-  varyingDeclarations: string;
+  vertexVaryingDeclarations: string;
+  fragmentVaryingDeclarations: string;
   vertexAssignments: string;
 } {
+  const fragmentReads = fragmentReadProperties(render, varyings);
   const attributeDeclarations: string[] = [];
-  const varyingDeclarations: string[] = [];
+  const vertexVaryingDeclarations: string[] = [];
+  const fragmentVaryingDeclarations: string[] = [];
   const vertexAssignments: string[] = [];
   for (const name in varyings) {
     const { glslTypeName } = varyings[name];
     attributeDeclarations.push(`attribute ${glslTypeName} a_${name};`);
-    varyingDeclarations.push(`varying ${glslTypeName} p_${name};`);
+    if (fragmentReads.has(name)) {
+      vertexVaryingDeclarations.push(`varying ${glslTypeName} p_${name};`);
+      fragmentVaryingDeclarations.push(`varying ${glslTypeName} p_${name};`);
+    } else {
+      vertexVaryingDeclarations.push(`${glslTypeName} p_${name};`);
+    }
     vertexAssignments.push(`p_${name} = a_${name};`);
   }
   return {
     attributeDeclarations: attributeDeclarations.join("\n"),
-    varyingDeclarations: varyingDeclarations.join("\n"),
+    vertexVaryingDeclarations: vertexVaryingDeclarations.join("\n"),
+    fragmentVaryingDeclarations: fragmentVaryingDeclarations.join("\n"),
     vertexAssignments: vertexAssignments.join("\n"),
   };
 }
@@ -228,8 +274,12 @@ export function buildUnlitArtifactMaterial(
     throw new Error("buildUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const albedo = render.outputs["albedo"];
-  const { attributeDeclarations, varyingDeclarations, vertexAssignments } =
-    declareVaryings(varyings);
+  const {
+    attributeDeclarations,
+    vertexVaryingDeclarations,
+    fragmentVaryingDeclarations,
+    vertexAssignments,
+  } = declareVaryings(render, varyings);
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -247,7 +297,7 @@ export function buildUnlitArtifactMaterial(
     "varying vec3 vWorldNormal;",
     "varying vec3 vWorldTangent;",
     "varying vec3 vWorldPos;",
-    varyingDeclarations,
+    vertexVaryingDeclarations,
     render.vertex.varyingDeclarations.join("\n"),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
@@ -293,7 +343,7 @@ export function buildUnlitArtifactMaterial(
     "varying vec3 vWorldNormal;",
     "varying vec3 vWorldTangent;",
     "varying vec3 vWorldPos;",
-    varyingDeclarations,
+    fragmentVaryingDeclarations,
     render.fragment.varyingDeclarations.join("\n"),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
@@ -420,8 +470,12 @@ function buildLitArtifactMaterial(
     throw new Error("buildLitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const albedo = render.outputs["albedo"];
-  const { attributeDeclarations, varyingDeclarations, vertexAssignments } =
-    declareVaryings(varyings);
+  const {
+    attributeDeclarations,
+    vertexVaryingDeclarations,
+    fragmentVaryingDeclarations,
+    vertexAssignments,
+  } = declareVaryings(render, varyings);
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -441,7 +495,7 @@ function buildLitArtifactMaterial(
     "varying vec3 vWorldTangent;",
     "varying vec3 vWorldPos;",
     "varying vec3 vViewPosition;",
-    varyingDeclarations,
+    vertexVaryingDeclarations,
     render.vertex.varyingDeclarations.join("\n"),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
@@ -490,7 +544,7 @@ function buildLitArtifactMaterial(
     "varying vec3 vWorldNormal;",
     "varying vec3 vWorldTangent;",
     "varying vec3 vWorldPos;",
-    varyingDeclarations,
+    fragmentVaryingDeclarations,
     render.fragment.varyingDeclarations.join("\n"),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
@@ -918,8 +972,12 @@ export function buildArtifactDepthMaterial(
   }
   const albedo = render.outputs["albedo"];
   const lit = render.lightingIntrinsics.length > 0;
-  const { attributeDeclarations, varyingDeclarations, vertexAssignments } =
-    declareVaryings(varyings);
+  const {
+    attributeDeclarations,
+    vertexVaryingDeclarations,
+    fragmentVaryingDeclarations,
+    vertexAssignments,
+  } = declareVaryings(render, varyings);
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -938,7 +996,7 @@ export function buildArtifactDepthMaterial(
     ...(lit ? ["varying vec3 vViewPosition;"] : []),
     // High-precision NDC z/w carried to the fragment for the depth pack (mirrors stock depth.glsl.js).
     "varying vec2 vHighPrecisionZW;",
-    varyingDeclarations,
+    vertexVaryingDeclarations,
     render.vertex.varyingDeclarations.join("\n"),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
@@ -984,7 +1042,7 @@ export function buildArtifactDepthMaterial(
     "varying vec3 vWorldTangent;",
     "varying vec3 vWorldPos;",
     "varying vec2 vHighPrecisionZW;",
-    varyingDeclarations,
+    fragmentVaryingDeclarations,
     render.fragment.varyingDeclarations.join("\n"),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),

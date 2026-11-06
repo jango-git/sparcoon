@@ -1,4 +1,5 @@
 import type {
+  FXKeyEase,
   FXKeyframe,
   FXQuat,
   FXTrack,
@@ -9,11 +10,11 @@ import type {
 
 /**
  * Pure keyframe/transform sampling math for {@link FXEffect}'s timeline drive: hold-before-first,
- * hold-after-last, linear interpolation between (slerp for rotation). No side effects, no `three`
- * dependency. Every export here also backs the editor's own track/transform sampling: the editor
- * used to hand-duplicate this exact math under different type names, and now imports it from here
- * (this stays an `.Internal.ts` module, outside the public `sparcoon` package surface) so the two
- * can never drift apart.
+ * hold-after-last, interpolation between (slerp for rotation) along the earlier key's curve. No
+ * side effects, no `three` dependency. Every export here also backs the editor's own
+ * track/transform sampling: the editor used to hand-duplicate this exact math under different type
+ * names, and now imports it from here (this stays an `.Internal.ts` module, outside the public
+ * `sparcoon` package surface) so the two can never drift apart.
  */
 
 const IDENTITY_QUAT: FXQuat = [0, 0, 0, 1];
@@ -26,7 +27,41 @@ export function timeOfFrame(frame: number, fps: number): number {
   return fps > 0 ? frame / fps : 0;
 }
 
-/** The bounding keys straddling `time` and the fraction between (held at the ends). */
+// Keyed by the type itself, so a curve added to FXKeyEase cannot be left out of the list.
+const KEY_EASE_SET: Readonly<Record<FXKeyEase, true>> = {
+  linear: true,
+  in: true,
+  out: true,
+  inOut: true,
+};
+
+/** Every curve a key can take, for tools that offer them. */
+export const FX_KEY_EASES = Object.keys(KEY_EASE_SET) as readonly FXKeyEase[];
+
+/** `value` as a key curve, or `undefined` when it names none (a tool's or a file's raw input). */
+export function asKeyEase(value: unknown): FXKeyEase | undefined {
+  return FX_KEY_EASES.find((ease) => ease === value);
+}
+
+/** `u` in [0, 1] along `ease`'s cubic curve. */
+export function easeFraction(ease: FXKeyEase | undefined, u: number): number {
+  switch (ease) {
+    case "in":
+      return u * u * u;
+    case "out":
+      return 1 - (1 - u) ** 3;
+    case "inOut":
+      return u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
+    case "linear":
+    case undefined:
+      return u;
+  }
+}
+
+/**
+ * The bounding keys straddling `time` and the fraction between, already along the earlier key's
+ * curve (held at the ends).
+ */
 export function keyframeSegment(
   keys: readonly FXKeyframe[],
   time: number,
@@ -53,7 +88,7 @@ export function keyframeSegment(
     }
   }
   const span = b.time - a.time;
-  return { a, b, u: span > 0 ? (time - a.time) / span : 0 };
+  return { a, b, u: span > 0 ? easeFraction(a.ease, (time - a.time) / span) : 0 };
 }
 
 function lerpValue(

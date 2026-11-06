@@ -65,25 +65,25 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.varyings = varyingsFromComponents(components);
     const threeMaterial = material.buildThreeMaterial(this.varyings);
 
-    let mesh: FXTransformFeedbackParticle | undefined;
+    // The holder first: it checks the kernel fits this GPU before any particle buffer exists. A
+    // throw from either goes to the caller (FXEmitter.fromArtifacts), which falls back to
+    // FXJSEmitterDriver - so what the holder already allocated is released first, or it would
+    // leak for the GL context's lifetime.
+    const simulation = new FXTransformFeedbackSimulationHolder(renderer, kernel);
     try {
-      mesh = new FXTransformFeedbackParticle(
+      this.mesh = new FXTransformFeedbackParticle(
         renderer.getContext() as WebGL2RenderingContext,
+        simulation.layout,
         this.varyings,
         capacity,
         threeMaterial,
         baseGeometry,
       );
-      this.simulation = new FXTransformFeedbackSimulationHolder(renderer, kernel);
     } catch (error) {
-      // `mesh` can have already succeeded (real WebGL buffers/VAO-backing state allocated) when the
-      // simulation holder construction right after it is what actually throws - release those
-      // before re-throwing, or they leak for the GL context's lifetime. The caller (FXEmitter.
-      // fromArtifacts) decides what happens next - falling back to FXJSEmitterDriver.
-      mesh?.destroy();
+      simulation.destroy();
       throw error;
     }
-    this.mesh = mesh;
+    this.simulation = simulation;
   }
 
   public get particleCount(): number {

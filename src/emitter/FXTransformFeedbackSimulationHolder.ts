@@ -12,21 +12,47 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../behaviorTransformFeedbackLayout.js";
-import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
+import {
+  slotLayout,
+  type FXSlotLayout,
+  type FXTransformFeedbackParticle,
+} from "../instancedParticle/FXTransformFeedbackParticle.js";
+
+/** WebGL's cap on a vertex attribute stride, in bytes - one particle's slot is that stride. */
+const MAX_VERTEX_STRIDE_BYTES = 255;
+
+/**
+ * The interleaved slot `artifact` writes: its buffers in order, under the mesh's property keys.
+ * `artifact.buffers[].name` is the raw kernel name (`velocity`); the mesh keys a non-core buffer
+ * as `fx_velocity`, the same mapping the JS backend uses (`meshPropertyKeyFor`).
+ */
+function kernelSlotLayout(artifact: FXParticleKernelArtifact): FXSlotLayout {
+  return slotLayout(
+    artifact.buffers.map((buffer) => ({
+      name: meshPropertyKeyFor(buffer.name),
+      components: buffer.stride,
+    })),
+  );
+}
 
 /**
  * @internal The GPU sibling of `FXSimulationHolder`: holds a precompiled {@link FXParticleKernelArtifact}
  * (one fused GLSL program covering both spawn and update) and drives it via raw WebGL2 transform
- * feedback each tick. Bypasses three.js's `Material`/
- * `WebGLProgram` machinery entirely - three has no transform-feedback support at all - the same
- * way the render side never touches it either.
+ * feedback each tick. Bypasses three.js's `Material`/`WebGLProgram` machinery entirely - three has
+ * no transform-feedback support at all.
+ *
+ * The kernel's outputs are captured interleaved (INTERLEAVED_ATTRIBS) into one buffer, one slot per
+ * particle laid out by {@link kernelSlotLayout}; its inputs read the same layout back. Interleaved
+ * capture is limited only by its total component count (WebGL2 guarantees 64), where capturing each
+ * buffer separately is limited to 4 buffers - the two core ones included.
  */
 export class FXTransformFeedbackSimulationHolder {
+  /** The slot this kernel writes; the mesh it simulates must be laid out the same. */
+  public readonly layout: FXSlotLayout;
+
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
   private readonly vao: WebGLVertexArrayObject;
-  private readonly bufferNames: readonly string[];
-  private readonly strides: readonly number[];
   private readonly uniformLocations: Record<string, WebGLUniformLocation | null> = {};
 
   // A fresh, monotonic seed every tick - decorrelates `rand()` draws across ticks (and, crucially,
@@ -52,28 +78,20 @@ export class FXTransformFeedbackSimulationHolder {
     // capability check.
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
     this.gl = gl;
-    // `artifact.buffers[].name` is the raw, unprefixed kernel-compiled name (e.g. "velocity") -
-    // `mesh.readBuffer`/`writeBuffer`/`swapBuffers` key by the mesh's own property-buffer key
-    // instead (`fx_velocity`, matching `FXGPUEmitterDriver`'s own `varyings`), so every name must go
-    // through the same mapping the JS-driven path also uses (`meshPropertyKeyFor`) before reaching
-    // the mesh - the two core buffers pass through unchanged either way, which is why this only
-    // actually mattered for attribute-buffer emitters, not the position/lifetime-only fixtures this
-    // class's own tests use.
-    this.bufferNames = artifact.buffers.map((buffer) => meshPropertyKeyFor(buffer.name));
-    this.strides = artifact.buffers.map((buffer) => buffer.stride);
-    assertFitsTransformFeedback(gl, artifact.buffers);
+    this.layout = kernelSlotLayout(artifact);
+    assertFitsTransformFeedback(gl, this.layout);
 
     const vertexShader = compileShader(gl, gl.VERTEX_SHADER, artifact.vertexSource);
     const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, artifact.fragmentSource);
     const program = gl.createProgram();
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);
-    // Must be called before linking (WebGL2 spec) - SEPARATE_ATTRIBS matches this class's one
-    // dedicated WebGLBuffer per state buffer (never one interleaved buffer for all of them).
+    // Must be called before linking (WebGL2 spec). The varyings come in buffer order, so the
+    // interleaved capture writes exactly the slot layout.
     gl.transformFeedbackVaryings(
       program,
       [...artifact.transformFeedbackVaryings],
-      gl.SEPARATE_ATTRIBS,
+      gl.INTERLEAVED_ATTRIBS,
     );
     gl.linkProgram(program);
     // Shaders are safe to delete once linked - GL keeps them alive by refcount until the program
@@ -102,8 +120,8 @@ export class FXTransformFeedbackSimulationHolder {
   }
 
   /**
-   * Runs one transform-feedback pass: reads `mesh`'s current buffers, writes the fused spawn+
-   * update program's result into the other half of each ping-pong pair, then swaps. `spawnRange`
+   * Runs one transform-feedback pass: reads `mesh`'s current half, writes the fused spawn+update
+   * program's result into the other half of the ping-pong pair, then swaps. `spawnRange`
    * is this tick's birth range under the buffer's cursor/overwrite scheme - `count === 0` is a
    * valid, ordinary "no births this tick" case, not skipped specially.
    */
@@ -117,9 +135,7 @@ export class FXTransformFeedbackSimulationHolder {
     this.randSeedCounter += 1;
 
     this.bindProgramAndInputs(mesh);
-    this.bufferNames.forEach((name, index) => {
-      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, index, mesh.writeBuffer(name));
-    });
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, mesh.writeBuffer());
 
     this.setUniforms(deltaTime, spawnRange, emitter, mesh.capacity);
 
@@ -129,11 +145,9 @@ export class FXTransformFeedbackSimulationHolder {
     gl.endTransformFeedback();
     gl.disable(gl.RASTERIZER_DISCARD);
 
-    this.releaseFeedbackBuffers();
-
-    for (const name of this.bufferNames) {
-      mesh.swapBuffers(name);
-    }
+    // A bound base stays "active" for its binding point otherwise.
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+    mesh.swapBuffers();
 
     // Consumed - advance past every id this tick's spawn range just claimed.
     this.spawnIdBase += spawnRange.count;
@@ -153,7 +167,7 @@ export class FXTransformFeedbackSimulationHolder {
    * instead of sharing one pass - and so one pose - with everything else spawned that frame.
    *
    * Transform feedback cannot write the buffer it reads, so the seeded range is drawn into the
-   * write half of each pair (`drawArrays(first, count)`: `gl_VertexID` is the slot index, which
+   * write half of the pair (`drawArrays(first, count)`: `gl_VertexID` is the slot index, which
    * makes every drawn vertex a birth under the kernel's own range test) and then copied into the
    * read half - the side the renderer draws and the next {@link tick} reads. No swap: every slot
    * outside the range keeps its state untouched. A range that wraps past the end of the ring is
@@ -184,18 +198,16 @@ export class FXTransformFeedbackSimulationHolder {
     // dt 0: the spawn branch has no use for it, and nothing else runs in this pass.
     this.setUniforms(0, spawnRange, emitter, capacity);
 
+    const slotBytes = this.layout.stride * Float32Array.BYTES_PER_ELEMENT;
     gl.enable(gl.RASTERIZER_DISCARD);
     for (const [first, count] of segments) {
-      this.bufferNames.forEach((name, index) => {
-        const bytesPerSlot = this.strides[index] * Float32Array.BYTES_PER_ELEMENT;
-        gl.bindBufferRange(
-          gl.TRANSFORM_FEEDBACK_BUFFER,
-          index,
-          mesh.writeBuffer(name),
-          first * bytesPerSlot,
-          count * bytesPerSlot,
-        );
-      });
+      gl.bindBufferRange(
+        gl.TRANSFORM_FEEDBACK_BUFFER,
+        0,
+        mesh.writeBuffer(),
+        first * slotBytes,
+        count * slotBytes,
+      );
       gl.beginTransformFeedback(gl.POINTS);
       gl.drawArrays(gl.POINTS, first, count);
       gl.endTransformFeedback();
@@ -203,22 +215,19 @@ export class FXTransformFeedbackSimulationHolder {
     gl.disable(gl.RASTERIZER_DISCARD);
     // Released before the copy: a buffer still bound for transform feedback cannot be a copy
     // source.
-    this.releaseFeedbackBuffers();
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
 
-    this.bufferNames.forEach((name, index) => {
-      const bytesPerSlot = this.strides[index] * Float32Array.BYTES_PER_ELEMENT;
-      gl.bindBuffer(gl.COPY_READ_BUFFER, mesh.writeBuffer(name));
-      gl.bindBuffer(gl.COPY_WRITE_BUFFER, mesh.readBuffer(name));
-      for (const [first, count] of segments) {
-        gl.copyBufferSubData(
-          gl.COPY_READ_BUFFER,
-          gl.COPY_WRITE_BUFFER,
-          first * bytesPerSlot,
-          first * bytesPerSlot,
-          count * bytesPerSlot,
-        );
-      }
-    });
+    gl.bindBuffer(gl.COPY_READ_BUFFER, mesh.writeBuffer());
+    gl.bindBuffer(gl.COPY_WRITE_BUFFER, mesh.readBuffer());
+    for (const [first, count] of segments) {
+      gl.copyBufferSubData(
+        gl.COPY_READ_BUFFER,
+        gl.COPY_WRITE_BUFFER,
+        first * slotBytes,
+        first * slotBytes,
+        count * slotBytes,
+      );
+    }
     gl.bindBuffer(gl.COPY_READ_BUFFER, null);
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
 
@@ -243,7 +252,7 @@ export class FXTransformFeedbackSimulationHolder {
     }
   }
 
-  /** Binds the program and wires every state buffer's read half as its vertex input. */
+  /** Binds the program and wires the read half's slot fields as its vertex inputs. */
   private bindProgramAndInputs(mesh: FXTransformFeedbackParticle): void {
     const gl = this.gl;
     // Routed through the renderer's own cache-aware setter (not raw gl.useProgram()) so three's
@@ -254,21 +263,20 @@ export class FXTransformFeedbackSimulationHolder {
     this.renderer.state.useProgram(this.program);
     gl.bindVertexArray(this.vao);
 
-    this.bufferNames.forEach((name, index) => {
-      gl.bindBuffer(gl.ARRAY_BUFFER, mesh.readBuffer(name));
-      gl.vertexAttribPointer(index, this.strides[index], gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(index);
+    const slotBytes = this.layout.stride * Float32Array.BYTES_PER_ELEMENT;
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.readBuffer());
+    // A field's index is its input location (see FXSlotLayout).
+    this.layout.fields.forEach((field, location) => {
+      gl.vertexAttribPointer(
+        location,
+        field.components,
+        gl.FLOAT,
+        false,
+        slotBytes,
+        field.offset * Float32Array.BYTES_PER_ELEMENT,
+      );
+      gl.enableVertexAttribArray(location);
     });
-  }
-
-  /**
-   * Unbinds every transform-feedback binding point. A bound base stays "active" for its point
-   * otherwise; released rather than left as a stale reference between passes.
-   */
-  private releaseFeedbackBuffers(): void {
-    for (let index = 0; index < this.bufferNames.length; index += 1) {
-      this.gl.bindBufferBase(this.gl.TRANSFORM_FEEDBACK_BUFFER, index, null);
-    }
   }
 
   private setUniforms(
@@ -326,30 +334,39 @@ const FIXED_UNIFORM_NAMES: readonly string[] = [
 ];
 
 /**
- * Throws when `buffers` need more transform-feedback outputs than this GPU offers: one output per
- * buffer (SEPARATE_ATTRIBS), each at most so many components. Checked up front because WebGL does
- * not fail anything visible over it - `transformFeedbackVaryings` only raises a GL error, the
- * program links without its outputs, and every pass then writes nothing, so particles never spawn.
- * The throw instead sends the emitter to its JS kernel (see `FXEmitter.fromArtifacts`). WebGL2
- * guarantees only 4 outputs of 4 components, the two core buffers included.
+ * Throws when the slot `layout` does not fit this GPU: more components than interleaved transform
+ * feedback captures, a slot wider than WebGL allows a vertex stride to be, or more fields than the
+ * GPU has vertex inputs. Checked up front because WebGL fails nothing visible over the first -
+ * `transformFeedbackVaryings` only raises a GL error, the program links without its outputs, and
+ * every pass then writes nothing. The throw instead sends the emitter to its JS kernel (see
+ * `FXEmitter.fromArtifacts`).
+ *
+ * On a conforming GPU the stride is the binding limit (255 bytes is 63 floats, under the 64
+ * components WebGL2 guarantees); the component check guards a GPU that reports less anyway.
  */
-function assertFitsTransformFeedback(
-  gl: WebGL2RenderingContext,
-  buffers: FXParticleKernelArtifact["buffers"],
-): void {
-  const maxBuffers = gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS) as number;
-  if (buffers.length > maxBuffers) {
-    throw new Error(
-      `FXTransformFeedbackSimulationHolder: the kernel writes ${String(buffers.length)} buffers; ` +
-        `this GPU's transform feedback takes at most ${String(maxBuffers)}`,
+function assertFitsTransformFeedback(gl: WebGL2RenderingContext, layout: FXSlotLayout): void {
+  const fail = (reason: string): never => {
+    throw new Error(`FXTransformFeedbackSimulationHolder: ${reason}`);
+  };
+  const maxComponents = gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS) as number;
+  if (layout.stride > maxComponents) {
+    fail(
+      `the kernel writes ${String(layout.stride)} components per particle; this GPU's ` +
+        `transform feedback takes at most ${String(maxComponents)}`,
     );
   }
-  const maxComponents = gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS) as number;
-  const wide = buffers.find((buffer) => buffer.stride > maxComponents);
-  if (wide !== undefined) {
-    throw new Error(
-      `FXTransformFeedbackSimulationHolder: buffer "${wide.name}" has ${String(wide.stride)} ` +
-        `components; this GPU's transform feedback takes at most ${String(maxComponents)} per buffer`,
+  const slotBytes = layout.stride * Float32Array.BYTES_PER_ELEMENT;
+  if (slotBytes > MAX_VERTEX_STRIDE_BYTES) {
+    fail(
+      `a particle takes ${String(slotBytes)} bytes; a vertex stride is at most ` +
+        String(MAX_VERTEX_STRIDE_BYTES),
+    );
+  }
+  const maxInputs = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number;
+  if (layout.fields.length > maxInputs) {
+    fail(
+      `the kernel reads ${String(layout.fields.length)} buffers; this GPU has ` +
+        `${String(maxInputs)} vertex inputs`,
     );
   }
 }

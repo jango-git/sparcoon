@@ -28,6 +28,8 @@ export { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js
 // Shared keyframe/transform sampling: the editor bakes keyframes and the runtime samples them, so
 // both sides must sample identically - a frozen contract, never a one-sided edit.
 export {
+  asKeyEase,
+  FX_KEY_EASES,
   frameOfTime,
   keyframeSegment,
   normalizeQuaternion,
@@ -39,3 +41,12 @@ export {
   timeOfFrame,
   vectorFromValue,
 } from "../effect/FXEffectSampling.Internal.js";
+
+// What a render artifact's materials take of a GPU's vertex attributes and varyings, against the
+// least each tier guarantees - so the editor can refuse an effect some GPUs could not draw.
+export {
+  FX_RENDER_BUDGET_MINIMUMS,
+  fxEmitterRenderBudget,
+  fxMeshRenderBudget,
+} from "../render/FXRenderBudget.js";
+export type { FXRenderBudget } from "../render/FXRenderBudget.js";

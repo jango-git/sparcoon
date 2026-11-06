@@ -50,6 +50,7 @@ function spec(
   return {
     duration: over.duration ?? 0,
     fps: over.fps ?? 30,
+    ...(over.loop !== undefined ? { loop: over.loop } : {}),
     transform: IDENTITY_TRANSFORM,
     transformTracks: [],
     emitters: over.emitters,
@@ -360,5 +361,83 @@ describe("FXEffect event order", () => {
 
     expect(burstPositions).toHaveLength(1);
     expect(burstPositions[0]).toBeCloseTo(6);
+  });
+});
+
+describe("FXEffect once-through playback", () => {
+  function onceEffect(world: FXWorld, loop: boolean | undefined) {
+    return makeEffect(
+      world,
+      spec({
+        duration: 1,
+        ...(loop !== undefined ? { loop } : {}),
+        emitters: [
+          emitterSpec("e", {
+            events: [
+              { kind: "burst", time: 0.5, count: 5 },
+              { kind: "burst", time: 0.95, count: 3 },
+            ],
+          }),
+        ],
+      }),
+    );
+  }
+
+  it("plays an authored once-through timeline to its end, holds it and says so once", () => {
+    const world = newWorld();
+    const effect = onceEffect(world, false);
+    let finished = 0;
+    effect.addEventListener("finished", () => {
+      finished += 1;
+    });
+    effect.play();
+    world.update(0.6);
+    expect(finished).toBe(0);
+    world.update(0.6); // past the end: the tail burst at 0.95 fires, then the timeline holds
+    expect(finished).toBe(1);
+    expect(effect.getEmitter("e")!.particleCount).toBe(8);
+
+    world.update(1); // held: nothing replays, nothing is cleared, no second event
+    expect(effect.getEmitter("e")!.particleCount).toBe(8);
+    expect(finished).toBe(1);
+  });
+
+  it("lets play() override the authored choice, both ways", () => {
+    const world = newWorld();
+    const looping = onceEffect(world, undefined); // no field: loops, as older modules do
+    let finished = 0;
+    looping.addEventListener("finished", () => {
+      finished += 1;
+    });
+    looping.play({ loop: false });
+    world.update(1.2);
+    expect(finished).toBe(1);
+
+    const once = onceEffect(world, false);
+    once.addEventListener("finished", () => {
+      finished += 1;
+    });
+    once.play({ loop: true });
+    world.update(1.2);
+    world.update(0.4); // 0.2 -> 0.6: the burst at 0.5 replays on the next lap
+    expect(finished).toBe(1);
+    expect(once.getEmitter("e")!.particleCount).toBe(13);
+  });
+
+  it("starts over on the next play()", () => {
+    const world = newWorld();
+    const effect = onceEffect(world, false);
+    let finished = 0;
+    effect.addEventListener("finished", () => {
+      finished += 1;
+    });
+    effect.play();
+    world.update(1.2);
+    effect.play();
+    expect(effect.getEmitter("e")!.particleCount).toBe(0);
+    world.update(0.6);
+    expect(effect.getEmitter("e")!.particleCount).toBe(5);
+    world.update(0.6);
+    expect(finished).toBe(2);
   });
 });

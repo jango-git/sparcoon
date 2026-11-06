@@ -8,7 +8,7 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.9.4)
+[npm](https://www.npmjs.com/package/sparcoon/v/0.9.5)
 
 > **Pre-release.** The artifact format is not frozen yet - breaking changes are possible before the
 > first stable release. The package is published under the `experimental` tag: npm's `latest` holds
@@ -74,6 +74,15 @@ Straight after the constructor the effect sits on frame zero, in the state the a
 `play()` restarts the timeline from the top; `stop()` halts playback, clears live particles and
 returns the effect to frame zero. The timeline loops, and seamlessly: particles still alive at the
 end of a lap finish their lives in the next one.
+
+An effect authored to play once - or played with `effect.play({ loop: false })` - instead holds its
+last frame at the end and dispatches `"finished"`. What is alive keeps flying out its lifetime, so
+hide or dispose the effect once that is done:
+
+```ts
+effect.addEventListener("finished", () => setTimeout(() => effect.dispose(), 1000));
+effect.play({ loop: false });
+```
 
 Without `renderer` the effect takes the Baseline tier unconditionally and runs on the JavaScript
 kernel. That is a working mode if you have no renderer at the point of construction.

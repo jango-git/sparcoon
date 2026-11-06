@@ -24,7 +24,7 @@ interface RecordedCall {
   readonly args: readonly unknown[];
 }
 
-function mockRendererAndGL(limits: { buffers?: number; components?: number } = {}): {
+function mockRendererAndGL(limits: { components?: number; inputs?: number } = {}): {
   renderer: {
     getContext: () => unknown;
     state: { useProgram: (p: unknown) => void };
@@ -47,7 +47,7 @@ function mockRendererAndGL(limits: { buffers?: number; components?: number } = {
     FRAGMENT_SHADER: 2,
     COMPILE_STATUS: 3,
     LINK_STATUS: 4,
-    SEPARATE_ATTRIBS: 5,
+    INTERLEAVED_ATTRIBS: 5,
     ARRAY_BUFFER: 6,
     TRANSFORM_FEEDBACK_BUFFER: 7,
     FLOAT: 8,
@@ -56,10 +56,11 @@ function mockRendererAndGL(limits: { buffers?: number; components?: number } = {
     DYNAMIC_DRAW: 11,
     COPY_READ_BUFFER: 12,
     COPY_WRITE_BUFFER: 13,
-    MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: 14,
-    MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS: 15,
+    MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS: 14,
+    MAX_VERTEX_ATTRIBS: 15,
+    // The WebGL2 minimums by default.
     getParameter: (name: number) =>
-      name === 14 ? (limits.buffers ?? 4) : name === 15 ? (limits.components ?? 4) : undefined,
+      name === 14 ? (limits.components ?? 64) : name === 15 ? (limits.inputs ?? 16) : undefined,
     createBuffer: () => ({ id: nextId++ }),
     createShader: () => ({ id: nextId++ }),
     shaderSource: () => undefined,
@@ -130,6 +131,27 @@ function baseQuad(): BufferGeometry {
   return geometry;
 }
 
+/** A mesh laid out the way `holder`'s kernel writes, every slot field a float varying. */
+function meshFor(
+  renderer: { getContext: () => unknown },
+  holder: FXTransformFeedbackSimulationHolder,
+): FXTransformFeedbackParticle {
+  const varyings = Object.fromEntries(
+    holder.layout.fields.map((field) => [
+      field.name,
+      { glslTypeName: "vec3", bufferSize: field.components, instantiable: true },
+    ]),
+  );
+  return new FXTransformFeedbackParticle(
+    renderer.getContext() as never,
+    holder.layout,
+    varyings,
+    16,
+    new MeshBasicMaterial(),
+    baseQuad(),
+  );
+}
+
 function minimalArtifact(): FXParticleKernelArtifact {
   return {
     vertexSource: "#version 300 es\nvoid main(){}",
@@ -158,7 +180,18 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     }
   });
 
-  it("refuses a kernel that needs more transform-feedback buffers, or wider ones, than the GPU has", () => {
+  it("captures the kernel's outputs interleaved into one buffer", () => {
+    const { renderer, calls } = mockRendererAndGL();
+    const holder = new FXTransformFeedbackSimulationHolder(renderer as never, minimalArtifact());
+    try {
+      const varyings = calls.find((call) => call.name === "transformFeedbackVaryings");
+      expect(varyings?.args.slice(1)).toEqual([["out_position"], 5]); // INTERLEAVED_ATTRIBS
+    } finally {
+      holder.destroy();
+    }
+  });
+
+  it("refuses a kernel whose slot does not fit this GPU, before touching GL", () => {
     const twoBuffers: FXParticleKernelArtifact = {
       ...minimalArtifact(),
       buffers: [
@@ -167,28 +200,68 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       ],
       transformFeedbackVaryings: ["out_position", "out_lifecycle"],
     };
-    const tooMany = mockRendererAndGL({ buffers: 1 });
+    const tooManyComponents = mockRendererAndGL({ components: 5 });
     expect(
-      () => new FXTransformFeedbackSimulationHolder(tooMany.renderer as never, twoBuffers),
-    ).toThrow(/writes 2 buffers.*at most 1/);
-    const tooWide = mockRendererAndGL({ components: 2 });
+      () =>
+        new FXTransformFeedbackSimulationHolder(tooManyComponents.renderer as never, twoBuffers),
+    ).toThrow(/writes 6 components per particle.*at most 5/);
+    const tooManyInputs = mockRendererAndGL({ inputs: 1 });
     expect(
-      () => new FXTransformFeedbackSimulationHolder(tooWide.renderer as never, twoBuffers),
-    ).toThrow(/"position" has 3 components.*at most 2/);
-    // Refused before touching GL: nothing was compiled or linked.
-    expect(tooMany.calls.some((call) => call.name === "linkProgram")).toBe(false);
+      () => new FXTransformFeedbackSimulationHolder(tooManyInputs.renderer as never, twoBuffers),
+    ).toThrow(/reads 2 buffers.*1 vertex inputs/);
+    // A slot past WebGL's 255-byte vertex stride: 64 floats (within the 64 components) is 256 bytes.
+    const wide: FXParticleKernelArtifact = {
+      ...minimalArtifact(),
+      buffers: Array.from({ length: 16 }, (_, index) => ({ name: `b${String(index)}`, stride: 4 })),
+      transformFeedbackVaryings: Array.from({ length: 16 }, (_, index) => `out_b${String(index)}`),
+    };
+    const roomy = mockRendererAndGL({ inputs: 32 });
+    expect(() => new FXTransformFeedbackSimulationHolder(roomy.renderer as never, wide)).toThrow(
+      /256 bytes.*at most 255/,
+    );
+    expect(tooManyComponents.calls.some((call) => call.name === "linkProgram")).toBe(false);
+  });
+
+  it("reads every slot field from the one read buffer, at its own offset, with the slot as stride", () => {
+    const { renderer, calls } = mockRendererAndGL();
+    const artifact: FXParticleKernelArtifact = {
+      ...minimalArtifact(),
+      buffers: [
+        { name: "position", stride: 3 },
+        { name: "lifecycle", stride: 3 },
+        { name: "glow", stride: 1 },
+      ],
+      transformFeedbackVaryings: ["out_position", "out_lifecycle", "out_glow"],
+    };
+    const holder = new FXTransformFeedbackSimulationHolder(renderer as never, artifact);
+    const mesh = meshFor(renderer, holder);
+    try {
+      calls.length = 0;
+      holder.tick(mesh, 1 / 60, { start: 0, count: 0 }, IDENTITY_TRANSFORM);
+      const pointers = calls
+        .filter((call) => call.name === "vertexAttribPointer")
+        .map((call) => [call.args[0], call.args[1], call.args[4], call.args[5]]);
+      // [location, components, stride bytes, offset bytes]
+      expect(pointers).toEqual([
+        [0, 3, 28, 0],
+        [1, 3, 28, 12],
+        [2, 1, 28, 24],
+      ]);
+      const feedback = calls.filter((call) => call.name === "bindBufferBase");
+      expect(feedback.map((call) => call.args.slice(1))).toEqual([
+        [0, mesh.readBuffer()], // the write half then, swapped to read since
+        [0, null],
+      ]);
+    } finally {
+      mesh.destroy();
+      holder.destroy();
+    }
   });
 
   it("brackets the draw with beginTransformFeedback/endTransformFeedback and RASTERIZER_DISCARD, in order", () => {
     const { renderer, calls } = mockRendererAndGL();
     const holder = new FXTransformFeedbackSimulationHolder(renderer as never, minimalArtifact());
-    const mesh = new FXTransformFeedbackParticle(
-      renderer.getContext() as never,
-      { position: { glslTypeName: "vec3", bufferSize: 3, instantiable: true } },
-      16,
-      new MeshBasicMaterial(),
-      baseQuad(),
-    );
+    const mesh = meshFor(renderer, holder);
     try {
       calls.length = 0;
       holder.tick(mesh, 1 / 60, { start: 0, count: 4 }, IDENTITY_TRANSFORM);
@@ -223,13 +296,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
   it("advances the rand seed every tick and passes through dt/spawn-range uniforms", () => {
     const { renderer, uniformCalls } = mockRendererAndGL();
     const holder = new FXTransformFeedbackSimulationHolder(renderer as never, minimalArtifact());
-    const mesh = new FXTransformFeedbackParticle(
-      renderer.getContext() as never,
-      { position: { glslTypeName: "vec3", bufferSize: 3, instantiable: true } },
-      16,
-      new MeshBasicMaterial(),
-      baseQuad(),
-    );
+    const mesh = meshFor(renderer, holder);
     try {
       holder.tick(mesh, 1 / 30, { start: 5, count: 2 }, IDENTITY_TRANSFORM);
       expect(uniformCalls.get(FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM)).toEqual([1]);
@@ -252,7 +319,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     }
   });
 
-  it("swaps every declared buffer exactly once per tick, after the draw completes", () => {
+  it("swaps the pair exactly once per tick, after the draw completes", () => {
     const { renderer } = mockRendererAndGL();
     const artifact: FXParticleKernelArtifact = {
       ...minimalArtifact(),
@@ -263,25 +330,16 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       transformFeedbackVaryings: ["out_position", "out_lifecycle"],
     };
     const holder = new FXTransformFeedbackSimulationHolder(renderer as never, artifact);
-    const mesh = new FXTransformFeedbackParticle(
-      renderer.getContext() as never,
-      {
-        position: { glslTypeName: "vec3", bufferSize: 3, instantiable: true },
-        lifecycle: { glslTypeName: "vec3", bufferSize: 3, instantiable: true },
-      },
-      16,
-      new MeshBasicMaterial(),
-      baseQuad(),
-    );
+    const mesh = meshFor(renderer, holder);
     try {
-      const positionReadBefore = mesh.readBuffer("position");
-      const lifecycleReadBefore = mesh.readBuffer("lifecycle");
+      const readBefore = mesh.readBuffer();
+      const writeBefore = mesh.writeBuffer();
 
       holder.tick(mesh, 1 / 60, { start: 0, count: 0 }, IDENTITY_TRANSFORM);
 
-      // Both buffers flipped - the previous write side is now the read side for each.
-      expect(mesh.readBuffer("position")).not.toBe(positionReadBefore);
-      expect(mesh.readBuffer("lifecycle")).not.toBe(lifecycleReadBefore);
+      // Flipped: the half just written is now the one read.
+      expect(mesh.readBuffer()).toBe(writeBefore);
+      expect(mesh.writeBuffer()).toBe(readBefore);
     } finally {
       mesh.destroy();
       holder.destroy();
@@ -289,29 +347,23 @@ describe("FXTransformFeedbackSimulationHolder", () => {
   });
 
   it("alternates cleanly across many ticks (A->B->A->B), never drifting to a third buffer", () => {
-    // Only two physical WebGLBuffers ever exist per state buffer (FXTransformFeedbackParticle
+    // Only two physical WebGLBuffers ever exist for the state (FXTransformFeedbackParticle
     // never allocates a third) - this proves the swap is a genuine two-state flip sustained over
     // real usage, not something that happens to work once and then leaks/allocates further.
     const { renderer } = mockRendererAndGL();
     const holder = new FXTransformFeedbackSimulationHolder(renderer as never, minimalArtifact());
-    const mesh = new FXTransformFeedbackParticle(
-      renderer.getContext() as never,
-      { position: { glslTypeName: "vec3", bufferSize: 3, instantiable: true } },
-      16,
-      new MeshBasicMaterial(),
-      baseQuad(),
-    );
+    const mesh = meshFor(renderer, holder);
     try {
-      const bufferA = mesh.readBuffer("position");
-      const bufferB = mesh.writeBuffer("position");
+      const bufferA = mesh.readBuffer();
+      const bufferB = mesh.writeBuffer();
 
       for (let tick = 0; tick < 6; tick += 1) {
         const expectedRead = tick % 2 === 0 ? bufferB : bufferA;
         holder.tick(mesh, 1 / 60, { start: 0, count: 0 }, IDENTITY_TRANSFORM);
-        expect(mesh.readBuffer("position")).toBe(expectedRead);
+        expect(mesh.readBuffer()).toBe(expectedRead);
         // The two physical buffers are always exactly {bufferA, bufferB} - read and write are
         // never simultaneously the same buffer, and never a buffer outside this original pair.
-        expect(new Set([mesh.readBuffer("position"), mesh.writeBuffer("position")])).toEqual(
+        expect(new Set([mesh.readBuffer(), mesh.writeBuffer()])).toEqual(
           new Set([bufferA, bufferB]),
         );
       }
@@ -324,16 +376,10 @@ describe("FXTransformFeedbackSimulationHolder", () => {
   it("spawn() seeds only its range: releases transform feedback before copying, never swaps", () => {
     const { renderer, calls, uniformCalls } = mockRendererAndGL();
     const holder = new FXTransformFeedbackSimulationHolder(renderer as never, minimalArtifact());
-    const mesh = new FXTransformFeedbackParticle(
-      renderer.getContext() as never,
-      { position: { glslTypeName: "vec3", bufferSize: 3, instantiable: true } },
-      16,
-      new MeshBasicMaterial(),
-      baseQuad(),
-    );
+    const mesh = meshFor(renderer, holder);
     try {
-      const read = mesh.readBuffer("position");
-      const write = mesh.writeBuffer("position");
+      const read = mesh.readBuffer();
+      const write = mesh.writeBuffer();
       calls.length = 0;
       holder.spawn(mesh, { start: 3, count: 4 }, IDENTITY_TRANSFORM);
 
@@ -352,7 +398,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       ]);
       expect(names[names.length - 1]).toBe("resetState");
       // No swap: the slots outside the range keep the read half they already had.
-      expect(mesh.readBuffer("position")).toBe(read);
+      expect(mesh.readBuffer()).toBe(read);
       expect(uniformCalls.get(FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM)).toEqual([0]);
 
       // Ids keep counting across spawn passes and ticks alike.
