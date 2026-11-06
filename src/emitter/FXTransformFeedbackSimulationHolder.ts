@@ -61,6 +61,7 @@ export class FXTransformFeedbackSimulationHolder {
     // class's own tests use.
     this.bufferNames = artifact.buffers.map((buffer) => meshPropertyKeyFor(buffer.name));
     this.strides = artifact.buffers.map((buffer) => buffer.stride);
+    assertFitsTransformFeedback(gl, artifact.buffers);
 
     const vertexShader = compileShader(gl, gl.VERTEX_SHADER, artifact.vertexSource);
     const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, artifact.fragmentSource);
@@ -323,6 +324,35 @@ const FIXED_UNIFORM_NAMES: readonly string[] = [
   FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM,
 ];
+
+/**
+ * Throws when `buffers` need more transform-feedback outputs than this GPU offers: one output per
+ * buffer (SEPARATE_ATTRIBS), each at most so many components. Checked up front because WebGL does
+ * not fail anything visible over it - `transformFeedbackVaryings` only raises a GL error, the
+ * program links without its outputs, and every pass then writes nothing, so particles never spawn.
+ * The throw instead sends the emitter to its JS kernel (see `FXEmitter.fromArtifacts`). WebGL2
+ * guarantees only 4 outputs of 4 components, the two core buffers included.
+ */
+function assertFitsTransformFeedback(
+  gl: WebGL2RenderingContext,
+  buffers: FXParticleKernelArtifact["buffers"],
+): void {
+  const maxBuffers = gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS) as number;
+  if (buffers.length > maxBuffers) {
+    throw new Error(
+      `FXTransformFeedbackSimulationHolder: the kernel writes ${String(buffers.length)} buffers; ` +
+        `this GPU's transform feedback takes at most ${String(maxBuffers)}`,
+    );
+  }
+  const maxComponents = gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS) as number;
+  const wide = buffers.find((buffer) => buffer.stride > maxComponents);
+  if (wide !== undefined) {
+    throw new Error(
+      `FXTransformFeedbackSimulationHolder: buffer "${wide.name}" has ${String(wide.stride)} ` +
+        `components; this GPU's transform feedback takes at most ${String(maxComponents)} per buffer`,
+    );
+  }
+}
 
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);

@@ -24,7 +24,7 @@ interface RecordedCall {
   readonly args: readonly unknown[];
 }
 
-function mockRendererAndGL(): {
+function mockRendererAndGL(limits: { buffers?: number; components?: number } = {}): {
   renderer: {
     getContext: () => unknown;
     state: { useProgram: (p: unknown) => void };
@@ -56,6 +56,10 @@ function mockRendererAndGL(): {
     DYNAMIC_DRAW: 11,
     COPY_READ_BUFFER: 12,
     COPY_WRITE_BUFFER: 13,
+    MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: 14,
+    MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS: 15,
+    getParameter: (name: number) =>
+      name === 14 ? (limits.buffers ?? 4) : name === 15 ? (limits.components ?? 4) : undefined,
     createBuffer: () => ({ id: nextId++ }),
     createShader: () => ({ id: nextId++ }),
     shaderSource: () => undefined,
@@ -152,6 +156,27 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     } finally {
       holder.destroy();
     }
+  });
+
+  it("refuses a kernel that needs more transform-feedback buffers, or wider ones, than the GPU has", () => {
+    const twoBuffers: FXParticleKernelArtifact = {
+      ...minimalArtifact(),
+      buffers: [
+        { name: "position", stride: 3 },
+        { name: "lifecycle", stride: 3 },
+      ],
+      transformFeedbackVaryings: ["out_position", "out_lifecycle"],
+    };
+    const tooMany = mockRendererAndGL({ buffers: 1 });
+    expect(
+      () => new FXTransformFeedbackSimulationHolder(tooMany.renderer as never, twoBuffers),
+    ).toThrow(/writes 2 buffers.*at most 1/);
+    const tooWide = mockRendererAndGL({ components: 2 });
+    expect(
+      () => new FXTransformFeedbackSimulationHolder(tooWide.renderer as never, twoBuffers),
+    ).toThrow(/"position" has 3 components.*at most 2/);
+    // Refused before touching GL: nothing was compiled or linked.
+    expect(tooMany.calls.some((call) => call.name === "linkProgram")).toBe(false);
   });
 
   it("brackets the draw with beginTransformFeedback/endTransformFeedback and RASTERIZER_DISCARD, in order", () => {

@@ -8,7 +8,7 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.9.3)
+[npm](https://www.npmjs.com/package/sparcoon/v/0.9.4)
 
 > **Pre-release.** The artifact format is not frozen yet - breaking changes are possible before the
 > first stable release. The package is published under the `experimental` tag: npm's `latest` holds

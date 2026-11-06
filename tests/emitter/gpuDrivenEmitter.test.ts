@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
@@ -14,7 +14,13 @@ import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 // failure, simulated here via a mock that throws on link) falls back to the mandatory JS artifact
 // in place, never a hard error. No real WebGL2 context is available in this headless run.
 
-function mockGL(options: { failLink?: boolean } = {}): unknown {
+interface MockGLOptions {
+  readonly failLink?: boolean;
+  /** MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS; the WebGL2 minimum, 4, by default. */
+  readonly maxFeedbackBuffers?: number;
+}
+
+function mockGL(options: MockGLOptions = {}): unknown {
   let nextId = 1;
   const liveBuffers = new Set<unknown>();
   const uniformLocationNames = new Map<unknown, string>();
@@ -35,6 +41,9 @@ function mockGL(options: { failLink?: boolean } = {}): unknown {
     DYNAMIC_DRAW: 11,
     COPY_READ_BUFFER: 12,
     COPY_WRITE_BUFFER: 13,
+    MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: 14,
+    MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS: 15,
+    getParameter: (name: number) => (name === 14 ? (options.maxFeedbackBuffers ?? 4) : 4),
     createBuffer: () => {
       const buffer = { id: nextId++ };
       liveBuffers.add(buffer);
@@ -94,7 +103,7 @@ function mockGL(options: { failLink?: boolean } = {}): unknown {
   };
 }
 
-function mockRenderer(options: { failLink?: boolean } = {}): {
+function mockRenderer(options: MockGLOptions = {}): {
   getContext: () => unknown;
   state: { useProgram: () => void };
   resetState: () => void;
@@ -187,6 +196,40 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       expect(emitter.particleCount).toBe(0);
     } finally {
       emitter.destroy();
+    }
+  });
+
+  it("falls back to the JS driver when the kernel needs more transform-feedback buffers than the GPU has", () => {
+    // Regression: past the limit, WebGL fails nothing visible - the program links without its
+    // outputs and every pass silently writes nothing. The holder now refuses it up front.
+    const kernel: FXParticleKernelArtifact = {
+      ...minimalKernel(),
+      buffers: [
+        { name: "position", stride: 3 },
+        { name: "lifecycle", stride: 3 },
+        { name: "a", stride: 1 },
+        { name: "b", stride: 1 },
+        { name: "c", stride: 1 },
+      ],
+      transformFeedbackVaryings: ["out_position", "out_lifecycle", "out_a", "out_b", "out_c"],
+    };
+    const renderer = mockRenderer({ maxFeedbackBuffers: 4 });
+    const gl = renderer.getContext() as unknown as { __liveBuffers: Set<unknown> };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 5 }), {
+        gpuKernel: kernel,
+        renderer: renderer as never,
+        expectedCapacity: 8,
+      });
+      expect(isGPUMesh(emitter)).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[1])).toMatch(/5 buffers.*at most 4/);
+      // The GPU mesh built before the refusal released its buffers.
+      expect(gl.__liveBuffers.size).toBe(0);
+      emitter.destroy();
+    } finally {
+      warn.mockRestore();
     }
   });
 
