@@ -171,7 +171,7 @@ describe("FXEffect transport", () => {
     expect(effect.getEmitter("e")!.particleCount).toBe(0);
   });
 
-  it("wraps at the end of the loop and replays the timeline", () => {
+  it("loops seamlessly: live particles run on across the seam, and the timeline replays", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
@@ -184,11 +184,63 @@ describe("FXEffect transport", () => {
     world.update(0.6); // crosses t=0.5 -> 5 particles
     expect(effect.getEmitter("e")!.particleCount).toBe(5);
 
-    world.update(0.6); // now = 1.2 -> wrap: clears, remainder = 0.2 (before the burst)
-    expect(effect.getEmitter("e")!.particleCount).toBe(0);
-
-    world.update(0.4); // 0.2 -> 0.6 crosses t=0.5 again -> burst replays
+    world.update(0.6); // now = 1.2 -> wrap, remainder 0.2 (before the burst): nothing cleared
     expect(effect.getEmitter("e")!.particleCount).toBe(5);
+
+    world.update(0.4); // 0.2 -> 0.6 crosses t=0.5 again -> the burst replays on top
+    expect(effect.getEmitter("e")!.particleCount).toBe(10);
+
+    effect.stop(); // an explicit stop still clears
+    expect(effect.getEmitter("e")!.particleCount).toBe(0);
+  });
+
+  it("reads no velocity from the pose jumping back at the seam", () => {
+    // Moves 0 -> 10 along X over the lap, then jumps back to 0 on the wrap.
+    const world = newWorld();
+    const effect = makeEffect(
+      world,
+      spec({
+        duration: 1,
+        emitters: [
+          emitterSpec("e", {
+            transformTracks: [
+              {
+                channel: "position",
+                keys: [
+                  { time: 0, value: [0, 0, 0] },
+                  { time: 1, value: [10, 0, 0] },
+                ],
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const velocityX = (): number =>
+      (effect.getEmitter("e") as unknown as { emitterTransform: { velocity: number[] } })
+        .emitterTransform.velocity[0];
+    effect.play();
+    world.update(0.5);
+    world.update(0.25); // moving at about +10/s (poses are frame-quantized)
+    expect(velocityX()).toBeGreaterThan(5);
+
+    world.update(0.5); // wraps: 10 -> 0 in one step, which is no motion
+    expect(Math.abs(velocityX())).toBeLessThan(1e-6);
+  });
+
+  it("fires the events of a lap's tail in the update that wraps past it", () => {
+    const world = newWorld();
+    const effect = makeEffect(
+      world,
+      spec({
+        duration: 1,
+        emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.95, count: 3 }] })],
+      }),
+    );
+    effect.play();
+    world.update(0.9);
+    world.update(0.2); // 0.9 -> 1.1: the burst at 0.95 fires, then the wrap keeps it
+    expect(effect.getEmitter("e")!.particleCount).toBe(3);
   });
 });
 
@@ -266,5 +318,47 @@ describe("FXEffect dispose", () => {
       effect.stop();
       world.update(1); // the disposed effect is unregistered, so the world skips it
     }).not.toThrow();
+  });
+});
+
+describe("FXEffect event order", () => {
+  it("fires a frame's bursts after posing the emitter for that frame", () => {
+    // A burst spawns from the pose it is called with, so the frame's pose must be in place first:
+    // otherwise an animated emitter bursts from where the previous frame left it.
+    const world = newWorld();
+    const effect = makeEffect(
+      world,
+      spec({
+        duration: 2,
+        fps: 30,
+        emitters: [
+          emitterSpec("e", {
+            transformTracks: [
+              {
+                channel: "position",
+                keys: [
+                  { time: 0, value: [0, 0, 0] },
+                  { time: 1, value: [10, 0, 0] },
+                ],
+              },
+            ],
+            events: [{ kind: "burst", time: 0.5, count: 1 }],
+          }),
+        ],
+      }),
+    );
+    const emitter = effect.getEmitter("e")!;
+    const burstPositions: number[] = [];
+    const burst = emitter.burst.bind(emitter);
+    emitter.burst = (...args: Parameters<typeof emitter.burst>): number => {
+      burstPositions.push(emitter.position.x);
+      return burst(...args);
+    };
+
+    effect.play();
+    world.update(0.6); // frame 18 (t = 0.6): x = 6; the burst at 0.5 fires in this update.
+
+    expect(burstPositions).toHaveLength(1);
+    expect(burstPositions[0]).toBeCloseTo(6);
   });
 });

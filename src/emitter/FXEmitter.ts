@@ -54,7 +54,10 @@ export class FXEmitter extends Object3D {
   private readonly world: FXWorld;
   private readonly driver: FXEmitterDriver;
   // Not readonly: applyRenderArtifact replaces it wholesale on a successful render-only swap.
-  private material: FXArtifactMaterial;
+  // Never name this `material`: `private` exists only in TypeScript, and three treats any object
+  // in the scene with a truthy `.material` as drawable - `renderer.compile()` would try to build a
+  // program for this non-three material on an object with no geometry, and crash.
+  private artifactMaterial: FXArtifactMaterial;
 
   private nextHandler = 0;
   private readonly pendingBursts: { handler: number; count: number; delay: number }[] = [];
@@ -101,7 +104,7 @@ export class FXEmitter extends Object3D {
     super();
     this.world = world;
     this.driver = driver;
-    this.material = material;
+    this.artifactMaterial = material;
 
     if (options.receiveShadow ?? EMITTER_DEFAULT_RECEIVE_SHADOW) {
       this.mesh.receiveShadow = true;
@@ -215,12 +218,14 @@ export class FXEmitter extends Object3D {
    */
   public onWorldTick(deltaTime: number, elapsedTime: number): void {
     this.onRendering(deltaTime);
-    this.material.setElapsedTime(elapsedTime);
-    this.material.setDeltaTime(deltaTime);
+    this.artifactMaterial.setElapsedTime(elapsedTime);
+    this.artifactMaterial.setDeltaTime(deltaTime);
     // emitterTransform.velocity/angularVelocity are always length 3 (see its declaration) -
     // computed once per tick in onRendering -> tick.
-    this.material.setObjectVelocity(this.emitterTransform.velocity as [number, number, number]);
-    this.material.setObjectAngularVelocity(
+    this.artifactMaterial.setObjectVelocity(
+      this.emitterTransform.velocity as [number, number, number],
+    );
+    this.artifactMaterial.setObjectAngularVelocity(
       this.emitterTransform.angularVelocity as [number, number, number],
     );
   }
@@ -240,14 +245,17 @@ export class FXEmitter extends Object3D {
 
     // The material owns no per-emitter GPU resources; the driver teardown disposes the instanced
     // geometry and the mounted material (plus, for a GPU-driven emitter, the compiled program+VAO).
-    this.material.destroy();
+    this.artifactMaterial.destroy();
     this.driver.destroy();
 
     this.removeFromParent();
   }
 
   /**
-   * Spawns `count` particles immediately, or after `options.delay`.
+   * Spawns `count` particles immediately, or after `options.delay`. An immediate burst seeds its
+   * particles from this emitter's pose and parameter values at the moment of the call, on either
+   * backend - so moving the emitter between two bursts of one frame spawns them in two places.
+   * A delayed burst spawns from the pose and values of the tick it expires on.
    * @returns Handler for {@link stop} to cancel a pending delayed burst.
    */
   public burst(count: number, options: Partial<FXEmitterBurstOptions> = {}): number {
@@ -372,6 +380,21 @@ export class FXEmitter extends Object3D {
   }
 
   /**
+   * For a timeline that loops back to its start - {@link FXEffect}'s own, or a tool's that drives
+   * the emitter itself: cancels the active plays and pending bursts, as {@link stop} does, and
+   * forgets the motion baseline - the pose jumps from the lap's end to its start, which is no
+   * motion - but leaves live particles to finish their lives, so the loop runs on seamlessly.
+   * Unlike {@link reset}, which clears them.
+   */
+  public loopTimeline(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.stop();
+    this.motionTracker.reset();
+  }
+
+  /**
    * Scrubs live parameter values into uniform/binding slots by name, picked up next frame - the
    * runtime's value channel for a non-structural edit. Unknown name = safe no-op; never recompiles.
    * A structural edit is instead a fresh {@link fromArtifacts} (the editor decides which).
@@ -381,7 +404,7 @@ export class FXEmitter extends Object3D {
       return;
     }
     if (values.uniforms !== undefined) {
-      this.material.applyUniformValues(values.uniforms);
+      this.artifactMaterial.applyUniformValues(values.uniforms);
     }
     if (values.bindings !== undefined) {
       this.driver.applyBindingValues(values.bindings);
@@ -412,7 +435,7 @@ export class FXEmitter extends Object3D {
     // Throws (leaving this emitter untouched) before anything below mutates it - see this
     // method's own @throws doc.
     this.driver.applyRenderArtifact(material, baseGeometry);
-    this.material = material;
+    this.artifactMaterial = material;
 
     this.mesh.receiveShadow = options.receiveShadow ?? EMITTER_DEFAULT_RECEIVE_SHADOW;
     const previousDepthMaterial = this.mesh.customDepthMaterial;

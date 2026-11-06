@@ -19,6 +19,8 @@ function mockGL(options: { failLink?: boolean } = {}): unknown {
   const liveBuffers = new Set<unknown>();
   const uniformLocationNames = new Map<unknown, string>();
   const uniformCalls = new Map<string, number>();
+  // Every pass-level call in order, for assertions on what each transform-feedback pass did.
+  const passCalls: { readonly name: string; readonly args: readonly unknown[] }[] = [];
   return {
     VERTEX_SHADER: 1,
     FRAGMENT_SHADER: 2,
@@ -31,6 +33,8 @@ function mockGL(options: { failLink?: boolean } = {}): unknown {
     POINTS: 9,
     RASTERIZER_DISCARD: 10,
     DYNAMIC_DRAW: 11,
+    COPY_READ_BUFFER: 12,
+    COPY_WRITE_BUFFER: 13,
     createBuffer: () => {
       const buffer = { id: nextId++ };
       liveBuffers.add(buffer);
@@ -65,23 +69,28 @@ function mockGL(options: { failLink?: boolean } = {}): unknown {
     vertexAttribPointer: () => undefined,
     enableVertexAttribArray: () => undefined,
     bindBufferBase: () => undefined,
+    bindBufferRange: (...args: unknown[]) => passCalls.push({ name: "bindBufferRange", args }),
+    copyBufferSubData: (...args: unknown[]) => passCalls.push({ name: "copyBufferSubData", args }),
     uniform1i: (location: unknown, value: number) => {
       const name = uniformLocationNames.get(location);
       if (name !== undefined) {
         uniformCalls.set(name, value);
+        passCalls.push({ name: name, args: [value] });
       }
     },
     uniform1f: () => undefined,
-    uniformMatrix4fv: () => undefined,
+    uniformMatrix4fv: (_location: unknown, _transpose: boolean, matrix: readonly number[]) =>
+      passCalls.push({ name: "modelMatrix", args: [...matrix] }),
     uniform3fv: () => undefined,
     enable: () => undefined,
     disable: () => undefined,
     beginTransformFeedback: () => undefined,
     endTransformFeedback: () => undefined,
-    drawArrays: () => undefined,
+    drawArrays: (...args: unknown[]) => passCalls.push({ name: "drawArrays", args }),
     // Exposed for assertions only, not part of the real WebGL2RenderingContext surface.
     __liveBuffers: liveBuffers,
     __uniformCalls: uniformCalls,
+    __passCalls: passCalls,
   };
 }
 
@@ -121,6 +130,29 @@ function meshOf(emitter: FXEmitter): { capacity?: number; readBuffer?: unknown }
 // has it at all.
 function isGPUMesh(emitter: FXEmitter): boolean {
   return typeof meshOf(emitter).readBuffer === "function";
+}
+
+interface MockGL {
+  readonly __uniformCalls: Map<string, number>;
+  readonly __passCalls: { readonly name: string; readonly args: readonly unknown[] }[];
+}
+
+/** A GPU-driven emitter in a world of its own, on a mock GL whose pass calls can be inspected. */
+function gpuEmitter(capacity: number): { emitter: FXEmitter; world: FXWorld; gl: MockGL } {
+  const world = new FXWorld();
+  const renderer = mockRenderer();
+  const emitter = FXEmitter.fromArtifacts(
+    unlitArtifact(),
+    behaviorArtifact({ lifetime: 5 }),
+    { gpuKernel: minimalKernel(), renderer: renderer as never, expectedCapacity: capacity },
+    world,
+  );
+  expect(isGPUMesh(emitter)).toBe(true);
+  return { emitter, world, gl: renderer.getContext() as MockGL };
+}
+
+function callsNamed(gl: MockGL, name: string): { readonly args: readonly unknown[] }[] {
+  return gl.__passCalls.filter((call) => call.name === name);
 }
 
 describe("FXEmitter GPU (transform-feedback) driver selection", () => {
@@ -278,77 +310,127 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     }
   });
 
-  it("reports an immediate burst() called BEFORE any tick as a birth range on the very next tick", () => {
-    // Regression: the GPU spawn range/count must accumulate across spawn() calls since the last
-    // endTick(), not since the start of the current tick. burst() with no delay calls spawn()
-    // directly, outside of any tick - the ordinary way to fire a one-shot effect, never touching
-    // pendingBursts/activePlays at all. If the range/count instead reset at the START of the next
-    // tick (beginTick), this burst's contribution would be silently discarded before ever reaching
-    // the GPU as a birth range, even though the cursor had already moved past those slots - the
-    // particles would exist as claimed slots but never actually get spawned by the shader.
-    const kernel: FXParticleKernelArtifact = {
-      vertexSource: "#version 300 es\nvoid main(){}",
-      fragmentSource: "#version 300 es\nvoid main(){}",
-      buffers: [
-        { name: "position", stride: 3 },
-        { name: "lifecycle", stride: 3 },
-      ],
-      transformFeedbackVaryings: ["out_position", "out_lifecycle"],
-      bindings: {},
-    };
-    const world = new FXWorld();
-    const renderer = mockRenderer();
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      behaviorArtifact({ lifetime: 5 }),
-      { gpuKernel: kernel, renderer: renderer as never, expectedCapacity: 32 },
-      world,
-    );
+  it("seeds an immediate burst() right away, in a pass over its own slots only", () => {
+    const { emitter, world, gl } = gpuEmitter(32);
     try {
-      expect(isGPUMesh(emitter)).toBe(true);
-      emitter.burst(5); // immediate: runs right now, not scheduled, not inside any tick.
+      emitter.burst(5); // immediate: outside any tick.
 
-      const gl = renderer.getContext() as unknown as { __uniformCalls: Map<string, number> };
-      world.update(1 / 60);
-
+      // One draw over exactly the claimed slots, captured into exactly those slots, then copied
+      // into the read half - the side the renderer draws.
+      expect(callsNamed(gl, "drawArrays").map((call) => call.args.slice(1))).toEqual([[0, 5]]);
+      expect(callsNamed(gl, "bindBufferRange").map((call) => call.args.slice(3))).toEqual([
+        [0, 5 * 3 * 4], // position
+        [0, 5 * 3 * 4], // lifecycle
+      ]);
+      expect(callsNamed(gl, "copyBufferSubData")).toHaveLength(2);
       expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(0);
       expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(5);
+
+      // Already seeded: the next tick's pass is update-only.
+      gl.__passCalls.length = 0;
+      world.update(1 / 60);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(0);
+      expect(callsNamed(gl, "drawArrays").map((call) => call.args.slice(1))).toEqual([[0, 32]]);
     } finally {
       emitter.destroy();
       world.dispose();
     }
   });
 
-  it("reset() cancels an already-accumulated, not-yet-consumed spawn range - no stray birth on the next tick", () => {
-    // Regression, follow-on from the fix above: endTick() now only clears the accumulated range
-    // AFTER consuming it (not at the start of every tick), so a burst() that ran before reset() -
-    // still unconsumed - must be explicitly cleared BY reset() too, or it would still spawn on the
-    // next tick despite reset() having just been called to cancel exactly that.
-    const kernel: FXParticleKernelArtifact = {
-      vertexSource: "#version 300 es\nvoid main(){}",
-      fragmentSource: "#version 300 es\nvoid main(){}",
-      buffers: [
-        { name: "position", stride: 3 },
-        { name: "lifecycle", stride: 3 },
-      ],
-      transformFeedbackVaryings: ["out_position", "out_lifecycle"],
-      bindings: {},
-    };
-    const world = new FXWorld();
-    const renderer = mockRenderer();
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      behaviorArtifact({ lifetime: 5 }),
-      { gpuKernel: kernel, renderer: renderer as never, expectedCapacity: 32 },
-      world,
-    );
+  it("spawns two bursts of one frame from two poses when the emitter moves between them", () => {
+    const { emitter, world, gl } = gpuEmitter(32);
     try {
-      emitter.burst(5); // accumulates into the not-yet-consumed range...
-      emitter.reset(); // ...which reset() must cancel before it is ever reported.
+      emitter.position.set(1, 0, 0);
+      emitter.burst(4);
+      emitter.position.set(-1, 0, 0);
+      emitter.burst(4);
 
-      const gl = renderer.getContext() as unknown as { __uniformCalls: Map<string, number> };
+      // The translation column of each spawn pass's model matrix.
+      const translations = callsNamed(gl, "modelMatrix").map((call) => call.args[12]);
+      expect(translations).toEqual([1, -1]);
+      // Consecutive slots, no overlap.
+      expect(callsNamed(gl, "drawArrays").map((call) => call.args.slice(1))).toEqual([
+        [0, 4],
+        [4, 4],
+      ]);
+    } finally {
+      emitter.destroy();
+      world.dispose();
+    }
+  });
+
+  it("draws a burst that wraps past the end of the ring as two segments", () => {
+    const { emitter, world, gl } = gpuEmitter(8);
+    try {
+      emitter.burst(6);
+      gl.__passCalls.length = 0;
+      emitter.burst(5); // slots 6, 7, then 0, 1, 2.
+
+      expect(callsNamed(gl, "drawArrays").map((call) => call.args.slice(1))).toEqual([
+        [6, 2],
+        [0, 3],
+      ]);
+      const slotBytes = 3 * 4;
+      expect(callsNamed(gl, "copyBufferSubData").map((call) => call.args.slice(2))).toEqual([
+        [6 * slotBytes, 6 * slotBytes, 2 * slotBytes],
+        [0, 0, 3 * slotBytes],
+        [6 * slotBytes, 6 * slotBytes, 2 * slotBytes],
+        [0, 0, 3 * slotBytes],
+      ]);
+    } finally {
+      emitter.destroy();
+      world.dispose();
+    }
+  });
+
+  it("caps a burst larger than the ring at one full ring", () => {
+    const { emitter, world, gl } = gpuEmitter(8);
+    try {
+      emitter.burst(20);
+      const drawn = callsNamed(gl, "drawArrays").reduce(
+        (total, call) => total + (call.args[2] as number),
+        0,
+      );
+      expect(drawn).toBe(8);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(8);
+    } finally {
+      emitter.destroy();
+      world.dispose();
+    }
+  });
+
+  it("gathers spawns inside a tick (delayed bursts, plays) into that tick's own pass", () => {
+    const { emitter, world, gl } = gpuEmitter(32);
+    try {
+      emitter.burst(3, { delay: 0.01 });
+      emitter.play(120);
+      gl.__passCalls.length = 0;
+      world.update(1 / 60); // the delayed burst expires (3) and the play emits 2.
+
+      // No spawn pass of their own: one full-ring pass whose birth range carries all of them.
+      expect(callsNamed(gl, "drawArrays").map((call) => call.args.slice(1))).toEqual([[0, 32]]);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(0);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(5);
+
+      // The next tick's range starts right after them.
       world.update(1 / 60);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(5);
+    } finally {
+      emitter.destroy();
+      world.dispose();
+    }
+  });
 
+  it("reset() rewinds the spawn cursor, so the next burst starts at slot 0 again", () => {
+    const { emitter, world, gl } = gpuEmitter(32);
+    try {
+      emitter.burst(5);
+      emitter.reset();
+      gl.__passCalls.length = 0;
+      emitter.burst(2);
+      expect(callsNamed(gl, "drawArrays").map((call) => call.args.slice(1))).toEqual([[0, 2]]);
+
+      world.update(1 / 60);
       expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(0);
     } finally {
       emitter.destroy();
@@ -359,7 +441,7 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
   it("applyRenderArtifact swaps the material in place without touching the GPU kernel/buffers", () => {
     // Proves FXGPUEmitterDriver.applyRenderArtifact re-derives its varyings from the kernel's OWN
     // buffers (never a JS behavior artifact's attributeWrites - same independence as construction,
-    // see the test above), and that a render-only swap never resets the accumulated spawn cursor.
+    // see the test above), and that a render-only swap leaves the simulation in place.
     const world = new FXWorld();
     const emitter = FXEmitter.fromArtifacts(
       unlitArtifact(),
@@ -369,7 +451,7 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     );
     try {
       expect(isGPUMesh(emitter)).toBe(true);
-      emitter.burst(4); // accumulates a not-yet-consumed spawn range.
+      emitter.burst(4);
       const mesh = meshOf(emitter) as unknown as { material: unknown; geometry: unknown };
       const materialBefore = mesh.material;
 
@@ -381,7 +463,6 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       // Still the same mesh instance, same fixed capacity - nothing about the driver was rebuilt.
       expect(meshOf(emitter)).toBe(mesh);
       expect(emitter.particleCapacity).toBe(16);
-      // The not-yet-consumed spawn range survived the swap (never reset by it).
       expect(() => world.update(1 / 60)).not.toThrow();
     } finally {
       emitter.destroy();

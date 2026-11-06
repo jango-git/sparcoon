@@ -115,19 +115,7 @@ export class FXTransformFeedbackSimulationHolder {
     const gl = this.gl;
     this.randSeedCounter += 1;
 
-    // Routed through the renderer's own cache-aware setter (not raw gl.useProgram()) so three's
-    // `WebGLState.currentProgram` cache stays truthful - its own next draw then correctly detects
-    // the mismatch and re-binds, with no reset needed for this half of the state-hygiene problem.
-    // The other half (the VAO-identity cache) has no such setter - see the raw
-    // gl.bindVertexArray() call below and resetState() at the end of this method.
-    this.renderer.state.useProgram(this.program);
-    gl.bindVertexArray(this.vao);
-
-    this.bufferNames.forEach((name, index) => {
-      gl.bindBuffer(gl.ARRAY_BUFFER, mesh.readBuffer(name));
-      gl.vertexAttribPointer(index, this.strides[index], gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(index);
-    });
+    this.bindProgramAndInputs(mesh);
     this.bufferNames.forEach((name, index) => {
       gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, index, mesh.writeBuffer(name));
     });
@@ -140,11 +128,7 @@ export class FXTransformFeedbackSimulationHolder {
     gl.endTransformFeedback();
     gl.disable(gl.RASTERIZER_DISCARD);
 
-    // A bound TRANSFORM_FEEDBACK_BUFFER base is otherwise still "active" for this binding point;
-    // release it rather than leave a stale reference around between ticks.
-    for (let index = 0; index < this.bufferNames.length; index += 1) {
-      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, index, null);
-    }
+    this.releaseFeedbackBuffers();
 
     for (const name of this.bufferNames) {
       mesh.swapBuffers(name);
@@ -161,6 +145,87 @@ export class FXTransformFeedbackSimulationHolder {
     this.renderer.resetState();
   }
 
+  /**
+   * Seeds the slots of `spawnRange` right now, from `emitter` and the current binding values, and
+   * touches no other slot: the spawn half of {@link tick}, run on its own. Lets every `burst()`
+   * outside the emitter's tick spawn from the pose and parameters of the moment it was called,
+   * instead of sharing one pass - and so one pose - with everything else spawned that frame.
+   *
+   * Transform feedback cannot write the buffer it reads, so the seeded range is drawn into the
+   * write half of each pair (`drawArrays(first, count)`: `gl_VertexID` is the slot index, which
+   * makes every drawn vertex a birth under the kernel's own range test) and then copied into the
+   * read half - the side the renderer draws and the next {@link tick} reads. No swap: every slot
+   * outside the range keeps its state untouched. A range that wraps past the end of the ring is
+   * drawn as two segments. `spawnRange.count` must not exceed the mesh's capacity.
+   */
+  public spawn(
+    mesh: FXTransformFeedbackParticle,
+    spawnRange: { readonly start: number; readonly count: number },
+    emitter: FXEmitterTransform,
+  ): void {
+    if (spawnRange.count <= 0) {
+      return;
+    }
+    const gl = this.gl;
+    this.randSeedCounter += 1;
+
+    const capacity = mesh.capacity;
+    const head = Math.min(spawnRange.count, capacity - spawnRange.start);
+    const segments: readonly (readonly [first: number, count: number])[] =
+      head < spawnRange.count
+        ? [
+            [spawnRange.start, head],
+            [0, spawnRange.count - head],
+          ]
+        : [[spawnRange.start, spawnRange.count]];
+
+    this.bindProgramAndInputs(mesh);
+    // dt 0: the spawn branch has no use for it, and nothing else runs in this pass.
+    this.setUniforms(0, spawnRange, emitter, capacity);
+
+    gl.enable(gl.RASTERIZER_DISCARD);
+    for (const [first, count] of segments) {
+      this.bufferNames.forEach((name, index) => {
+        const bytesPerSlot = this.strides[index] * Float32Array.BYTES_PER_ELEMENT;
+        gl.bindBufferRange(
+          gl.TRANSFORM_FEEDBACK_BUFFER,
+          index,
+          mesh.writeBuffer(name),
+          first * bytesPerSlot,
+          count * bytesPerSlot,
+        );
+      });
+      gl.beginTransformFeedback(gl.POINTS);
+      gl.drawArrays(gl.POINTS, first, count);
+      gl.endTransformFeedback();
+    }
+    gl.disable(gl.RASTERIZER_DISCARD);
+    // Released before the copy: a buffer still bound for transform feedback cannot be a copy
+    // source.
+    this.releaseFeedbackBuffers();
+
+    this.bufferNames.forEach((name, index) => {
+      const bytesPerSlot = this.strides[index] * Float32Array.BYTES_PER_ELEMENT;
+      gl.bindBuffer(gl.COPY_READ_BUFFER, mesh.writeBuffer(name));
+      gl.bindBuffer(gl.COPY_WRITE_BUFFER, mesh.readBuffer(name));
+      for (const [first, count] of segments) {
+        gl.copyBufferSubData(
+          gl.COPY_READ_BUFFER,
+          gl.COPY_WRITE_BUFFER,
+          first * bytesPerSlot,
+          first * bytesPerSlot,
+          count * bytesPerSlot,
+        );
+      }
+    });
+    gl.bindBuffer(gl.COPY_READ_BUFFER, null);
+    gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
+
+    this.spawnIdBase += spawnRange.count;
+    // Same reason as in tick(): the raw VAO bind is invisible to three's caches.
+    this.renderer.resetState();
+  }
+
   public destroy(): void {
     this.gl.deleteProgram(this.program);
     this.gl.deleteVertexArray(this.vao);
@@ -174,6 +239,34 @@ export class FXTransformFeedbackSimulationHolder {
       if (name in this.artifact.bindings) {
         this.artifact.bindings[name].value = values[name];
       }
+    }
+  }
+
+  /** Binds the program and wires every state buffer's read half as its vertex input. */
+  private bindProgramAndInputs(mesh: FXTransformFeedbackParticle): void {
+    const gl = this.gl;
+    // Routed through the renderer's own cache-aware setter (not raw gl.useProgram()) so three's
+    // `WebGLState.currentProgram` cache stays truthful - its own next draw then correctly detects
+    // the mismatch and re-binds, with no reset needed for this half of the state-hygiene problem.
+    // The other half (the VAO-identity cache) has no such setter - see the raw
+    // gl.bindVertexArray() call below and the resetState() that ends every pass.
+    this.renderer.state.useProgram(this.program);
+    gl.bindVertexArray(this.vao);
+
+    this.bufferNames.forEach((name, index) => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, mesh.readBuffer(name));
+      gl.vertexAttribPointer(index, this.strides[index], gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(index);
+    });
+  }
+
+  /**
+   * Unbinds every transform-feedback binding point. A bound base stays "active" for its point
+   * otherwise; released rather than left as a stale reference between passes.
+   */
+  private releaseFeedbackBuffers(): void {
+    for (let index = 0; index < this.bufferNames.length; index += 1) {
+      this.gl.bindBufferBase(this.gl.TRANSFORM_FEEDBACK_BUFFER, index, null);
     }
   }
 

@@ -54,6 +54,8 @@ function mockRendererAndGL(): {
     POINTS: 9,
     RASTERIZER_DISCARD: 10,
     DYNAMIC_DRAW: 11,
+    COPY_READ_BUFFER: 12,
+    COPY_WRITE_BUFFER: 13,
     createBuffer: () => ({ id: nextId++ }),
     createShader: () => ({ id: nextId++ }),
     shaderSource: () => undefined,
@@ -80,6 +82,8 @@ function mockRendererAndGL(): {
     vertexAttribPointer: (...args: unknown[]) => record("vertexAttribPointer", ...args),
     enableVertexAttribArray: (...args: unknown[]) => record("enableVertexAttribArray", ...args),
     bindBufferBase: (...args: unknown[]) => record("bindBufferBase", ...args),
+    bindBufferRange: (...args: unknown[]) => record("bindBufferRange", ...args),
+    copyBufferSubData: (...args: unknown[]) => record("copyBufferSubData", ...args),
     uniform1i: (location: unknown, value: number) => {
       const name = uniformLocationNames.get(location);
       if (name !== undefined) {
@@ -286,6 +290,49 @@ describe("FXTransformFeedbackSimulationHolder", () => {
           new Set([bufferA, bufferB]),
         );
       }
+    } finally {
+      mesh.destroy();
+      holder.destroy();
+    }
+  });
+
+  it("spawn() seeds only its range: releases transform feedback before copying, never swaps", () => {
+    const { renderer, calls, uniformCalls } = mockRendererAndGL();
+    const holder = new FXTransformFeedbackSimulationHolder(renderer as never, minimalArtifact());
+    const mesh = new FXTransformFeedbackParticle(
+      renderer.getContext() as never,
+      { position: { glslTypeName: "vec3", bufferSize: 3, instantiable: true } },
+      16,
+      new MeshBasicMaterial(),
+      baseQuad(),
+    );
+    try {
+      const read = mesh.readBuffer("position");
+      const write = mesh.writeBuffer("position");
+      calls.length = 0;
+      holder.spawn(mesh, { start: 3, count: 4 }, IDENTITY_TRANSFORM);
+
+      const names = calls.map((call) => call.name);
+      // Captured into the write half at the range's own offset...
+      const range = calls.find((call) => call.name === "bindBufferRange");
+      expect(range?.args.slice(2)).toEqual([write, 3 * 12, 4 * 12]);
+      expect(calls.find((call) => call.name === "drawArrays")?.args.slice(1)).toEqual([3, 4]);
+      // ...released from transform feedback before it is copied into the read half.
+      const releaseIndex = names.lastIndexOf("bindBufferBase");
+      expect(releaseIndex).toBeLessThan(names.indexOf("copyBufferSubData"));
+      expect(calls.find((call) => call.name === "copyBufferSubData")?.args.slice(2)).toEqual([
+        3 * 12,
+        3 * 12,
+        4 * 12,
+      ]);
+      expect(names[names.length - 1]).toBe("resetState");
+      // No swap: the slots outside the range keep the read half they already had.
+      expect(mesh.readBuffer("position")).toBe(read);
+      expect(uniformCalls.get(FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM)).toEqual([0]);
+
+      // Ids keep counting across spawn passes and ticks alike.
+      holder.tick(mesh, 1 / 60, { start: 7, count: 0 }, IDENTITY_TRANSFORM);
+      expect(uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM)).toEqual([4]);
     } finally {
       mesh.destroy();
       holder.destroy();

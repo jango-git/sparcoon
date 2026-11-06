@@ -30,15 +30,16 @@ export interface FXEmitterDriver {
   readonly canSpawn: boolean;
 
   /** Claims `count` newborn slots (immediate `burst`, a delayed burst's expiry, or `play`'s rate
-   *  accumulator) and seeds them from `transform`. */
+   *  accumulator) and seeds them from `transform` and the current binding values - as they are at
+   *  this call, on both backends: JS seeds right away; GPU seeds a spawn outside a tick with a pass
+   *  of its own right away, and gathers the spawns inside a tick (which all share its pose) into
+   *  that tick's pass. */
   spawn(count: number, transform: FXEmitterTransform): void;
-  /** Runs before this tick's scheduled bursts/plays: JS ages + culls; GPU has nothing to do here
-   *  (its spawn range accumulates across `spawn()` calls regardless of tick boundaries - see
-   *  `FXGPUEmitterDriver.endTick`'s own doc comment for why it must not reset here instead). */
+  /** Runs before this tick's scheduled bursts/plays: JS ages + culls; GPU starts gathering this
+   *  tick's spawns into its pass. */
   beginTick(deltaTime: number): void;
   /** Runs after this tick's scheduled bursts/plays: JS integrates the update kernel; GPU runs its
-   *  one transform-feedback pass over every `spawn()` call accumulated since the PREVIOUS `endTick`
-   *  (not just this tick's own scheduled ones - an immediate `burst()` between ticks counts too). */
+   *  one transform-feedback pass - update for every slot, spawn for the range this tick gathered. */
   endTick(deltaTime: number, transform: FXEmitterTransform): void;
   /** Back-to-front depth sort for `sortCamera`; a GPU-driven emitter cannot do this at all (no
    *  CPU-visible positions) and warns once instead. */

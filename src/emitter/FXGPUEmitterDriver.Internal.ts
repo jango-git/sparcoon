@@ -33,15 +33,17 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   // here needs.
   private readonly behaviorAttributeWidths: readonly { name: string; components: number }[];
 
-  // Cursor/overwrite bookkeeping: `gpuSpawnCursor` is the next write position (mod
-  // capacity); `gpuSpawnRangeStart`/`gpuPendingSpawnCount` accumulate every spawn() call since the
-  // last endTick() into one contiguous range, since the GPU can only run one transform-feedback pass
-  // per tick (unlike the JS backend, which can grow its array once per call with no such constraint) -
-  // "since the last endTick()", not "since the start of this tick": an immediate `burst()` between
-  // ticks must not lose its contribution (see endTick()'s own doc comment).
+  // Cursor/overwrite bookkeeping: `gpuSpawnCursor` is the next write position (mod capacity).
+  // Spawns inside a tick (a delayed burst expiring, a play's rate accumulator) all share that
+  // tick's pose and parameters, so `gpuSpawnRangeStart`/`gpuPendingSpawnCount` gather them into
+  // one contiguous range the tick's own pass seeds. A spawn outside a tick - an immediate
+  // `burst()` from host code or from an effect's timeline - is seeded right away by a pass of its
+  // own instead (see spawn()), so the range is always empty between ticks.
   private gpuSpawnCursor = 0;
   private gpuSpawnRangeStart = 0;
   private gpuPendingSpawnCount = 0;
+  // Between beginTick() and endTick(): spawns join the tick's pass instead of running their own.
+  private ticking = false;
 
   // Depth sorting has no GPU-driven form - warned once, not every tick, if a host sets
   // sortCamera on one anyway.
@@ -99,24 +101,34 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     return true;
   }
 
-  public spawn(count: number): void {
+  public spawn(count: number, transform: FXEmitterTransform): void {
     // Cursor advances by `count`, wrapping at capacity - the buffer slots this claims may already
     // be occupied by still-alive particles, which are simply overwritten (the scheme's cheapness is
-    // not checking occupancy at all). Accumulates into
-    // `gpuPendingSpawnCount` regardless of whether this call happens during a tick's own scheduling
-    // (a delayed burst/play firing) or entirely between ticks (an immediate `burst()` call from host
-    // code) - endTick() is the only place that range is ever consumed and reset (see its own doc
-    // comment for why beginTick() must NOT also reset it).
+    // not checking occupancy at all).
+    const start = this.gpuSpawnCursor;
     this.gpuSpawnCursor = (this.gpuSpawnCursor + count) % this.mesh.capacity;
-    this.gpuPendingSpawnCount += count;
+    if (this.ticking) {
+      this.gpuPendingSpawnCount += count;
+      return;
+    }
+    // Outside a tick, the emitter may be moved or re-parametrized before the next one (two
+    // bursts from two poses in one frame is an ordinary way to author an effect), so this spawn
+    // is seeded now, from the pose and bindings of this call. More than `capacity` at once
+    // overwrites the whole ring; the extra births would only overwrite each other.
+    this.simulation.spawn(
+      this.mesh,
+      { start, count: Math.min(count, this.mesh.capacity) },
+      transform,
+    );
+    this.gpuSpawnRangeStart = this.gpuSpawnCursor;
   }
 
   public beginTick(): void {
-    // No begin-of-tick bookkeeping needed: unlike the range/count fields (reset only once consumed,
-    // in endTick()), there is nothing here that must happen before this tick's scheduled bursts run.
+    this.ticking = true;
   }
 
   public endTick(deltaTime: number, transform: FXEmitterTransform): void {
+    this.ticking = false;
     // Every particle slot is always processed - there is no CPU-visible live count to skip on;
     // the render shader hides dead slots (FXArtifactMaterial.Internal.ts's
     // projectFromModelPos degenerate-position injection).
@@ -126,12 +138,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       { start: this.gpuSpawnRangeStart, count: this.gpuPendingSpawnCount },
       transform,
     );
-    // Consumed - reset for the NEXT accumulation window, starting from wherever the cursor now sits.
-    // Must NOT happen in beginTick() instead: an immediate `burst()` call between two ticks (the
-    // ordinary way to spawn a one-shot effect, never touching pendingBursts/activePlays at all)
-    // already advances the cursor and this count the moment it is called - resetting at the START of
-    // the NEXT tick would silently discard that count before it was ever reported as a birth range,
-    // leaving those slots' data one full transform-feedback pass behind their real cursor claim.
+    // Consumed - the next tick's range starts wherever the cursor now sits.
     this.gpuSpawnRangeStart = this.gpuSpawnCursor;
     this.gpuPendingSpawnCount = 0;
   }
@@ -157,10 +164,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   public reset(): void {
     this.mesh.drop();
     this.gpuSpawnCursor = 0;
-    // Must also clear any not-yet-consumed spawn accumulation (endTick() only resets it AFTER
-    // consuming it - see that method's own doc comment), or a burst() that ran earlier this same
-    // accumulation window would still spawn on the next tick despite reset() having just cancelled
-    // it - a stale range left over from before the cursor was zeroed here.
+    // Also drops a range gathered but not yet seeded, so nothing cancelled here spawns later.
     this.gpuSpawnRangeStart = 0;
     this.gpuPendingSpawnCount = 0;
   }

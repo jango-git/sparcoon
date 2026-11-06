@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Material } from "three";
 import { FXMesh } from "../../src/render/FXMesh";
 import { FXWorld } from "../../src/world/FXWorld";
 import { unlitArtifact } from "../helpers/artifacts";
@@ -76,7 +77,7 @@ describe("FXMesh lifecycle", () => {
     const world = new FXWorld();
     const mesh = FXMesh.fromArtifact(unlitArtifact(), {}, world);
     let materialDisposed = 0;
-    mesh.material.addEventListener("dispose", () => materialDisposed++);
+    (mesh.material as Material).addEventListener("dispose", () => materialDisposed++);
 
     world.dispose();
     expect(materialDisposed).toBe(1);
@@ -94,10 +95,11 @@ describe("FXMesh shadows and live values", () => {
     );
     expect(mesh.castShadow).toBe(true);
     expect(mesh.receiveShadow).toBe(true);
-    expect(mesh.customDepthMaterial).toBeDefined();
+    const depthMaterial = mesh.customDepthMaterial;
+    expect(depthMaterial).toBeDefined();
 
     let depthDisposed = 0;
-    mesh.customDepthMaterial.addEventListener("dispose", () => depthDisposed++);
+    depthMaterial?.addEventListener("dispose", () => depthDisposed++);
     mesh.destroy();
     expect(depthDisposed).toBe(1);
     world.dispose();

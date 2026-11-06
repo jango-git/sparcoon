@@ -489,21 +489,35 @@ export abstract class FXEffect extends Group {
     const duration = this.specification.duration;
     let now = this.time + deltaSeconds;
     if (duration > 0 && now >= duration) {
-      // Loop wrap: finish this lap's tail, reset, then replay from the remainder.
+      // Loop wrap: finish this lap's tail from the lap's last pose, then run on into the next lap
+      // without clearing what is alive - a looping effect never pops at the seam. The pose jumps
+      // back to the start, which is no motion: every motion baseline is dropped, or the jump would
+      // read as a one-frame velocity spike.
+      this.poseAt(duration);
       this.fire(this.lastTime, duration);
       for (const emitter of this.emitters) {
-        emitter.stop();
-        emitter.reset();
+        emitter.loopTimeline();
+      }
+      for (const tracker of this.meshMotionTrackers) {
+        tracker.reset();
       }
       now = now % duration;
       this.lastTime = 0;
       this.lastFrame = -1;
     }
+
+    // Pose and values first, events second: a burst spawns from the emitter's pose and parameters
+    // at the moment it is called, so this frame's bursts must see this frame's pose - not the one
+    // the previous frame left behind.
+    this.poseAt(now);
     this.fire(this.lastTime, now);
     this.lastTime = now;
     this.time = now;
+  }
 
-    const frame = frameOfTime(now, this.specification.fps);
+  /** Poses every entity for the frame `time` falls in, unless it already is. */
+  private poseAt(time: number): void {
+    const frame = frameOfTime(time, this.specification.fps);
     if (frame !== this.lastFrame) {
       this.lastFrame = frame;
       this.driveFrame(timeOfFrame(frame, this.specification.fps));

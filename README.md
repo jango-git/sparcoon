@@ -8,7 +8,7 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.9.2)
+[npm](https://www.npmjs.com/package/sparcoon/v/0.9.3)
 
 > **Pre-release.** The artifact format is not frozen yet - breaking changes are possible before the
 > first stable release. The package is published under the `experimental` tag: npm's `latest` holds
@@ -72,7 +72,8 @@ function frame(deltaSeconds: number): void {
 
 Straight after the constructor the effect sits on frame zero, in the state the artist authored.
 `play()` restarts the timeline from the top; `stop()` halts playback, clears live particles and
-returns the effect to frame zero.
+returns the effect to frame zero. The timeline loops, and seamlessly: particles still alive at the
+end of a lap finish their lives in the next one.
 
 Without `renderer` the effect takes the Baseline tier unconditionally and runs on the JavaScript
 kernel. That is a working mode if you have no renderer at the point of construction.
@@ -120,6 +121,10 @@ if (sparks) {
   sparks.sortFraction = 0.1; // fraction of frames that re-sort (the default)
 }
 ```
+
+An immediate `burst()` spawns from the emitter's pose and parameter values at the moment of the
+call, on the GPU path too - so moving the emitter between two bursts of one frame spawns them in two
+places.
 
 For diagnostics there are `particleCount` and `particleCapacity`. A GPU-driven emitter has no exact
 live count, so `particleCount` reports an honest upper bound - the buffer's current capacity.
