@@ -74,10 +74,10 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/three": "^0.157.0",
-    "@typescript-eslint/eslint-plugin": "^8.32.0",
-    "@typescript-eslint/parser": "^8.32.0",
+    "@typescript-eslint/eslint-plugin": "^8.72.1",
+    "@typescript-eslint/parser": "^8.72.1",
     "@vitest/coverage-v8": "^4.1.9",
-    "eslint": "^9.26.0",
+    "eslint": "^10.14.0",
     "prettier": "^3.9.5",
     "typescript": "^5.8.3",
     "vitest": "^4.1.9"
