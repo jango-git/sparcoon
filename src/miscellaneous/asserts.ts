@@ -45,3 +45,10 @@ export function assertValidPositiveInteger(value: number, subject: string): void
     }
   }
 }
+
+/** `console.warn` in development builds only - a diagnostic that drops out of production. */
+export function warnInDevelopment(message: string): void {
+  if (DEV) {
+    console.warn(message);
+  }
+}

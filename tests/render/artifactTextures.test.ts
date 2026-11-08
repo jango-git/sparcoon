@@ -5,7 +5,13 @@ import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import { fxDataTexture } from "../../src/miscellaneous/texture/fxDataTexture";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
-import { behaviorArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
+import {
+  NO_PARTICLE_READS,
+  VEC2_VARYING,
+  VEC3_VARYING,
+  behaviorArtifact,
+  layoutOf,
+} from "../helpers/artifacts";
 
 function coreVaryings(): Record<string, GLTypeInfo> {
   return {
@@ -20,7 +26,7 @@ function compiledUniforms(
   textures?: Record<string, Texture>,
 ): Record<string, { value: unknown }> {
   const material = new FXArtifactMaterial(render, textures).buildThreeMaterial(
-    coreVaryings(),
+    layoutOf(coreVaryings()),
   ) as unknown as { uniforms: Record<string, { value: unknown }> };
   return material.uniforms;
 }
@@ -53,8 +59,18 @@ describe("render artifact - generated & external textures", () => {
   const withGeneratedTexture = (texture: Texture): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: ["uniform sampler2D u_grad$0;"],
-    vertex: { varyingDeclarations: [], helperFunctions: [], body: [] },
-    fragment: { varyingDeclarations: [], helperFunctions: [], body: [] },
+    vertex: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
+    fragment: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
     outputs: { albedo: "texture2D(u_grad$0, p_uv)" },
     uniforms: { u_grad$0: { type: "sampler2D", value: texture } },
     attributeReads: [],
@@ -63,8 +79,18 @@ describe("render artifact - generated & external textures", () => {
   const withExternalTexture = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: ["uniform sampler2D u_flame$0;"],
-    vertex: { varyingDeclarations: [], helperFunctions: [], body: [] },
-    fragment: { varyingDeclarations: [], helperFunctions: [], body: [] },
+    vertex: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
+    fragment: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
     outputs: { albedo: "texture2D(u_flame$0, p_uv)" },
     uniforms: { u_flame$0: { type: "sampler2D", external: "flame" } },
     attributeReads: [],
@@ -98,8 +124,18 @@ describe("render artifact - generated & external textures", () => {
     const render: FXRenderArtifact = {
       lightingIntrinsics: [],
       uniformDeclarations: ["uniform sampler2D u_grad$0;", "uniform sampler2D u_flame$1;"],
-      vertex: { varyingDeclarations: [], helperFunctions: [], body: [] },
-      fragment: { varyingDeclarations: [], helperFunctions: [], body: [] },
+      vertex: {
+        varyingDeclarations: [],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+      },
+      fragment: {
+        varyingDeclarations: [],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+      },
       outputs: { albedo: "texture2D(u_grad$0, p_uv) * texture2D(u_flame$1, p_uv)" },
       uniforms: {
         u_grad$0: { type: "sampler2D", value: gradient },

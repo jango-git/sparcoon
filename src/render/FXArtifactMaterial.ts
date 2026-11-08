@@ -1,11 +1,17 @@
-import type { Material, Texture } from "three";
+import type { Material, ShaderMaterial, Texture } from "three";
 import type { FXAttributeDecl, FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
-import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import {
   buildArtifactDepthMaterial,
   buildArtifactMaterial,
+  buildTrailArtifactMaterial,
 } from "./FXArtifactMaterial.Internal.js";
-import type { FXFrameTimeUniform, FXFrameVec3Uniform } from "./FXArtifactMaterial.Internal.js";
+import type {
+  FXFrameTimeUniform,
+  FXFrameVec3Uniform,
+  FXParticleLayout,
+  FXTrailLayout,
+  FXTrailUniforms,
+} from "./FXArtifactMaterial.Internal.js";
 
 /**
  * @internal Runtime material driver: wraps a precompiled {@link FXRenderArtifact} and builds the
@@ -50,10 +56,11 @@ export class FXArtifactMaterial {
     return this.artifact.attributeReads;
   }
 
-  public buildThreeMaterial(varyings: Record<string, GLTypeInfo>): Material {
+  /** The particle material over a mesh of `layout` (its driver's, see `particleLayout`). */
+  public buildThreeMaterial(layout: FXParticleLayout): Material {
     return buildArtifactMaterial(
       this.artifact,
-      varyings,
+      layout,
       this.elapsedTime,
       this.deltaTime,
       this.velocity,
@@ -67,14 +74,31 @@ export class FXArtifactMaterial {
    * material, so the shadow silhouette honors the authored shape/alpha-cutout (see
    * {@link buildArtifactDepthMaterial}). Built only when the emitter opts into `castShadow`.
    */
-  public buildThreeDepthMaterial(varyings: Record<string, GLTypeInfo>): Material {
+  public buildThreeDepthMaterial(layout: FXParticleLayout): Material {
     return buildArtifactDepthMaterial(
       this.artifact,
-      varyings,
+      layout,
       this.elapsedTime,
       this.deltaTime,
       this.velocity,
       this.angularVelocity,
+      this.externalSlots,
+    );
+  }
+
+  /** The trail material over a history of `layout` (see {@link buildTrailArtifactMaterial}). */
+  public buildThreeTrailMaterial(
+    layout: FXTrailLayout,
+    trailUniforms: FXTrailUniforms,
+  ): ShaderMaterial {
+    return buildTrailArtifactMaterial(
+      this.artifact,
+      layout,
+      this.elapsedTime,
+      this.deltaTime,
+      this.velocity,
+      this.angularVelocity,
+      trailUniforms,
       this.externalSlots,
     );
   }

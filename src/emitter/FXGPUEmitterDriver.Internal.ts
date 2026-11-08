@@ -1,23 +1,25 @@
 import type { BufferGeometry, WebGLRenderer } from "three";
 import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
-import { isCoreBufferName } from "../coreLayout.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
-import { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
-import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
-import type { FXEmitterDriver } from "./FXEmitterDriver.Internal.js";
 import {
-  mergeAttributeWidths,
-  sameVaryings,
-  varyingsFromComponents,
-} from "./FXEmitterDriver.Internal.js";
+  FXTransformFeedbackParticle,
+  kernelSlotLayout,
+} from "../instancedParticle/FXTransformFeedbackParticle.js";
+import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
+import type { FXEmitterDriver, FXHeldParticleFields } from "./FXEmitterDriver.Internal.js";
+import { gpuHeldFields, particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
+import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
+import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 
 /**
  * @internal The GPU (WebGL2 transform-feedback) particle-simulation backend: a fixed-capacity
  * `FXTransformFeedbackParticle` mesh driven by a precompiled `FXParticleKernelArtifact` through
- * `FXTransformFeedbackSimulationHolder`. Self-sufficient from its own artifact - its varyings come
- * from `gpu.kernel.buffers` (+ the render artifact's `attributeReads`), never from a JS behavior
- * artifact's `attributeWrites`.
+ * `FXTransformFeedbackSimulationHolder`. Self-sufficient from its own artifact - its fields are the
+ * slot `gpu.kernel.buffers` lays out (read through that slot's packed views), never a JS behavior
+ * artifact's `attributeWrites`; a field only the render reads is a zero constant in the shader, not
+ * a buffer (see `particleLayout`).
  *
  * No sorting or dead-particle compaction: every particle slot is always drawn at the fixed
  * `capacity`, and `particleCount`/`particleCapacity` both report that capacity rather than an
@@ -25,13 +27,12 @@ import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimula
  */
 export class FXGPUEmitterDriver implements FXEmitterDriver {
   public readonly mesh: FXTransformFeedbackParticle;
-  public readonly varyings: Record<string, GLTypeInfo>;
 
   private readonly simulation: FXTransformFeedbackSimulationHolder;
-  // The kernel's own attribute buffers (name + component width), kept for `applyRenderArtifact`'s
-  // re-merge against a NEW render artifact - never the kernel artifact itself, which nothing else
-  // here needs.
-  private readonly behaviorAttributeWidths: readonly { name: string; components: number }[];
+  private readonly gl: WebGL2RenderingContext;
+  // The kernel's slot fields - fixed by the kernel - and the current render's layout over them.
+  private readonly held: FXHeldParticleFields;
+  private currentLayout: FXParticleLayout;
 
   // Cursor/overwrite bookkeeping: `gpuSpawnCursor` is the next write position (mod capacity).
   // Spawns inside a tick (a delayed burst expiring, a play's rate accumulator) all share that
@@ -56,14 +57,10 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     capacity: number,
     baseGeometry: BufferGeometry,
   ) {
-    const attributeBuffers = kernel.buffers.filter((buffer) => !isCoreBufferName(buffer.name));
-    this.behaviorAttributeWidths = attributeBuffers.map((buffer) => ({
-      name: buffer.name,
-      components: buffer.stride,
-    }));
-    const components = mergeAttributeWidths(this.behaviorAttributeWidths, material.attributeReads);
-    this.varyings = varyingsFromComponents(components);
-    const threeMaterial = material.buildThreeMaterial(this.varyings);
+    // The same slot the holder lays out below (both by kernelSlotLayout), known before it exists.
+    this.held = gpuHeldFields(kernelSlotLayout(kernel.buffers));
+    this.currentLayout = particleLayout(this.held, material.attributeReads);
+    const threeMaterial = material.buildThreeMaterial(this.currentLayout);
 
     // The holder first: it checks the kernel fits this GPU before any particle buffer exists. A
     // throw from either goes to the caller (FXEmitter.fromArtifacts), which falls back to
@@ -74,7 +71,6 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       this.mesh = new FXTransformFeedbackParticle(
         renderer.getContext() as WebGL2RenderingContext,
         simulation.layout,
-        this.varyings,
         capacity,
         threeMaterial,
         baseGeometry,
@@ -84,6 +80,11 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       throw error;
     }
     this.simulation = simulation;
+    this.gl = renderer.getContext() as WebGL2RenderingContext;
+  }
+
+  public get layout(): FXParticleLayout {
+    return this.currentLayout;
   }
 
   public get particleCount(): number {
@@ -92,6 +93,11 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
 
   public get particleCapacity(): number {
     return this.mesh.capacity;
+  }
+
+  // Whether a claimed slot was still alive is GPU-resident state - unknowable without a readback.
+  public get particleOverflowCount(): undefined {
+    return undefined;
   }
 
   // A fused transform-feedback program always has a spawn branch - assembleTransformFeedbackProgram
@@ -114,11 +120,13 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     // Outside a tick, the emitter may be moved or re-parametrized before the next one (two
     // bursts from two poses in one frame is an ordinary way to author an effect), so this spawn
     // is seeded now, from the pose and bindings of this call. More than `capacity` at once
-    // overwrites the whole ring; the extra births would only overwrite each other.
+    // overwrites the whole ring; the extra births would only overwrite each other - but still take
+    // their ids, as inside a tick (and on the JS backend).
     this.simulation.spawn(
       this.mesh,
       { start, count: Math.min(count, this.mesh.capacity) },
       transform,
+      count,
     );
     this.gpuSpawnRangeStart = this.gpuSpawnCursor;
   }
@@ -170,21 +178,22 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   }
 
   public applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void {
-    // Recomputed exactly as the constructor does, against this driver's OWN kernel buffers (never
-    // a JS behavior artifact's attributeWrites) - a stale merge here would wrongly pass a real
-    // layout change.
-    const components = mergeAttributeWidths(this.behaviorAttributeWidths, material.attributeReads);
-    const nextVaryings = varyingsFromComponents(components);
-    if (!sameVaryings(this.varyings, nextVaryings)) {
-      throw new Error(
-        "FXGPUEmitterDriver.applyRenderArtifact: the new render artifact's attribute reads no " +
-          "longer match this emitter's allocated buffers - a full rebuild (fromArtifacts) is required",
-      );
-    }
-    // this.varyings is value-equal to nextVaryings (just proved by sameVaryings above) - built
-    // from nextVaryings so a future reader never has to re-derive that equivalence to trust this.
-    const threeMaterial = material.buildThreeMaterial(nextVaryings);
+    // Over this driver's OWN kernel slot (never a JS behavior artifact's attributeWrites): it
+    // depends on the kernel alone, so the buffers always fit - a new unwritten read is one more
+    // zero constant. Throws (before anything changes) only on a read at another width than held.
+    const layout = particleLayout(this.held, material.attributeReads);
+    const threeMaterial = material.buildThreeMaterial(layout);
     this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry);
+    this.currentLayout = layout;
+  }
+
+  public createTrailHistory(
+    reads: Readonly<Record<string, GLTypeInfo>>,
+    frames: number,
+  ): FXGPUTrailHistory {
+    // The kernel's slot: what one copy records, at the offsets the history views it by.
+    const layout = trailHistoryLayout("gpu", reads, this.held.fields, this.mesh.layout);
+    return new FXGPUTrailHistory(this.gl, this.mesh, layout, frames);
   }
 
   public destroy(): void {

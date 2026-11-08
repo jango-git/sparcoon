@@ -4,7 +4,6 @@ import {
   FXTransformFeedbackParticle,
   slotLayout,
 } from "../../src/instancedParticle/FXTransformFeedbackParticle";
-import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 
 // No real WebGL2 context is available in this headless test run - a minimal mock covering only
 // the gl.* surface the constructor/buffer lifecycle actually calls, so the ping-pong bookkeeping
@@ -42,30 +41,15 @@ function baseQuad(): BufferGeometry {
   return geometry;
 }
 
-const VEC3: GLTypeInfo = { glslTypeName: "vec3", bufferSize: 3, instantiable: true };
-const FLOAT: GLTypeInfo = { glslTypeName: "float", bufferSize: 1, instantiable: true };
-
 /** The slot a kernel writing position, lifecycle and a float `fx_glow` lays out: 7 floats. */
 const LAYOUT = slotLayout([
   { name: "position", components: 3 },
   { name: "lifecycle", components: 3 },
   { name: "fx_glow", components: 1 },
 ]);
-const VARYINGS = { position: VEC3, lifecycle: VEC3, fx_glow: FLOAT };
 
-function particle(
-  gl: WebGL2RenderingContext,
-  capacity = 64,
-  varyings: Record<string, GLTypeInfo> = VARYINGS,
-) {
-  return new FXTransformFeedbackParticle(
-    gl,
-    LAYOUT,
-    varyings,
-    capacity,
-    new MeshBasicMaterial(),
-    baseQuad(),
-  );
+function particle(gl: WebGL2RenderingContext, capacity = 64, layout = LAYOUT) {
+  return new FXTransformFeedbackParticle(gl, layout, capacity, new MeshBasicMaterial(), baseQuad());
 }
 
 interface SlotAttribute {
@@ -76,16 +60,53 @@ interface SlotAttribute {
   readonly data: unknown;
 }
 
+function attributeOf(mesh: FXTransformFeedbackParticle, name: string): SlotAttribute {
+  return mesh.geometry.getAttribute(name) as unknown as SlotAttribute;
+}
+
 describe("slotLayout", () => {
-  it("lays buffers out back to back, in order", () => {
-    expect(LAYOUT).toEqual({
-      stride: 7,
-      fields: [
-        { name: "position", components: 3, offset: 0 },
-        { name: "lifecycle", components: 3, offset: 3 },
-        { name: "fx_glow", components: 1, offset: 6 },
-      ],
-    });
+  it("lays buffers out back to back, in order, and packs adjacent ones into views", () => {
+    expect(LAYOUT.stride).toBe(7);
+    expect(LAYOUT.fields).toEqual([
+      { name: "position", components: 3, offset: 0 },
+      { name: "lifecycle", components: 3, offset: 3 },
+      { name: "fx_glow", components: 1, offset: 6 },
+    ]);
+    // Position (3) and lifecycle (3) cannot share a vec4; lifecycle and glow can.
+    expect(LAYOUT.packed).toEqual([
+      {
+        name: "pack0",
+        offset: 0,
+        components: 3,
+        members: [{ name: "position", components: 3, componentOffset: 0 }],
+      },
+      {
+        name: "pack1",
+        offset: 3,
+        components: 4,
+        members: [
+          { name: "lifecycle", components: 3, componentOffset: 0 },
+          { name: "fx_glow", components: 1, componentOffset: 3 },
+        ],
+      },
+    ]);
+  });
+
+  it("needs one view per vec4 bin for a kernel ordered by packingOrder", () => {
+    // packingOrder of position, lifecycle, color (vec3), alpha, size: position+alpha,
+    // lifecycle+size, color alone.
+    const layout = slotLayout([
+      { name: "position", components: 3 },
+      { name: "fx_alpha", components: 1 },
+      { name: "lifecycle", components: 3 },
+      { name: "fx_size", components: 1 },
+      { name: "fx_color", components: 3 },
+    ]);
+    expect(layout.packed.map((view) => view.members.map((member) => member.name))).toEqual([
+      ["position", "fx_alpha"],
+      ["lifecycle", "fx_size"],
+      ["fx_color"],
+    ]);
   });
 });
 
@@ -97,22 +118,23 @@ describe("FXTransformFeedbackParticle", () => {
       expect(mesh.capacity).toBe(64);
       expect(mesh.readBuffer()).not.toBe(mesh.writeBuffer());
       const uploads = (gl as unknown as { __uploads: (number | Float32Array)[] }).__uploads;
-      // Two halves of 64 slots x 7 floats x 4 bytes, uninitialized.
+      // Two halves of 64 slots x 7 floats x 4 bytes, uninitialized - and nothing else.
       expect(uploads).toEqual([64 * 7 * 4, 64 * 7 * 4]);
     } finally {
       mesh.destroy();
     }
   });
 
-  it("reads every field out of the slot at its own offset, as three's interleaved attribute", () => {
+  it("binds one attribute per packed view, out of the slot at its own offset", () => {
     const gl = mockGL();
     const mesh = particle(gl);
     try {
-      const glow = mesh.geometry.getAttribute("a_fx_glow") as unknown as SlotAttribute;
-      expect(glow).toBe(mesh.propertyBuffers["fx_glow"]);
-      expect(glow).toMatchObject({ buffer: mesh.readBuffer(), itemSize: 1, offset: 6, stride: 7 });
+      const names = Object.keys(mesh.geometry.attributes).sort();
+      expect(names).toEqual(["a_pack0", "a_pack1", "normal", "position", "uv"]);
+      const view = attributeOf(mesh, "a_pack1");
+      expect(view).toMatchObject({ buffer: mesh.readBuffer(), itemSize: 4, offset: 3, stride: 7 });
       // Three looks the buffer up through `data`.
-      expect(glow.data).toBe(glow);
+      expect(view.data).toBe(view);
     } finally {
       mesh.destroy();
     }
@@ -128,21 +150,22 @@ describe("FXTransformFeedbackParticle", () => {
     }
   });
 
-  it("swapBuffers flips the halves and gives every field a fresh attribute object", () => {
+  it("swapBuffers flips the halves and gives every view a fresh attribute object", () => {
     const gl = mockGL();
     const mesh = particle(gl);
     try {
       const read = mesh.readBuffer();
       const write = mesh.writeBuffer();
-      const positionBefore = mesh.propertyBuffers["position"];
+      const before = attributeOf(mesh, "a_pack0");
 
       mesh.swapBuffers();
 
       expect(mesh.readBuffer()).toBe(write);
       expect(mesh.writeBuffer()).toBe(read);
       // A new object, not the old one retargeted (three caches VAOs by attribute identity).
-      expect(mesh.propertyBuffers["position"]).not.toBe(positionBefore);
-      expect((mesh.propertyBuffers["position"] as unknown as SlotAttribute).buffer).toBe(write);
+      expect(attributeOf(mesh, "a_pack0")).not.toBe(before);
+      expect(attributeOf(mesh, "a_pack0").buffer).toBe(write);
+      expect(attributeOf(mesh, "a_pack1").buffer).toBe(write);
 
       mesh.swapBuffers();
       expect(mesh.readBuffer()).toBe(read);
@@ -151,30 +174,15 @@ describe("FXTransformFeedbackParticle", () => {
     }
   });
 
-  it("backs a varying the kernel does not write with a zero-filled buffer that never swaps", () => {
+  it("destroy deletes both halves of the pair", () => {
     const gl = mockGL();
-    const mesh = particle(gl, 16, { ...VARYINGS, fx_tint: VEC3 });
-    try {
-      const uploads = (gl as unknown as { __uploads: (number | Float32Array)[] }).__uploads;
-      expect(uploads[2]).toEqual(new Float32Array(16 * 3));
-      const tint = mesh.propertyBuffers["fx_tint"];
-      mesh.swapBuffers();
-      expect(mesh.propertyBuffers["fx_tint"]).toBe(tint);
-    } finally {
-      mesh.destroy();
-    }
-  });
-
-  it("destroy deletes every raw buffer this instance owns", () => {
-    const gl = mockGL();
-    const mesh = particle(gl, 32, { ...VARYINGS, fx_tint: VEC3 });
+    const mesh = particle(gl, 32);
     const read = mesh.readBuffer();
     const write = mesh.writeBuffer();
-    const tint = (mesh.propertyBuffers["fx_tint"] as unknown as SlotAttribute).buffer;
 
     mesh.destroy();
 
     const deleted = (gl as unknown as { __deleted: Set<unknown> }).__deleted;
-    expect([read, write, tint].every((buffer) => deleted.has(buffer))).toBe(true);
+    expect([read, write].every((buffer) => deleted.has(buffer))).toBe(true);
   });
 });

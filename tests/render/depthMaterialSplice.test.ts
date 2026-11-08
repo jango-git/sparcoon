@@ -3,7 +3,7 @@ import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
-import { unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
+import { layoutOf, unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
 
 /** The two fixed core buffers the particle depth material needs declared as varyings. */
 function varyings(): Record<string, GLTypeInfo> {
@@ -18,7 +18,7 @@ function particleDepthShaders(render: FXRenderArtifact): {
   fragmentShader: string;
 } {
   const material = new FXArtifactMaterial(render).buildThreeDepthMaterial(
-    varyings(),
+    layoutOf(varyings()),
   ) as unknown as { vertexShader: string; fragmentShader: string };
   return { vertexShader: material.vertexShader, fragmentShader: material.fragmentShader };
 }

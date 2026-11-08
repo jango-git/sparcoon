@@ -69,11 +69,28 @@ export type FXUniformInit =
   | { readonly type: "sampler2D"; value: Texture } // generated (fxDataTexture)
   | { readonly type: "sampler2D"; readonly external: string; value?: Texture }; // app-supplied by slot name
 
+/**
+ * What one shader stage's code reads of each particle - recorded by the compiler as it emits the
+ * code, so the runtime declares a property (an attribute, a varying) for exactly what the stage
+ * names and never has to scan the GLSL for it. Empty for a VFX mesh, which has no particles.
+ */
+export interface FXParticleReads {
+  /** The position (`PARTICLE_POSITION`, `PARTICLE_POSITION_X` / `_Y` / `_Z`). */
+  readonly position: boolean;
+  /** The age, lifetime or id (`PARTICLE_AGE`, `PARTICLE_LIFETIME`, `PARTICLE_ID`). */
+  readonly lifecycle: boolean;
+  /** The attributes read (`p_fx_<name>`), by {@link FXAttributeDecl.name}; each one is among
+   *  the artifact's {@link FXRenderArtifact.attributeReads}. */
+  readonly attributes: readonly string[];
+}
+
 /** One shader stage's spliceable source (matches the compiler's per-stage IR shape). */
 export interface FXShaderStageSource {
   readonly varyingDeclarations: readonly string[];
   readonly helperFunctions: readonly string[];
   readonly body: readonly string[];
+  /** What this stage's code - its body and helper functions - reads of each particle. */
+  readonly particleReads: FXParticleReads;
 }
 
 /** Render half of an emitted effect: compiled GLSL spliced into a Three material, plus live uniforms. */
@@ -100,7 +117,10 @@ export interface FXRenderArtifact {
    */
   readonly outputs: Readonly<Record<string, string>>;
   readonly uniforms: Record<string, FXUniformInit>;
-  /** Attributes the shader reads (`p_fx_<name>`); the emitter merges these with the sim's write set. */
+  /**
+   * The attributes the render declares, with their widths (`p_fx_<name>`); the emitter merges these
+   * with the sim's write set. What each stage's code actually reads is its `particleReads`.
+   */
   readonly attributeReads: readonly FXAttributeDecl[];
 }
 
@@ -148,7 +168,13 @@ export interface FXBehaviorArtifact {
     bindings: Record<string, FXValueSlot<number | Float32Array>>,
     emitter?: FXEmitterTransform,
   ): void;
-  /** Advances all live particles `[0, count)`. */
+  /**
+   * Advances every slot `[0, count)` - dead ones too (`age >= lifetime`, including never-born
+   * slots with lifetime 0), exactly as the GPU kernel's pass covers every slot. What it computes for
+   * a dead slot (even a NaN from `age / lifetime`) is never shown - the render and trail hide dead
+   * slots - and is discarded when a birth claims the slot, which zero-fills it before seeding.
+   * Skipped altogether on a tick when no particle is alive.
+   */
   update(
     buffers: FXKernelBuffers,
     count: number,

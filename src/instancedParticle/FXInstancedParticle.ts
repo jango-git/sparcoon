@@ -11,20 +11,39 @@ import {
 } from "../coreLayout.js";
 import type { GLTypeInfo } from "./glTypeInfo.js";
 
+/** One contiguous run of ring slots `[start, start + count)` claimed by {@link FXInstancedParticle.claim}. */
+export interface FXSlotRange {
+  readonly start: number;
+  readonly count: number;
+}
+
 /**
- * @internal Instanced mesh backing one {@link FXEmitter}: a base primitive drawn once per particle,
- * plus packed per-particle state. Each field (core `position`/`lifecycle` and each user attribute)
- * is one `InstancedBufferAttribute` in {@link propertyBuffers}, exposed as `a_<name>`. All buffers
- * share one particle index and stay dense: births append, deaths compact survivors down, capacity
- * grows in `capacityStep` blocks - each just iterates every buffer in lockstep.
+ * @internal Instanced mesh backing one JS-driven {@link FXEmitter}: a base primitive drawn once per
+ * particle, plus packed per-particle state. Each field (core `position`/`lifecycle` and each user
+ * attribute) is one `InstancedBufferAttribute` in {@link propertyBuffers}, exposed as `a_<name>`.
+ *
+ * A fixed-capacity **ring**, the same scheme as the GPU backend's `FXTransformFeedbackParticle`:
+ * births claim slots at a wrapping cursor and overwrite whatever occupies them, a particle keeps
+ * its slot for life (no compaction, no growth), and dead slots stay in place - hidden by the
+ * render shader's own `age >= lifetime` clip, exactly as on the GPU. The drawn range is the
+ * high-water mark of slots ever claimed, which reaches `capacity` after the first lap.
+ *
+ * A birth overwrites the slot at the cursor whether its particle is live or not, so `capacity`
+ * must cover the spawn rate times the longest lifetime, bursts included; {@link overflowCount}
+ * counts the particles that died early because it did not.
  */
 export class FXInstancedParticle extends Mesh {
   public readonly propertyBuffers: Record<string, InstancedBufferAttribute> = {};
 
   private readonly instancedGeometry: InstancedBufferGeometry;
-  private capacity: number;
+  private readonly capacity: number;
 
-  private bufferVersionInternal = 0;
+  // Next slot a birth claims (mod capacity), and how many slots are live / have ever been claimed.
+  private cursor = 0;
+  private liveCountInternal = 0;
+  private highWaterMark = 0;
+  // Births lost to a full ring: live particles overwritten plus births beyond capacity in one claim.
+  private overflowCountInternal = 0;
 
   private sortingIndices: Int32Array = new Int32Array(0);
   private sortingSquaredDistances: Float64Array = new Float64Array(0);
@@ -32,8 +51,7 @@ export class FXInstancedParticle extends Mesh {
 
   constructor(
     varyings: Record<string, GLTypeInfo>,
-    expectedCapacity: number,
-    private readonly capacityStep: number,
+    capacity: number,
     material: Material,
     baseGeometry: BufferGeometry,
   ) {
@@ -56,12 +74,9 @@ export class FXInstancedParticle extends Mesh {
     this.frustumCulled = false;
     this.instancedGeometry = instancedGeometry;
     this.instancedGeometry.instanceCount = 0;
+    this.capacity = capacity;
 
-    this.capacity = Math.max(
-      Math.ceil(expectedCapacity / this.capacityStep) * this.capacityStep,
-      this.capacityStep,
-    );
-
+    // Zero-filled: every slot starts as `age 0 >= lifetime 0`, i.e. dead.
     for (const name in varyings) {
       const { bufferSize } = varyings[name];
       const attribute = new InstancedBufferAttribute(
@@ -74,95 +89,120 @@ export class FXInstancedParticle extends Mesh {
     }
   }
 
+  /**
+   * The drawn slot range `[0, instanceCount)` - the high-water mark, live and dead slots alike. The
+   * geometry itself draws no instance while none is live (every one would be clipped), but this
+   * range stays: only {@link drop} and {@link sortByDistance} ever shrink it.
+   */
   public get instanceCount(): number {
-    return this.instancedGeometry.instanceCount;
+    return this.highWaterMark;
   }
 
   public get instanceCapacity(): number {
     return this.capacity;
   }
 
-  // Bumped on every backing-array reallocation (capacity growth), so the emitter can cache its
-  // per-tick name -> Float32Array record and rebuild only when this moves.
-  public get bufferVersion(): number {
-    return this.bufferVersionInternal;
+  /** Exact number of live particles, as of the last {@link advanceAges} plus births since. */
+  public get liveCount(): number {
+    return this.liveCountInternal;
   }
 
-  public createInstances(count: number): void {
-    const currentInstanceCount = this.instancedGeometry.instanceCount;
-    this.ensureCapacity(currentInstanceCount + count);
-
-    // Rows freed by `removeDeadParticles` (copy-down, no zeroing) still hold the previous occupant's
-    // state - most dangerously a stale `age >= lifetime`, which no spawn graph can reset (the spawn
-    // target has no `age` slot). Zero the claimed range so births start clean; flag each buffer so
-    // the cleared rows reach the GPU even for buffers the spawn kernel does not itself write.
-    const rangeBegin = currentInstanceCount;
-    const rangeEnd = currentInstanceCount + count;
-    for (const attribute of Object.values(this.propertyBuffers)) {
-      const { array, itemSize } = attribute;
-      array.fill(0, rangeBegin * itemSize, rangeEnd * itemSize);
-      attribute.needsUpdate = true;
-    }
-
-    this.instancedGeometry.instanceCount += count;
+  /**
+   * Particles lost to a full ring since construction (not reset by {@link drop}): live particles a
+   * birth overwrote - they died early - plus births beyond capacity in a single claim.
+   */
+  public get overflowCount(): number {
+    return this.overflowCountInternal;
   }
 
-  public removeDeadParticles(): void {
-    // Cull against core `lifecycle` (vec3 [age, lifetime, id]); alive while `age < lifetime`. Rides the
-    // same copy-down as every other property buffer.
-    const lifecycleBuffer = this.propertyBuffers[FX_CORE_LIFECYCLE] as
+  /**
+   * Claims `count` slots at the cursor and zero-fills them, returning the claimed runs in slot
+   * order (two when the claim wraps past the end of the ring). Mirrors the GPU backend's cursor
+   * exactly: the cursor advances by `count` mod capacity, and a claim larger than the ring seeds
+   * every slot once starting at the old cursor - the extra births would only overwrite each other.
+   */
+  public claim(count: number): readonly FXSlotRange[] {
+    const capacity = this.capacity;
+    const start = this.cursor;
+    const seeded = Math.min(count, capacity);
+    this.cursor = (this.cursor + count) % capacity;
+    this.overflowCountInternal += count - seeded;
+
+    const head = Math.min(seeded, capacity - start);
+    const ranges: FXSlotRange[] =
+      head < seeded
+        ? [
+            { start, count: head },
+            { start: 0, count: seeded - head },
+          ]
+        : [{ start, count: seeded }];
+
+    const lifecycle = this.propertyBuffers[FX_CORE_LIFECYCLE] as
       InstancedBufferAttribute | undefined;
-    if (lifecycleBuffer === undefined) {
-      return;
-    }
-
-    const { array: lifecycleArray, itemSize: lifecycleItemSize } = lifecycleBuffer;
-    const { instanceCount } = this.instancedGeometry;
-
-    // Materialized once per call, not per survivor: a `for...in` inside the copy-down loop would
-    // re-enumerate keys for every moved particle.
-    const attributes = Object.values(this.propertyBuffers);
-
-    let writeIndex = 0;
-    let didCompact = false;
-
-    for (let readIndex = 0; readIndex < instanceCount; readIndex++) {
-      const offset = readIndex * lifecycleItemSize;
-
-      if (lifecycleArray[offset + FX_AGE] < lifecycleArray[offset + FX_LIFETIME]) {
-        if (writeIndex !== readIndex) {
-          for (const attribute of attributes) {
-            const { itemSize: dataItemSize, array: dataArray } = attribute;
-
-            const sourceOffset = readIndex * dataItemSize;
-            const destinationOffset = writeIndex * dataItemSize;
-
-            dataArray.copyWithin(destinationOffset, sourceOffset, sourceOffset + dataItemSize);
+    for (const range of ranges) {
+      const end = range.start + range.count;
+      if (lifecycle !== undefined) {
+        const { array, itemSize } = lifecycle;
+        for (let i = range.start; i < end; i++) {
+          if (array[i * itemSize + FX_AGE] < array[i * itemSize + FX_LIFETIME]) {
+            this.overflowCountInternal += 1; // a live particle is overwritten
+          } else {
+            this.liveCountInternal += 1;
           }
-
-          didCompact = true;
         }
-
-        writeIndex++;
       }
-    }
-
-    if (didCompact) {
-      for (const attribute of attributes) {
+      // A reused slot still holds its previous occupant's state - most dangerously a stale
+      // `age >= lifetime`, which no spawn graph can reset (the spawn target has no `age` slot).
+      // Zero it so births start clean, and flag every buffer so the cleared rows reach the GPU
+      // even for buffers the spawn kernel does not itself write.
+      for (const attribute of Object.values(this.propertyBuffers)) {
+        attribute.array.fill(0, range.start * attribute.itemSize, end * attribute.itemSize);
         attribute.needsUpdate = true;
       }
+      if (end > this.highWaterMark) {
+        this.highWaterMark = end;
+      }
     }
+    this.syncDrawnInstances();
+    return ranges;
+  }
 
-    this.instancedGeometry.instanceCount = writeIndex;
+  /** Adds `deltaTime` to the age of every drawn slot and recounts the live ones. Age is host-owned. */
+  public advanceAges(deltaTime: number): void {
+    const lifecycle = this.propertyBuffers[FX_CORE_LIFECYCLE] as
+      InstancedBufferAttribute | undefined;
+    if (lifecycle === undefined) {
+      return;
+    }
+    const { array, itemSize } = lifecycle;
+    let live = 0;
+    for (let i = 0; i < this.highWaterMark; i++) {
+      const offset = i * itemSize;
+      array[offset + FX_AGE] += deltaTime;
+      if (array[offset + FX_AGE] < array[offset + FX_LIFETIME]) {
+        live += 1;
+      }
+    }
+    this.liveCountInternal = live;
+    lifecycle.needsUpdate = true;
+    this.syncDrawnInstances();
   }
 
   /**
    * Reorders every per-particle buffer back-to-front for correct alpha blending. Distances are
    * world-space (each center transformed by `meshWorldMatrix`), matching the shader's own
    * `p_cameraDistance` - correct under any transform, including non-uniform scale and shear.
+   *
+   * Dead slots sort behind every live one, so a sort also gathers the live particles into
+   * `[0, liveCount)`: the drawn range shrinks to them and the cursor restarts right after them,
+   * so the next births reuse dead slots instead of overwriting live particles the sort scattered
+   * around the ring. Slot stability is given up here by design - a sorted emitter keeps no
+   * per-slot history (the editor rejects trails on one).
    */
   public sortByDistance(cameraWorldPosition: Vector3, meshWorldMatrix: Matrix4): void {
-    const { instanceCount } = this.instancedGeometry;
+    // Shrinks the drawn range below: never call this while a trail records this mesh (a slot past
+    // the new range would keep its recorded live points) - `FXEmitter` skips sorting then.
+    const instanceCount = this.highWaterMark;
 
     if (instanceCount < 2) {
       return;
@@ -179,12 +219,26 @@ export class FXInstancedParticle extends Mesh {
       this.sortingSquaredDistances = new Float64Array(this.capacity);
     }
 
+    const lifecycleBuffer = this.propertyBuffers[FX_CORE_LIFECYCLE] as
+      InstancedBufferAttribute | undefined;
+    const lifecycleArray = lifecycleBuffer?.array;
+    const lifecycleItemSize = lifecycleBuffer?.itemSize ?? 0;
+
     const { array: positionArray, itemSize: positionItemSize } = positionBuffer;
     // Column-major elements, indexed directly to avoid a per-particle Vector3.
     const elements = meshWorldMatrix.elements;
 
     for (let particleIndex = 0; particleIndex < instanceCount; particleIndex++) {
       this.sortingIndices[particleIndex] = particleIndex;
+      if (
+        lifecycleArray !== undefined &&
+        lifecycleArray[particleIndex * lifecycleItemSize + FX_AGE] >=
+          lifecycleArray[particleIndex * lifecycleItemSize + FX_LIFETIME]
+      ) {
+        // Squared distances are never negative, so a dead slot lands behind every live one.
+        this.sortingSquaredDistances[particleIndex] = -1;
+        continue;
+      }
       const itemOffset = particleIndex * positionItemSize;
       const positionX = positionArray[itemOffset + FX_POSITION_X];
       const positionY = positionArray[itemOffset + FX_POSITION_Y];
@@ -251,10 +305,27 @@ export class FXInstancedParticle extends Mesh {
 
       attribute.needsUpdate = true;
     }
+
+    // Live particles now fill [0, liveCount) - see this method's doc comment.
+    this.highWaterMark = this.liveCountInternal;
+    this.cursor = this.liveCountInternal % this.capacity;
+    this.syncDrawnInstances();
   }
 
+  /**
+   * Kills every particle at once: zeroes the drawn slots (all dead) and rewinds the cursor. Shrinks
+   * the drawn range to nothing, so a trail recording this mesh must be cleared alongside (as
+   * `FXEmitter.reset` does) - the drawn range must not shrink under a live trail history.
+   */
   public drop(): void {
-    this.instancedGeometry.instanceCount = 0;
+    for (const attribute of Object.values(this.propertyBuffers)) {
+      attribute.array.fill(0, 0, this.highWaterMark * attribute.itemSize);
+      attribute.needsUpdate = true;
+    }
+    this.cursor = 0;
+    this.liveCountInternal = 0;
+    this.highWaterMark = 0;
+    this.syncDrawnInstances();
   }
 
   /**
@@ -302,40 +373,9 @@ export class FXInstancedParticle extends Mesh {
     (this.material as Material | undefined)?.dispose();
   }
 
-  private ensureCapacity(requiredCapacity: number): void {
-    if (requiredCapacity <= this.capacity) {
-      return;
-    }
-
-    const newCapacity = Math.ceil(requiredCapacity / this.capacityStep) * this.capacityStep;
-
-    for (const name in this.propertyBuffers) {
-      const oldAttribute = this.propertyBuffers[name];
-      const { itemSize, array, usage } = oldAttribute;
-      const newArray = new Float32Array(newCapacity * itemSize);
-      newArray.set(array);
-
-      const newAttribute = new InstancedBufferAttribute(newArray, itemSize);
-      newAttribute.setUsage(usage);
-      this.instancedGeometry.setAttribute(`a_${name}`, newAttribute);
-      this.propertyBuffers[name] = newAttribute;
-
-      // Dropping the CPU array does NOT free the GPU buffer: three's WebGLAttributes holds it in a
-      // WeakMap keyed by the (now-replaced) BufferAttribute and only deletes it when that wrapper is
-      // GC'd (no dispose() on BufferAttribute across r157-179). Best-effort, not deterministic.
-      (oldAttribute.array as unknown) = undefined;
-    }
-
-    this.capacity = newCapacity;
-    this.bufferVersionInternal++;
-    this.invalidateInstanceCap();
-  }
-
-  // Force the renderer to recompute `_maxInstanceCount` on the next setupVertexAttributes pass. It
-  // is an internal WebGLBindingStates cache, never promoted to public API across r157-r180; deleting
-  // it is the standard ecosystem workaround (three #19706, #26363, #27205).
-  private invalidateInstanceCap(): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    delete (this.instancedGeometry as any)._maxInstanceCount;
+  // Draws the drawn range while any particle is live, else nothing - an all-dead range would only
+  // run the vertex shader to clip every instance.
+  private syncDrawnInstances(): void {
+    this.instancedGeometry.instanceCount = this.liveCountInternal > 0 ? this.highWaterMark : 0;
   }
 }

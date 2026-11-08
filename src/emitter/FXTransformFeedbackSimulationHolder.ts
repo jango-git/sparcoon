@@ -1,6 +1,5 @@
 import type { WebGLRenderer } from "three";
 import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
-import { meshPropertyKeyFor } from "../coreLayout.js";
 import {
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
@@ -13,27 +12,13 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../behaviorTransformFeedbackLayout.js";
 import {
-  slotLayout,
+  kernelSlotLayout,
   type FXSlotLayout,
   type FXTransformFeedbackParticle,
 } from "../instancedParticle/FXTransformFeedbackParticle.js";
 
 /** WebGL's cap on a vertex attribute stride, in bytes - one particle's slot is that stride. */
 const MAX_VERTEX_STRIDE_BYTES = 255;
-
-/**
- * The interleaved slot `artifact` writes: its buffers in order, under the mesh's property keys.
- * `artifact.buffers[].name` is the raw kernel name (`velocity`); the mesh keys a non-core buffer
- * as `fx_velocity`, the same mapping the JS backend uses (`meshPropertyKeyFor`).
- */
-function kernelSlotLayout(artifact: FXParticleKernelArtifact): FXSlotLayout {
-  return slotLayout(
-    artifact.buffers.map((buffer) => ({
-      name: meshPropertyKeyFor(buffer.name),
-      components: buffer.stride,
-    })),
-  );
-}
 
 /**
  * @internal The GPU sibling of `FXSimulationHolder`: holds a precompiled {@link FXParticleKernelArtifact}
@@ -78,7 +63,7 @@ export class FXTransformFeedbackSimulationHolder {
     // capability check.
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
     this.gl = gl;
-    this.layout = kernelSlotLayout(artifact);
+    this.layout = kernelSlotLayout(artifact.buffers);
     assertFitsTransformFeedback(gl, this.layout);
 
     const vertexShader = compileShader(gl, gl.VERTEX_SHADER, artifact.vertexSource);
@@ -171,12 +156,15 @@ export class FXTransformFeedbackSimulationHolder {
    * makes every drawn vertex a birth under the kernel's own range test) and then copied into the
    * read half - the side the renderer draws and the next {@link tick} reads. No swap: every slot
    * outside the range keeps its state untouched. A range that wraps past the end of the ring is
-   * drawn as two segments. `spawnRange.count` must not exceed the mesh's capacity.
+   * drawn as two segments. `spawnRange.count` must not exceed the mesh's capacity; `births` is how
+   * many births the range stands for - more than its count when a burst exceeded the ring - and
+   * how far the particle ids advance, as {@link tick} advances them by its whole range count.
    */
   public spawn(
     mesh: FXTransformFeedbackParticle,
     spawnRange: { readonly start: number; readonly count: number },
     emitter: FXEmitterTransform,
+    births: number = spawnRange.count,
   ): void {
     if (spawnRange.count <= 0) {
       return;
@@ -231,7 +219,7 @@ export class FXTransformFeedbackSimulationHolder {
     gl.bindBuffer(gl.COPY_READ_BUFFER, null);
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
 
-    this.spawnIdBase += spawnRange.count;
+    this.spawnIdBase += births;
     // Same reason as in tick(): the raw VAO bind is invisible to three's caches.
     this.renderer.resetState();
   }

@@ -1,4 +1,4 @@
-import type { Camera, Mesh } from "three";
+import type { Camera, Mesh, Texture, WebGLRenderer } from "three";
 import { Object3D, Quaternion, Vector3 } from "three";
 import type { FXEmitterTransform } from "../artifact/FXArtifact.js";
 import type { FXBehaviorArtifact, FXRenderArtifact } from "../artifact/FXArtifact.js";
@@ -13,6 +13,10 @@ import {
   assertValidPositiveNumber,
 } from "../miscellaneous/asserts.js";
 import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import type { FXRenderBudget } from "../render/FXRenderBudget.js";
+import type { FXTrailOptions } from "../trail/FXTrail.js";
+import { assertValidTrailOptions, FXTrail } from "../trail/FXTrail.js";
+import { trailReadFields } from "../trail/FXTrailFields.Internal.js";
 import type { FXEmitterDriver } from "./FXEmitterDriver.Internal.js";
 import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
 import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
@@ -23,7 +27,6 @@ import type {
   FXEmitterPlayOptions,
 } from "./FXEmitter.Internal.js";
 import {
-  EMITTER_DEFAULT_CAPACITY_STEP,
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
   EMITTER_DEFAULT_PREWARM_MAX_STEP_COUNT,
@@ -42,8 +45,9 @@ import {
  * A thin facade over one {@link FXEmitterDriver} (JS or GPU - see `FXEmitterDriver.Internal.ts`),
  * chosen once by {@link fromArtifacts} and never switched mid-playback. This class itself owns only
  * what is genuinely backend-independent: play/burst/stop/prewarm scheduling, sort-fraction timing,
- * object motion tracking, and the render material - the material itself CAN be replaced in place,
- * by {@link applyRenderArtifact}, without touching the driver or its particle state.
+ * object motion tracking, the render material and the optional {@link FXTrail} (with its own
+ * material) - both CAN be replaced in place, by {@link applyRenderArtifact} and
+ * {@link applyTrailArtifact}, without touching the driver or its particle state.
  */
 export class FXEmitter extends Object3D {
   /** Camera for back-to-front depth sorting; `undefined` disables it. Distances are world-space, so any emitter/ancestor transform is handled correctly. */
@@ -58,6 +62,17 @@ export class FXEmitter extends Object3D {
   // in the scene with a truthy `.material` as drawable - `renderer.compile()` would try to build a
   // program for this non-three material on an object with no geometry, and crash.
   private artifactMaterial: FXArtifactMaterial;
+  // The optional trail behind every particle; replaced wholesale by applyTrailArtifact.
+  private trail: FXTrail | undefined;
+  // Sorting gives up the slot stability a trail's history relies on - warned once, then skipped.
+  private warnedAboutTrailSorting = false;
+  // What the renderer's GPU offers a trail material (see deviceLimits); `undefined` without one.
+  private readonly limits: FXRenderBudget | undefined;
+  // A trail past those limits is skipped - warned once per emitter, not on every swap.
+  private readonly trailLimitWarning: { warned: boolean };
+  // The last value applyValues set per uniform name, for a trail built later (applyTrailArtifact)
+  // to start from the values its parameters are being driven with, not its baked ones.
+  private readonly appliedUniforms: Record<string, number | readonly number[] | Texture> = {};
 
   private nextHandler = 0;
   private readonly pendingBursts: { handler: number; count: number; delay: number }[] = [];
@@ -100,11 +115,26 @@ export class FXEmitter extends Object3D {
     material: FXArtifactMaterial,
     options: Partial<FXEmitterOptions>,
     world: FXWorld,
+    trail: FXTrail | undefined,
+    limits: FXRenderBudget | undefined,
+    trailLimitWarning: { warned: boolean },
   ) {
     super();
     this.world = world;
+    this.limits = limits;
+    this.trailLimitWarning = trailLimitWarning;
     this.driver = driver;
     this.artifactMaterial = material;
+    this.trail = trail;
+
+    // Every check that can throw comes first, before this emitter owns anything of its own (the
+    // caller, fromArtifacts, releases the driver and trail it handed in).
+    this.assertCanSpawn("FXEmitter.constructor");
+    this.sortCamera = options.sortCamera;
+    this.sortFraction = EMITTER_DEFAULT_SORT_FRACTION;
+    if (options.sortFraction !== undefined) {
+      this.setSortFraction(options.sortFraction, "FXEmitter.constructor.options.sortFraction");
+    }
 
     if (options.receiveShadow ?? EMITTER_DEFAULT_RECEIVE_SHADOW) {
       this.mesh.receiveShadow = true;
@@ -115,17 +145,14 @@ export class FXEmitter extends Object3D {
     // false on the mesh, so the shadow pass's frustum check is a no-op just like the color pass.
     if (options.castShadow ?? EMITTER_DEFAULT_CAST_SHADOW) {
       this.mesh.castShadow = true;
-      this.mesh.customDepthMaterial = material.buildThreeDepthMaterial(this.driver.varyings);
+      this.mesh.customDepthMaterial = material.buildThreeDepthMaterial(this.driver.layout);
     }
 
-    this.sortCamera = options.sortCamera;
-    this.sortFraction = EMITTER_DEFAULT_SORT_FRACTION;
-    if (options.sortFraction !== undefined) {
-      this.setSortFraction(options.sortFraction, "FXEmitter.constructor.options.sortFraction");
-    }
-    this.assertCanSpawn("FXEmitter.constructor");
-
+    // The trail after the particles, as applyTrailArtifact attaches one (see FXTrail's doc).
     this.add(this.mesh);
+    if (trail !== undefined) {
+      this.add(trail.mesh);
+    }
     this.world.registerObject(this);
   }
 
@@ -135,10 +162,30 @@ export class FXEmitter extends Object3D {
     return this.driver.particleCount;
   }
 
-  /** The buffer's current allocated size - grows over time for a JS-driven emitter, fixed at
-   *  construction for a GPU-driven one (no capacityStep growth path there). */
+  /** The fixed ring size (`expectedCapacity`), the same on both backends - never grows. */
   public get particleCapacity(): number {
     return this.driver.particleCapacity;
+  }
+
+  /**
+   * Particles lost to the fixed ring since this emitter was built: a birth overwrites the slot at
+   * the cursor whether its particle is live or not, so this counts the live particles a birth
+   * overwrote - each died early - plus births beyond capacity in a single burst. A capacity
+   * diagnostic: nonzero means `expectedCapacity` is smaller than the spawn rate times the longest
+   * lifetime (bursts included); a development build also warns once, on the first one. `undefined`
+   * on a GPU-driven emitter, whose slot occupancy is not visible to the CPU (its ring overwrites
+   * the same way).
+   */
+  public get particleOverflowCount(): number | undefined {
+    return this.driver.particleOverflowCount;
+  }
+
+  /**
+   * Whether this emitter draws a trail behind its particles - not one it was given but skipped,
+   * past what the renderer's GPU offers (see {@link fromArtifacts}).
+   */
+  public get hasTrail(): boolean {
+    return this.trail !== undefined;
   }
 
   // The active driver's own mesh - a thin passthrough, not a second source of truth (this.driver.mesh
@@ -159,24 +206,18 @@ export class FXEmitter extends Object3D {
     options: FXFromArtifactsOptions = {},
     world: FXWorld = FXWorld.getDefault(),
   ): FXEmitter {
-    if (options.expectedCapacity !== undefined) {
-      // Sizes the Float32Array buffers - a fractional length is a RangeError. Doubles as the
-      // fixed GPU capacity when a GPU kernel is present (no capacityStep growth for that path).
-      assertValidPositiveInteger(
-        options.expectedCapacity,
-        "FXEmitter.constructor.options.expectedCapacity",
-      );
-    }
-    if (options.capacityStep !== undefined) {
-      assertValidPositiveInteger(
-        options.capacityStep,
-        "FXEmitter.constructor.options.capacityStep",
+    const capacity = options.expectedCapacity ?? EMITTER_DEFAULT_EXPECTED_CAPACITY;
+    // The fixed ring size on both backends, checked in every build (once per emitter, never per
+    // frame): zero would wrap the cursor to NaN, and a fractional length is a RangeError far
+    // from its cause.
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      throw new RangeError(
+        `FXEmitter.fromArtifacts.options.expectedCapacity: expected an integer >= 1, got ${String(capacity)}`,
       );
     }
 
     const material = new FXArtifactMaterial(render, options.textures);
     const baseGeometry = resolveGeometrySource(render.geometry, options.geometries ?? {});
-    const capacity = options.expectedCapacity ?? EMITTER_DEFAULT_EXPECTED_CAPACITY;
 
     // The one place this emitter's backend is chosen, ever (never switched mid-playback). A real
     // driver-level failure (program link, buffer/VAO setup) despite "Try GPU simulation" having
@@ -201,15 +242,68 @@ export class FXEmitter extends Object3D {
         );
       }
     }
-    driver ??= new FXJSEmitterDriver(
-      behavior,
-      material,
-      capacity,
-      options.capacityStep ?? EMITTER_DEFAULT_CAPACITY_STEP,
-      baseGeometry,
-    );
+    driver ??= new FXJSEmitterDriver(behavior, material, capacity, baseGeometry);
 
-    return new FXEmitter(driver, material, options, world);
+    // Everything built so far owns GPU resources: a throw from here on releases them.
+    const limits = deviceLimits(options.renderer);
+    const trailLimitWarning = { warned: false };
+    let trail: FXTrail | undefined;
+    try {
+      if (options.trail !== undefined) {
+        trail = FXEmitter.buildTrail(
+          driver,
+          options.trail,
+          options.textures,
+          limits,
+          trailLimitWarning,
+        );
+      }
+      return new FXEmitter(driver, material, options, world, trail, limits, trailLimitWarning);
+    } catch (error) {
+      trail?.destroy();
+      driver.destroy();
+      throw error;
+    }
+  }
+
+  /**
+   * Builds a trail, or skips it (`undefined`, with a warning once per emitter) when its material
+   * takes more attributes or varying vectors than `limits` - a program past them fails to link,
+   * so the trail would never draw anyway, and the particles still do without it.
+   */
+  private static buildTrail(
+    driver: FXEmitterDriver,
+    options: FXTrailOptions,
+    textures: FXFromArtifactsOptions["textures"],
+    limits: FXRenderBudget | undefined,
+    warning: { warned: boolean },
+  ): FXTrail | undefined {
+    assertValidTrailOptions(options, "FXEmitter.fromArtifacts.options.trail");
+    const history = driver.createTrailHistory(trailReadFields(options.render), options.frames);
+    let trail: FXTrail;
+    try {
+      trail = new FXTrail(history, options, textures);
+    } catch (error) {
+      history.destroy();
+      throw error;
+    }
+    if (
+      limits !== undefined &&
+      (trail.budget.attributes > limits.attributes ||
+        trail.budget.varyingVectors > limits.varyingVectors)
+    ) {
+      trail.destroy();
+      if (!warning.warned) {
+        warning.warned = true;
+        console.warn(
+          `FXEmitter: the trail is skipped - its material needs ${String(trail.budget.attributes)} ` +
+            `vertex attributes and ${String(trail.budget.varyingVectors)} varying vectors, the ` +
+            `GPU offers ${String(limits.attributes)} and ${String(limits.varyingVectors)}.`,
+        );
+      }
+      return undefined;
+    }
+    return trail;
   }
 
   /**
@@ -218,16 +312,10 @@ export class FXEmitter extends Object3D {
    */
   public onWorldTick(deltaTime: number, elapsedTime: number): void {
     this.onRendering(deltaTime);
-    this.artifactMaterial.setElapsedTime(elapsedTime);
-    this.artifactMaterial.setDeltaTime(deltaTime);
-    // emitterTransform.velocity/angularVelocity are always length 3 (see its declaration) -
-    // computed once per tick in onRendering -> tick.
-    this.artifactMaterial.setObjectVelocity(
-      this.emitterTransform.velocity as [number, number, number],
-    );
-    this.artifactMaterial.setObjectAngularVelocity(
-      this.emitterTransform.angularVelocity as [number, number, number],
-    );
+    this.pushFrameUniforms(this.artifactMaterial, deltaTime, elapsedTime);
+    if (this.trail !== undefined) {
+      this.pushFrameUniforms(this.trail.artifactMaterial, deltaTime, elapsedTime);
+    }
   }
 
   /** Unregisters, removes from the scene, disposes mesh and material. Idempotent. */
@@ -244,8 +332,13 @@ export class FXEmitter extends Object3D {
     this.activePlays.length = 0;
 
     // The material owns no per-emitter GPU resources; the driver teardown disposes the instanced
-    // geometry and the mounted material (plus, for a GPU-driven emitter, the compiled program+VAO).
+    // geometry and the mounted material (plus, for a GPU-driven emitter, the compiled program+VAO)
+    // - not the depth material, which this emitter built and so releases itself.
+    this.mesh.customDepthMaterial?.dispose();
+    this.mesh.customDepthMaterial = undefined;
     this.artifactMaterial.destroy();
+    this.trail?.destroy();
+    this.trail = undefined;
     this.driver.destroy();
 
     this.removeFromParent();
@@ -374,6 +467,7 @@ export class FXEmitter extends Object3D {
     this.pendingBursts.length = 0;
     this.activePlays.length = 0;
     this.driver.reset();
+    this.trail?.reset();
     // A restarted effect should not report a teleport spike from wherever the emitter was last
     // posed - drop the velocity/angular-velocity baseline along with the particles.
     this.motionTracker.reset();
@@ -404,7 +498,10 @@ export class FXEmitter extends Object3D {
       return;
     }
     if (values.uniforms !== undefined) {
+      Object.assign(this.appliedUniforms, values.uniforms);
       this.artifactMaterial.applyUniformValues(values.uniforms);
+      // One parameter namespace per emitter: a name the trail graph declares too drives both.
+      this.trail?.artifactMaterial.applyUniformValues(values.uniforms);
     }
     if (values.bindings !== undefined) {
       this.driver.applyBindingValues(values.bindings);
@@ -418,10 +515,12 @@ export class FXEmitter extends Object3D {
    * this never resets a running effect). The editor calls this instead of rebuilding whenever a
    * graph edit only changed the render half.
    *
-   * @throws If the new render artifact's attribute reads disagree with this emitter's already-
-   * allocated buffers (a genuine layout change - see {@link FXEmitterDriver.applyRenderArtifact}).
-   * This emitter is left exactly as it was before the call in that case; the caller must fall back
-   * to a fresh {@link fromArtifacts} instead, since only a new driver can safely resize buffers.
+   * The buffers depend on the behavior alone, so a render reading an attribute nothing writes
+   * still applies in place (it reads as zero, with no buffer - see `particleLayout`).
+   *
+   * @throws If the new render artifact reads an attribute at another width than this emitter's
+   * behavior writes it (see {@link FXEmitterDriver.applyRenderArtifact}). This emitter is left
+   * exactly as it was before the call in that case.
    */
   public applyRenderArtifact(
     render: FXRenderArtifact,
@@ -441,12 +540,57 @@ export class FXEmitter extends Object3D {
     const previousDepthMaterial = this.mesh.customDepthMaterial;
     if (options.castShadow ?? EMITTER_DEFAULT_CAST_SHADOW) {
       this.mesh.castShadow = true;
-      this.mesh.customDepthMaterial = material.buildThreeDepthMaterial(this.driver.varyings);
+      this.mesh.customDepthMaterial = material.buildThreeDepthMaterial(this.driver.layout);
     } else {
       this.mesh.castShadow = false;
       this.mesh.customDepthMaterial = undefined;
     }
     previousDepthMaterial?.dispose();
+  }
+
+  /**
+   * Replaces this emitter's trail - or removes it (`undefined`) - leaving the particles, their
+   * simulation and the playback schedule untouched. The new trail starts empty and fills in from
+   * the next tick on, with every uniform value {@link applyValues} has set on this emitter (those
+   * the new trail graph declares) carried over - a driven parameter keeps its value across the
+   * swap, as the particle material keeps it. For tooling (the editor swaps the trail on a
+   * trail-graph edit); an exported effect builds its trail once in {@link fromArtifacts}.
+   * @throws When the new trail cannot be built; the current trail is then left in place.
+   */
+  public applyTrailArtifact(
+    options: FXTrailOptions | undefined,
+    textures: FXFromArtifactsOptions["textures"] = {},
+  ): void {
+    if (this.destroyed) {
+      return;
+    }
+    // Built first: a throw leaves the current trail in place.
+    const next =
+      options === undefined
+        ? undefined
+        : FXEmitter.buildTrail(this.driver, options, textures, this.limits, this.trailLimitWarning);
+    next?.artifactMaterial.applyUniformValues(this.appliedUniforms);
+    this.trail?.destroy();
+    this.trail = next;
+    if (next !== undefined) {
+      this.add(next.mesh);
+    }
+  }
+
+  // The clock and this tick's object motion, for one of this emitter's materials.
+  private pushFrameUniforms(
+    material: FXArtifactMaterial,
+    deltaTime: number,
+    elapsedTime: number,
+  ): void {
+    material.setElapsedTime(elapsedTime);
+    material.setDeltaTime(deltaTime);
+    // emitterTransform.velocity/angularVelocity are always length 3 (see its declaration) -
+    // computed once per tick in onRendering -> tick.
+    material.setObjectVelocity(this.emitterTransform.velocity as [number, number, number]);
+    material.setObjectAngularVelocity(
+      this.emitterTransform.angularVelocity as [number, number, number],
+    );
   }
 
   private setSortFraction(value: number, context: string): void {
@@ -518,7 +662,7 @@ export class FXEmitter extends Object3D {
       return;
     }
 
-    this.driver.beginTick(deltaTime);
+    this.driver.beginTick(deltaTime, this.worldTransform());
 
     for (let i = this.pendingBursts.length - 1; i >= 0; i--) {
       const pending = this.pendingBursts[i];
@@ -569,12 +713,25 @@ export class FXEmitter extends Object3D {
     }
 
     this.driver.endTick(deltaTime, this.worldTransform());
+    this.trail?.record(deltaTime);
   }
 
   private readonly onRendering = (deltaTime: number): void => {
     this.tick(deltaTime);
 
     if (this.sortCamera === undefined) {
+      return;
+    }
+    if (this.trail !== undefined) {
+      // A sort moves particles between slots, and a trail's history is per slot - the editor
+      // never exports the two together, so this is a host setting sortCamera by hand.
+      if (!this.warnedAboutTrailSorting) {
+        this.warnedAboutTrailSorting = true;
+        console.warn(
+          "FXEmitter: sortCamera has no effect on an emitter with a trail - sorting would " +
+            "scramble the recorded particle paths.",
+        );
+      }
       return;
     }
     // `sortFraction` is public, so clamp here too: a direct assignment above 1 would grow the accumulator unbounded.
@@ -594,3 +751,18 @@ export class FXEmitter extends Object3D {
 
 // Returned by post-destroy `burst`/`play` - never matches a scheduled handler.
 const DEAD_HANDLER = -1;
+
+/**
+ * What `renderer`'s GPU offers a material: its vertex attribute and varying vector counts, or
+ * `undefined` without a renderer (or a stand-in that reports neither) - nothing is checked then.
+ */
+function deviceLimits(renderer: WebGLRenderer | undefined): FXRenderBudget | undefined {
+  const capabilities = renderer?.capabilities as
+    { maxAttributes?: unknown; maxVaryings?: unknown } | undefined;
+  const attributes = capabilities?.maxAttributes;
+  const varyingVectors = capabilities?.maxVaryings;
+  if (typeof attributes !== "number" || typeof varyingVectors !== "number") {
+    return undefined;
+  }
+  return { attributes, varyingVectors };
+}

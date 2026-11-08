@@ -83,10 +83,21 @@ export interface FXEffectEmitterSpec {
   readonly gpuBehavior?: FXParticleKernelArtifact;
   readonly expectedCapacity: number;
   readonly sortInterval: number;
+  /**
+   * A trail behind every particle (the emitter's trail graph), absent when the emitter has none.
+   * Its Timeline Values share the emitter's parameter names: one name drives every graph that
+   * declares it. Never exported together with a `sortInterval` above zero.
+   */
+  readonly trail?: FXEffectTrailSpec;
   /** Casts a shape-aware shadow; omitted (treated as false) by pre-shadow exports. */
   readonly castShadow?: boolean;
   /** Receives shadows; omitted (treated as false) by pre-shadow exports. */
   readonly receiveShadow?: boolean;
+  /**
+   * The external texture slots this emitter binds from the effect's `assets` - those of its render
+   * graph and, when it has a {@link trail}, its trail graph's too: both materials are built from
+   * this one list.
+   */
   readonly externalSlots: readonly string[];
   readonly transform: FXTransform;
   readonly transformTracks: readonly FXTransformTrack[];
@@ -98,6 +109,15 @@ export interface FXEffectEmitterSpec {
   /** Timeline Value names the editor marked "fake": excluded from `tracks`, driven only through
    * {@link FXEffect.setEmitterParam}. */
   readonly liveParams: readonly string[];
+}
+
+/** An emitter's trail: its render artifact per GLSL tier and how much path it keeps. */
+export interface FXEffectTrailSpec {
+  readonly render: FXRenderArtifactsByGLSLTier;
+  /** Recorded points per particle. */
+  readonly frames: number;
+  /** Seconds between two recorded points. */
+  readonly sampleInterval: number;
 }
 
 /** One VFX mesh's precompiled render artifact, transform, and value tracks (no behavior/events). */

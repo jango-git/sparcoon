@@ -81,19 +81,45 @@ describe("FXEmitter.applyRenderArtifact", () => {
     }
   });
 
-  it("rejects a render artifact whose attribute reads add a name the driver never allocated", () => {
-    // The original render artifact reads nothing extra; behavior writes no custom attributes
-    // either, so this driver's varyings are exactly the two core buffers.
+  it("applies in place a render reading an attribute nothing writes - as zero, with no buffer", () => {
+    // The behavior writes no custom attribute, so the mesh holds exactly the two core buffers - and
+    // keeps holding them: an attribute only the render reads is a zero constant in its shader.
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 5 }));
+    try {
+      const mesh = meshOf(emitter);
+      const materialBefore = mesh.material;
+      const attributesBefore = Object.keys(mesh.geometry.attributes).sort();
+
+      emitter.applyRenderArtifact(
+        unlitArtifact({ attributeReads: [{ name: "glow", components: 1 }] }),
+      );
+
+      expect(meshOf(emitter)).toBe(mesh);
+      expect(mesh.material).not.toBe(materialBefore);
+      expect(Object.keys(mesh.geometry.attributes).sort()).toEqual(attributesBefore);
+      expect("fx_glow" in mesh.propertyBuffers).toBe(false);
+      const { vertexShader } = mesh.material as unknown as { vertexShader: string };
+      expect(vertexShader).toContain("p_fx_glow = float(0.0);");
+      expect(vertexShader).not.toContain("a_fx_glow");
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("rejects a render artifact reading a written attribute at another width", () => {
+    const emitter = FXEmitter.fromArtifacts(
+      unlitArtifact(),
+      behaviorArtifact({ lifetime: 5, attributes: [{ name: "seed", components: 1 }] }),
+    );
     try {
       const mesh = meshOf(emitter);
       const materialBefore = mesh.material;
 
       expect(() =>
         emitter.applyRenderArtifact(
-          unlitArtifact({ attributeReads: [{ name: "glow", components: 1 }] }),
+          unlitArtifact({ attributeReads: [{ name: "seed", components: 3 }] }),
         ),
-      ).toThrow(/attribute reads no longer match/);
+      ).toThrow(/conflicting widths/);
 
       // Rejected in place: nothing about the live emitter changed.
       expect(mesh.material).toBe(materialBefore);

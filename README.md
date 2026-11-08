@@ -8,7 +8,7 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.10.0)
+[npm](https://www.npmjs.com/package/sparcoon/v/0.11.0)
 
 > **0.x.** The artifact format is not frozen yet - a minor release may still break it, so play an
 > effect with the runtime version the editor that exported it names.
@@ -93,8 +93,8 @@ resources. The textures and geometries you passed in are left alone: you own the
 
 Effects are built in the [Sparcoon Editor](https://jango-git.github.io/sparcoon-editor/): a
 browser-based node editor with a timeline and a three.js viewport. Each emitter there owns two
-graphs - behavior (per-particle simulation) and render (its material) - and exporting a project puts
-everything into one self-contained TypeScript module. You drop it into your source tree and import
+graphs - behavior (per-particle simulation) and render (its material) - plus an optional trail graph,
+and exporting a project puts everything into one self-contained TypeScript module. You drop it into your source tree and import
 it, as in the example above.
 
 Transform channels and timeline values can be marked by the artist as excluded from the export: the
@@ -134,8 +134,35 @@ An immediate `burst()` spawns from the emitter's pose and parameter values at th
 call, on the GPU path too - so moving the emitter between two bursts of one frame spawns them in two
 places.
 
-For diagnostics there are `particleCount` and `particleCapacity`. A GPU-driven emitter has no exact
-live count, so `particleCount` reports an honest upper bound - the buffer's current capacity.
+An emitter holds a fixed number of particles - the capacity set in the editor - on both the GPU and
+the JavaScript path: a ring that never grows. Each birth takes the next slot in turn and overwrites
+whatever is there, live or not, so the capacity has to cover the spawn rate times the longest
+lifetime, bursts included - otherwise particles die early, replaced by newer ones.
+
+An emitter authored with a trail draws a ribbon behind every particle, from a recorded history of
+each particle's path - on the GPU path too, where the history is copied inside video memory. A
+parameter name drives the particle and trail materials alike. Depth sorting would scramble that
+history, so `sortCamera` has no effect on an emitter with a trail (it warns once). Given a `renderer`, a
+trail that needs more vertex attributes or varying vectors than its GPU offers - a heavy trail on
+a WebGL1 device - is skipped with a warning, and the particles draw without it.
+
+For diagnostics there are `particleCount`, `particleCapacity` and `particleOverflowCount` (particles
+lost so far to a birth overwriting them, or to a burst larger than the capacity - nonzero means the
+capacity is too small; a development build also warns once, on the first). A GPU-driven emitter has
+no exact live count, so `particleCount` reports an honest upper bound - its capacity - and
+`particleOverflowCount` is `undefined`.
+
+## Migrating from 0.10
+
+- **Capacity is a fixed ring now, on the JavaScript path too.** In 0.10 a JavaScript-driven emitter
+  started at `expectedCapacity` and grew by `capacityStep` whenever it filled up; now it never grows,
+  and a birth into a full emitter overwrites a live particle. `capacityStep` is gone from the options
+  (a stale value is ignored).
+- **The default capacity is 256** (it was 32, growing by 32).
+- **Re-check the capacity of effects exported for 0.10.** One authored with a small capacity that
+  only worked because the emitter grew now loses particles: raise the capacity in the editor to
+  cover the spawn rate times the longest lifetime, and watch `particleOverflowCount` (or the
+  development-build warning) while testing.
 
 ## Multiple effects and worlds
 
@@ -166,6 +193,8 @@ The editor compiles a graph into artifacts and bakes them into a module together
 timeline:
 
 - **Render artifact** - GLSL, uniforms, texture references.
+- **Trail artifact** - an emitter's trail: GLSL of the same shape, plus how many points of each
+  particle's path it keeps and how often it records one. Absent when the emitter has no trail.
 - **Behavior artifact** - the authored spawn/update functions, bindings and buffer layout.
 - **GPU kernel** - a fused transform-feedback program, present only when the graph opted into GPU
   simulation and compiled.
@@ -176,6 +205,15 @@ id]`), a particle counts as dead once `age >= lifetime`, and everything else liv
 `a_fx_<name>` attributes. The package exports the constants of that layout (`FX_AGE`, `FX_LIFETIME`,
 `FX_ID`, `FX_CORE_POSITION` and the rest).
 
+Vertex attributes are the scarce resource (WebGL1 guarantees only 8), so the runtime packs
+particle fields that lie side by side in one buffer into a single attribute - a vec3 color and a
+float alpha travel as one vec4 - and splits them back apart in the shader, so the generated code
+reads the same `p_fx_<name>` values either way. This covers trail histories and the GPU kernel's
+particle slot; a JS-driven emitter's own particle attributes stay one per field. It is internal: no
+API changes, and nothing to opt into. An attribute the render reads but nothing writes has no
+buffer and no attribute slot at all - it is always zero, so the shader declares it as that
+constant.
+
 The math the generated code calls comes from here too (`fxMix`, `fxSmoothstep`, `fxNoise1` /
 `fxNoise2` / `fxNoise3`, `fxFbm`, `fxFbm3`, `fxFract`, `fxMod`, `fxSampleLut`), along with
 `fxDataTexture` for baked curves and gradients. There is no reason to import them by hand: the effect
@@ -184,10 +222,14 @@ module does it itself.
 ## Development-build checks
 
 Arguments to public methods are sanity-checked (finite numbers, positive durations, integer
-capacities) and throw with the parameter's name when violated. The checks live behind
+counts) and throw with the parameter's name when violated. The checks live behind
 `process.env.NODE_ENV !== "production"`, so they drop out of a production build entirely. The access
 to `process` is guarded by a `typeof` check, which keeps the package safe without a bundler - under
 import maps or from a CDN.
+
+A few values that are read once, when an emitter is built, are checked in every build instead,
+since a bad one would break the emitter outright rather than draw it wrong: the capacity (an integer
+of at least 1) and a trail's number of points and sampling interval. They throw a `RangeError`.
 
 ## Requirements
 
@@ -217,7 +259,9 @@ Babel or SWC as far as you need, down to first-generation iPad Pro hardware.
 
 A separate, unstable entry for tools that build objects from artifacts directly:
 `FXEmitter.fromArtifacts` and `FXMesh.fromArtifact`, targeted value updates, swapping the render half
-without resetting the simulation, and the keyframe-sampling functions shared with the editor. The
+without resetting the simulation, the keyframe-sampling functions shared with the editor, the
+render budgets, and the attribute-packing functions (`packingOrder`, `packConsecutive`,
+`floatGLSLType`) the editor lays a GPU kernel's buffers out with. The
 editor's live preview uses it. An application that simply plays a finished effect has no reason to go
 there: the whole path it needs runs through `FXEffect`.
 

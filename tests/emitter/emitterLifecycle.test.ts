@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Material } from "three";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
+import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import { FXWorld } from "../../src/world/FXWorld";
 import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
@@ -28,6 +29,35 @@ describe("FXEmitter.destroy releases GPU resources (audit-3 R4)", () => {
     emitter.destroy();
     expect(geometryDisposed).toBe(1);
     expect(materialDisposed).toBe(1);
+  });
+
+  it("disposes the shadow depth material it built", () => {
+    const emitter = plainEmitter({ castShadow: true });
+    const depth = meshOf(emitter).customDepthMaterial as Material;
+    let disposed = 0;
+    depth.addEventListener("dispose", () => disposed++);
+    emitter.destroy();
+    expect(disposed).toBe(1);
+  });
+
+  it("builds no depth material for an emitter that fails construction", () => {
+    const build = vi.spyOn(FXArtifactMaterial.prototype, "buildThreeDepthMaterial");
+    try {
+      expect(() =>
+        FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ noSpawn: true }), {
+          castShadow: true,
+        }),
+      ).toThrow(/cannot seed births/);
+      expect(build).not.toHaveBeenCalled();
+    } finally {
+      build.mockRestore();
+    }
+  });
+
+  it("rejects a capacity below one or fractional in every build", () => {
+    expect(() => plainEmitter({ expectedCapacity: 0 })).toThrow(RangeError);
+    expect(() => plainEmitter({ expectedCapacity: 2.5 })).toThrow(RangeError);
+    expect(() => plainEmitter({ expectedCapacity: Number.NaN })).toThrow(RangeError);
   });
 
   it("does not throw on a double destroy", () => {
@@ -84,7 +114,7 @@ describe("respawn into reused buffer rows (audit-4 B1)", () => {
   }
 
   it("a second burst into rows freed by dead particles starts them at age 0, not the previous occupant's age", () => {
-    const emitter = plainEmitter();
+    const emitter = plainEmitter({ expectedCapacity: 2 });
     try {
       // First burst into a freshly zeroed capacity - the one case that was already correct.
       emitter.burst(2);
@@ -93,13 +123,14 @@ describe("respawn into reused buffer rows (audit-4 B1)", () => {
       expect(lifecycleAt(emitter, 0, FX_LIFETIME)).toBe(4);
       expect(lifecycleAt(emitter, 0, FX_AGE)).toBe(0);
 
-      // Age past lifetime so both particles die and their rows are compacted away.
+      // Age past lifetime so both particles die; their slots stay in place, dead.
       tick(emitter, 5);
       expect(emitter.particleCount).toBe(0);
+      expect(lifecycleAt(emitter, 0, FX_AGE)).toBeGreaterThanOrEqual(4);
 
-      // Second burst reuses rows 0..1 - which still hold age >= lifetime from the dead
-      // occupants unless createInstances zeroes them. No spawn can reset age, so a stale
-      // age is unrecoverable.
+      // The ring holds 2, so the second burst wraps back onto slots 0..1 - which still hold
+      // age >= lifetime from the dead occupants unless claim() zeroes them. No spawn can reset
+      // age, so a stale age is unrecoverable.
       emitter.burst(2);
       expect(emitter.particleCount).toBe(2);
       expect(lifecycleAt(emitter, 0, FX_AGE)).toBe(0);
@@ -141,7 +172,7 @@ describe("per-particle id (JS/CPU backend, host-owned like age)", () => {
     }
   });
 
-  it("keeps a surviving particle's own id when an earlier row's death compacts it down", () => {
+  it("keeps every survivor in its own slot when an earlier slot's particle dies (no compaction)", () => {
     const emitter = plainEmitter();
     try {
       emitter.burst(3); // ids 0, 1, 2 at rows 0, 1, 2
@@ -152,10 +183,13 @@ describe("per-particle id (JS/CPU backend, host-owned like age)", () => {
       tick(emitter, 0.01);
 
       expect(emitter.particleCount).toBe(2);
-      // Compaction copies surviving rows 1/2 down over the dead row 0 - each id travels with
-      // its own row.
-      expect(lifecycleAt(emitter, 0, FX_ID)).toBe(1);
-      expect(lifecycleAt(emitter, 1, FX_ID)).toBe(2);
+      // A particle keeps its slot for life: the dead slot 0 stays put, survivors do not move.
+      expect(lifecycleAt(emitter, 0, FX_ID)).toBe(0);
+      expect(lifecycleAt(emitter, 1, FX_ID)).toBe(1);
+      expect(lifecycleAt(emitter, 2, FX_ID)).toBe(2);
+      expect(lifecycleAt(emitter, 0, FX_AGE)).toBeGreaterThanOrEqual(
+        lifecycleAt(emitter, 0, FX_LIFETIME),
+      );
     } finally {
       emitter.destroy();
     }

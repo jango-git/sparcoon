@@ -11,7 +11,13 @@ import {
 } from "../../src/coreLayout";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
-import { unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
+import {
+  NO_PARTICLE_READS,
+  VEC2_VARYING,
+  VEC3_VARYING,
+  layoutOf,
+  unlitArtifact,
+} from "../helpers/artifacts";
 
 /** Reaches the emitter's private mesh to inspect its per-particle buffers. */
 function meshOf(emitter: FXEmitter): FXInstancedParticle {
@@ -108,7 +114,7 @@ function coreVaryings(): Record<string, GLTypeInfo> {
 /** Builds the Three material from the driver and returns its bound uniform map. */
 function boundUniforms(material: FXArtifactMaterial): Record<string, { value: unknown }> {
   return (
-    material.buildThreeMaterial(coreVaryings()) as unknown as {
+    material.buildThreeMaterial(layoutOf(coreVaryings())) as unknown as {
       uniforms: Record<string, { value: unknown }>;
     }
   ).uniforms;
@@ -118,8 +124,18 @@ describe("FXEmitter.applyValues - render uniforms", () => {
   const withScalar = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: ["uniform float u_speed$0;"],
-    vertex: { varyingDeclarations: [], helperFunctions: [], body: [] },
-    fragment: { varyingDeclarations: [], helperFunctions: [], body: [] },
+    vertex: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
+    fragment: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
     outputs: { albedo: "vec4(u_speed$0)" },
     uniforms: { u_speed$0: { type: "float", value: 0.5 } },
     attributeReads: [],
@@ -128,8 +144,18 @@ describe("FXEmitter.applyValues - render uniforms", () => {
   const withExternal = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: ["uniform sampler2D u_flame$0;"],
-    vertex: { varyingDeclarations: [], helperFunctions: [], body: [] },
-    fragment: { varyingDeclarations: [], helperFunctions: [], body: [] },
+    vertex: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
+    fragment: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
     outputs: { albedo: "texture2D(u_flame$0, p_uv)" },
     uniforms: { u_flame$0: { type: "sampler2D", external: "flame" } },
     attributeReads: [],

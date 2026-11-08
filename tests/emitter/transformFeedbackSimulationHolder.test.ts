@@ -136,16 +136,9 @@ function meshFor(
   renderer: { getContext: () => unknown },
   holder: FXTransformFeedbackSimulationHolder,
 ): FXTransformFeedbackParticle {
-  const varyings = Object.fromEntries(
-    holder.layout.fields.map((field) => [
-      field.name,
-      { glslTypeName: "vec3", bufferSize: field.components, instantiable: true },
-    ]),
-  );
   return new FXTransformFeedbackParticle(
     renderer.getContext() as never,
     holder.layout,
-    varyings,
     16,
     new MeshBasicMaterial(),
     baseQuad(),

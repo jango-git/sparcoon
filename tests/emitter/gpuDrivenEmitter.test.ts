@@ -3,6 +3,7 @@ import { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
 import {
+  FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../../src/behaviorTransformFeedbackLayout";
@@ -137,6 +138,10 @@ function meshOf(emitter: FXEmitter): { capacity?: number; readBuffer?: unknown }
 // runtime through the unsafe cast above, since TS-only `private` is not enforced by the JS
 // runtime) - `readBuffer` is a real, structural discriminator: only FXTransformFeedbackParticle
 // has it at all.
+function gpuMeshOf(emitter: FXEmitter): FXTransformFeedbackParticle {
+  return (emitter as unknown as { mesh: FXTransformFeedbackParticle }).mesh;
+}
+
 function isGPUMesh(emitter: FXEmitter): boolean {
   return typeof meshOf(emitter).readBuffer === "function";
 }
@@ -175,6 +180,8 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       expect(isGPUMesh(emitter)).toBe(true);
       expect(meshOf(emitter).capacity).toBe(64);
       expect(emitter.particleCapacity).toBe(64);
+      // Slot occupancy is GPU-resident: overflow is unknowable, not zero.
+      expect(emitter.particleOverflowCount).toBeUndefined();
       // No CPU-visible live count for a GPU-driven emitter - capacity is reported instead of an
       // exact tally.
       expect(emitter.particleCount).toBe(64);
@@ -342,10 +349,12 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     );
     try {
       expect(isGPUMesh(emitter)).toBe(true);
-      const mesh = meshOf(emitter) as unknown as {
-        propertyBuffers: Record<string, unknown>;
-      };
-      expect(mesh.propertyBuffers["fx_velocity"]).toBeDefined();
+      // The kernel's slot (position, lifecycle, velocity: three vec3s) as packed views.
+      const mesh = gpuMeshOf(emitter);
+      expect(mesh.layout.fields.map((field) => field.name)).toContain("fx_velocity");
+      expect(Object.keys(mesh.geometry.attributes).filter((name) => name.startsWith("a_"))).toEqual(
+        ["a_pack0", "a_pack1", "a_pack2"],
+      );
       expect(() => world.update(1 / 60)).not.toThrow();
     } finally {
       emitter.destroy();
@@ -440,6 +449,25 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     }
   });
 
+  it("spends one particle id per birth asked for, like the JS backend, in a pass of its own or not", () => {
+    const { emitter, world, gl } = gpuEmitter(4);
+    try {
+      emitter.burst(3); // ids 0..2
+      emitter.burst(6); // larger than the ring: seeds 4 slots, ids 3..6, spends 3..8
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM)).toBe(3);
+      emitter.burst(1);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM)).toBe(9);
+      emitter.burst(6, { delay: 0.001 }); // inside the next tick's pass
+      world.update(1 / 60);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM)).toBe(10);
+      emitter.burst(1);
+      expect(gl.__uniformCalls.get(FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM)).toBe(16);
+    } finally {
+      emitter.destroy();
+      world.dispose();
+    }
+  });
+
   it("gathers spawns inside a tick (delayed bursts, plays) into that tick's own pass", () => {
     const { emitter, world, gl } = gpuEmitter(32);
     try {
@@ -511,7 +539,7 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     }
   });
 
-  it("applyRenderArtifact rejects a GPU emitter's render swap that adds an unallocated attribute", () => {
+  it("applyRenderArtifact applies a render reading an attribute the kernel does not write, as zero", () => {
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 5 }), {
       gpuKernel: minimalKernel(),
       renderer: mockRenderer() as never,
@@ -519,11 +547,14 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     });
     try {
       expect(isGPUMesh(emitter)).toBe(true);
-      expect(() =>
-        emitter.applyRenderArtifact(
-          unlitArtifact({ attributeReads: [{ name: "glow", components: 1 }] }),
-        ),
-      ).toThrow(/attribute reads no longer match/);
+      const mesh = gpuMeshOf(emitter);
+      const attributesBefore = Object.keys(mesh.geometry.attributes).sort();
+      emitter.applyRenderArtifact(
+        unlitArtifact({ attributeReads: [{ name: "glow", components: 1 }] }),
+      );
+      expect(Object.keys(mesh.geometry.attributes).sort()).toEqual(attributesBefore);
+      const { vertexShader } = mesh.material as unknown as { vertexShader: string };
+      expect(vertexShader).toContain("p_fx_glow = float(0.0);");
     } finally {
       emitter.destroy();
     }

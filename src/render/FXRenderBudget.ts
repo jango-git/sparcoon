@@ -1,20 +1,31 @@
 import type { ShaderMaterial } from "three";
+import {
+  heldBehaviorFields,
+  trailHistoryLayout,
+  trailReadFields,
+} from "../trail/FXTrailFields.Internal.js";
 import type {
   FXAttributeDecl,
+  FXBufferLayout,
   FXGLSLRenderTier,
   FXRenderArtifact,
 } from "../artifact/FXArtifact.js";
 import {
-  mergeAttributeWidths,
-  varyingsFromComponents,
+  gpuHeldFields,
+  jsHeldFields,
+  particleLayout,
 } from "../emitter/FXEmitterDriver.Internal.js";
+import { kernelSlotLayout } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import {
   buildArtifactDepthMaterial,
   buildArtifactMaterial,
   buildMeshArtifactDepthMaterial,
   buildMeshArtifactMaterial,
+  buildTrailArtifactMaterial,
+  createTrailUniforms,
   type FXFrameTimeUniform,
   type FXFrameVec3Uniform,
+  type FXTrailLayout,
 } from "./FXArtifactMaterial.Internal.js";
 
 /**
@@ -132,24 +143,48 @@ export function packedVaryingVectors(
   return vec4s + vec3s + vec2Rows + Math.ceil(Math.max(0, floats - freeColumns) / 4);
 }
 
-/** The attribute slots `vertexShader` takes: three's position, uv and normal, plus its own. */
-function vertexAttributes(vertexShader: string): number {
+/**
+ * The attribute slots `vertexShader` takes: the base geometry's (`baseAttributes` - three's
+ * position, uv and normal for a particle or mesh), plus its own.
+ */
+function vertexAttributes(vertexShader: string, baseAttributes: number): number {
   const own = [...vertexShader.matchAll(/^\s*attribute\s+\w+\s+\w+\s*;/gm)].length;
-  return 3 + own;
+  return baseAttributes + own;
 }
 
-function budgetOf(materials: readonly ShaderMaterial[], alphaHash: boolean): FXRenderBudget {
+function materialBudget(
+  material: ShaderMaterial,
+  alphaHash: boolean,
+  baseAttributes: number,
+): FXRenderBudget {
+  return {
+    attributes: vertexAttributes(material.vertexShader, baseAttributes),
+    varyingVectors: packedVaryingVectors(fragmentVaryings(material.fragmentShader, alphaHash)),
+  };
+}
+
+function budgetOf(
+  materials: readonly ShaderMaterial[],
+  alphaHash: boolean,
+  baseAttributes = 3,
+): FXRenderBudget {
   let attributes = 0;
   let varyingVectors = 0;
   for (const material of materials) {
-    attributes = Math.max(attributes, vertexAttributes(material.vertexShader));
-    varyingVectors = Math.max(
-      varyingVectors,
-      packedVaryingVectors(fragmentVaryings(material.fragmentShader, alphaHash)),
-    );
+    const budget = materialBudget(material, alphaHash, baseAttributes);
+    attributes = Math.max(attributes, budget.attributes);
+    varyingVectors = Math.max(varyingVectors, budget.varyingVectors);
     material.dispose();
   }
   return { attributes, varyingVectors };
+}
+
+/**
+ * @internal What a built trail material takes, counted as {@link fxTrailRenderBudget} counts it -
+ * so a trail's own check against the device and the editor's budget can never disagree.
+ */
+export function trailMaterialBudget(material: ShaderMaterial, alphaHash: boolean): FXRenderBudget {
+  return materialBudget(material, alphaHash, 1);
 }
 
 function frameUniforms(): [
@@ -161,21 +196,41 @@ function frameUniforms(): [
   return [{ value: 0 }, { value: 0 }, { value: [0, 0, 0] }, { value: [0, 0, 0] }];
 }
 
+/** Options of {@link fxEmitterRenderBudget}. */
+export interface FXEmitterRenderBudgetOptions {
+  /** Also count the shadow depth material (the larger of the two is the budget). */
+  readonly castShadow?: boolean;
+  /**
+   * The emitter's GPU kernel's `buffers`, in its order (`FXParticleKernelArtifact.buffers`): then
+   * the budget is the GPU-driven mesh's - the kernel's slot, read through its packed views (several
+   * fields per attribute), with `attributes` unused, as the GPU driver ignores the JS behavior's.
+   * Without it, the JS-driven mesh's: one attribute per field. Pass it for a Standard-tier budget
+   * of an emitter that has a kernel; the Baseline tier always runs the JS backend.
+   */
+  readonly kernelBuffers?: readonly FXBufferLayout[];
+}
+
 /**
  * What an emitter's render artifact takes of a GPU's attributes and varyings, read off the very
- * shaders the runtime builds for it - with the behavior's `attributes` (the buffers its kernel
- * keeps; the render may read only some) in the particle state they carry. Compare against
- * {@link FX_RENDER_BUDGET_MINIMUMS} for the artifact's tier.
+ * shaders the runtime builds for it, through the same layout its driver builds (`particleLayout`)
+ * - with the behavior's `attributes` (the buffers its kernel keeps; the render may read only some)
+ * in the particle state they carry. A field the render reads that nothing writes is a zero
+ * constant, so it takes no attribute. Compare against {@link FX_RENDER_BUDGET_MINIMUMS} for the
+ * artifact's tier.
  */
 export function fxEmitterRenderBudget(
   render: FXRenderArtifact,
   attributes: readonly FXAttributeDecl[],
-  options: { readonly castShadow?: boolean } = {},
+  options: FXEmitterRenderBudgetOptions = {},
 ): FXRenderBudget {
-  const varyings = varyingsFromComponents(mergeAttributeWidths(attributes, render.attributeReads));
-  const materials = [buildArtifactMaterial(render, varyings, ...frameUniforms())];
+  const held =
+    options.kernelBuffers === undefined
+      ? jsHeldFields(attributes)
+      : gpuHeldFields(kernelSlotLayout(options.kernelBuffers));
+  const layout = particleLayout(held, render.attributeReads);
+  const materials = [buildArtifactMaterial(render, layout, ...frameUniforms())];
   if (options.castShadow === true) {
-    materials.push(buildArtifactDepthMaterial(render, varyings, ...frameUniforms()));
+    materials.push(buildArtifactDepthMaterial(render, layout, ...frameUniforms()));
   }
   return budgetOf(materials, render.options?.renderMode === "alphaHash");
 }
@@ -190,4 +245,50 @@ export function fxMeshRenderBudget(
     materials.push(buildMeshArtifactDepthMaterial(render, ...frameUniforms()));
   }
   return budgetOf(materials, render.options?.renderMode === "alphaHash");
+}
+
+/** Options of {@link fxTrailRenderBudget}. */
+export interface FXTrailRenderBudgetOptions {
+  /** The history the trail draws over: `"js"` (the default, and the only one a WebGL1 tier ever
+   *  runs) or `"gpu"`. */
+  readonly backend?: "js" | "gpu";
+  /**
+   * With `backend: "gpu"`, the emitter's GPU kernel's `buffers`, in its order: the history copies
+   * that slot whole, so its packed views are what is mounted. Without it, a `"gpu"` budget gives
+   * every recorded field an attribute of its own - the most any kernel order could need. Unused on
+   * `"js"`, whose history lays its own point out.
+   */
+  readonly kernelBuffers?: readonly FXBufferLayout[];
+}
+
+/**
+ * The same for an emitter's trail artifact, for an emitter whose behavior writes `attributes`. A
+ * trail's base segment has a position only, so it takes no uv or normal slot; every packed view of
+ * the history takes two (the segment's two points), and a GPU history adds its frame index and the
+ * previous point's views. Laid out and packed by the same
+ * `trailHistoryLayout` the emitter's drivers mount from - with the behavior's attribute writes, or
+ * on `"gpu"` the kernel's slot when `kernelBuffers` is given, standing in for what the emitter holds.
+ */
+export function fxTrailRenderBudget(
+  render: FXRenderArtifact,
+  attributes: readonly FXAttributeDecl[],
+  options: FXTrailRenderBudgetOptions = {},
+): FXRenderBudget {
+  const reads = trailReadFields(render);
+  let layout: FXTrailLayout;
+  if (options.backend !== "gpu") {
+    layout = trailHistoryLayout("cpu", reads, heldBehaviorFields(attributes));
+  } else if (options.kernelBuffers === undefined) {
+    layout = trailHistoryLayout("gpu", reads, heldBehaviorFields(attributes));
+  } else {
+    const slot = kernelSlotLayout(options.kernelBuffers);
+    layout = trailHistoryLayout("gpu", reads, gpuHeldFields(slot).fields, slot);
+  }
+  const material = buildTrailArtifactMaterial(
+    render,
+    layout,
+    ...frameUniforms(),
+    createTrailUniforms(2, 1),
+  );
+  return budgetOf([material], render.options?.renderMode === "alphaHash", 1);
 }

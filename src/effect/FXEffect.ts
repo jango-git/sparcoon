@@ -16,6 +16,7 @@ import type {
 import { FXEmitter } from "../emitter/FXEmitter.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
+import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 import { FXWorld } from "../world/FXWorld.js";
 import type {
@@ -117,9 +118,13 @@ function geometriesFromAssets(
   return geometries;
 }
 
-/** Writes one parameter's sampled value into whichever render uniform / behavior bindings it declares. */
+/**
+ * Writes one parameter's sampled value into whichever render uniforms / behavior bindings declare
+ * it - `renders` are every render artifact of one entity (an emitter's particles and trail share
+ * its parameter names).
+ */
 function writeParameterSlots(
-  render: FXRenderArtifact,
+  renders: readonly FXRenderArtifact[],
   behavior: FXBehaviorArtifact,
   name: string,
   value: number | number[],
@@ -127,7 +132,7 @@ function writeParameterSlots(
   bindings: Record<string, number | Float32Array>,
 ): void {
   const uniformKey = PARAMETER_UNIFORM_PREFIX + name;
-  if (uniformKey in render.uniforms) {
+  if (renders.some((render) => uniformKey in render.uniforms)) {
     uniforms[uniformKey] = value;
   }
   const bindingKey = PARAMETER_BINDING_PREFIX + name;
@@ -144,26 +149,74 @@ function writeParameterSlots(
   }
 }
 
+/** A value slot (render uniform or behavior binding) whose `value` the value drive overwrites. */
+interface FXBakedSlot {
+  value?: unknown;
+}
+
+// Each slot's value as baked into the artifact, captured before anything drives it: the value
+// drive writes into the artifact's own slot (see FXArtifactMaterial.applyUniformValues), so the
+// slot itself only holds the last driven value. Keyed by slot, so every effect built from one
+// (module-scoped, shared) artifact restores the same baked value - the first one seen.
+const BAKED_VALUES = new WeakMap<FXBakedSlot, unknown>();
+
+/** A copy of `value` no later write can reach into (an array value is replaced, never mutated). */
+function copyValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return [...(value as unknown[])] as T;
+  }
+  return value instanceof Float32Array ? (new Float32Array(value) as T) : value;
+}
+
+/** Captures the baked value of every uniform of `render` and binding of `behavior` not yet seen. */
+function snapshotBakedValues(
+  renders: readonly FXRenderArtifact[],
+  behavior: FXBehaviorArtifact,
+): void {
+  const slots: FXBakedSlot[] = [
+    ...renders.flatMap((render) => Object.values(render.uniforms) as FXBakedSlot[]),
+    ...(Object.values(behavior.bindings) as FXBakedSlot[]),
+  ];
+  for (const slot of slots) {
+    if (!BAKED_VALUES.has(slot)) {
+      BAKED_VALUES.set(slot, copyValue(slot.value));
+    }
+  }
+}
+
+/** `slot`'s baked value - see {@link snapshotBakedValues} - as a fresh copy. */
+function bakedValue(slot: FXBakedSlot): unknown {
+  return copyValue(BAKED_VALUES.has(slot) ? BAKED_VALUES.get(slot) : slot.value);
+}
+
 /** Restores one parameter's baked baseline (a parameter that stopped being driven this frame). */
 function writeParameterBaseline(
-  render: FXRenderArtifact,
+  renders: readonly FXRenderArtifact[],
   behavior: FXBehaviorArtifact,
   name: string,
   uniforms: Record<string, number | number[]>,
   bindings: Record<string, number | Float32Array>,
 ): void {
   const uniformKey = PARAMETER_UNIFORM_PREFIX + name;
-  const uniform = render.uniforms[uniformKey];
-  // Types say `value` is defined once `"value" in uniform`, but guard the runtime
-  // `{ external, value: undefined }` case so we never bake an undefined baseline.
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  if (uniform !== undefined && "value" in uniform && uniform.value !== undefined) {
-    uniforms[uniformKey] = uniform.value as number | number[];
+  // The first graph declaring the name bakes the baseline - the editor gives every declaration of
+  // one name the same type and value.
+  for (const render of renders) {
+    const uniform = render.uniforms[uniformKey] as (typeof render.uniforms)[string] | undefined;
+    // Types say `value` is defined once `"value" in uniform`, but guard the runtime
+    // `{ external, value: undefined }` case so we never bake an undefined baseline.
+    if (uniform === undefined || !("value" in uniform)) {
+      continue;
+    }
+    const baked = bakedValue(uniform);
+    if (baked !== undefined) {
+      uniforms[uniformKey] = baked as number | number[];
+      break;
+    }
   }
   const bindingKey = PARAMETER_BINDING_PREFIX + name;
   for (const key in behavior.bindings) {
     if (key === bindingKey || key.startsWith(bindingKey + "_")) {
-      bindings[key] = behavior.bindings[key].value;
+      bindings[key] = bakedValue(behavior.bindings[key]) as number | Float32Array;
     }
   }
 }
@@ -187,10 +240,11 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
   private readonly specification: FXEffectSpec;
   private readonly world: FXWorld;
   private readonly emitters: FXEmitter[] = [];
-  // The single artifact resolved (by render target) from each emitter/mesh spec's
+  // The render artifacts resolved (by render target) from each emitter/mesh spec's
   // FXRenderArtifactsByGLSLTier - parallel to `emitters`/`meshes`, read by the parameter-drive path
-  // instead of re-resolving the spec's map on every call.
-  private readonly emitterRenders: FXRenderArtifact[] = [];
+  // instead of re-resolving the spec's map on every call. An emitter has its particles' artifact,
+  // then its trail's when it has one; a mesh has one.
+  private readonly emitterRenders: FXRenderArtifact[][] = [];
   private readonly meshRenders: FXRenderArtifact[] = [];
   private readonly meshMaterials: FXMeshMaterial[] = [];
   private readonly meshes: Mesh[] = [];
@@ -234,6 +288,17 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     for (const emitterSpec of specification.emitters) {
       const textures = texturesForSlots(emitterSpec.externalSlots, assets);
       const render = resolveRenderArtifact(emitterSpec.render, isWebGL2);
+      const trail =
+        emitterSpec.trail === undefined
+          ? undefined
+          : {
+              render: resolveRenderArtifact(emitterSpec.trail.render, isWebGL2),
+              frames: emitterSpec.trail.frames,
+              sampleInterval: emitterSpec.trail.sampleInterval,
+            };
+      const renders = trail === undefined ? [render] : [render, trail.render];
+      // Before anything below drives a value into these artifacts' slots.
+      snapshotBakedValues(renders, emitterSpec.behavior);
       const emitter = FXEmitter.fromArtifacts(
         render,
         emitterSpec.behavior,
@@ -249,10 +314,18 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           // effect never needs to know which one ends up driving a given emitter.
           gpuKernel: isWebGL2 ? emitterSpec.gpuBehavior : undefined,
           renderer: options.renderer,
+          trail,
         },
         this.world,
       );
-      if (options.camera !== undefined && emitterSpec.sortInterval > 0) {
+      if (emitterSpec.sortInterval > 0 && trail !== undefined) {
+        // The editor never exports the two together (sorting would scramble the trail's per-slot
+        // history), so this is a hand-edited or mismatched spec: the trail wins.
+        warnInDevelopment(
+          `FXEffect: emitter "${emitterSpec.name}" has both a trail and a sortInterval - ` +
+            "depth sorting is skipped on an emitter with a trail.",
+        );
+      } else if (options.camera !== undefined && emitterSpec.sortInterval > 0) {
         emitter.sortCamera = options.camera;
         emitter.sortFraction = 1 / emitterSpec.sortInterval;
       }
@@ -260,7 +333,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       this.add(emitter);
       this.emitterIndexByName.set(emitterSpec.name, this.emitters.length);
       this.emitters.push(emitter);
-      this.emitterRenders.push(render);
+      this.emitterRenders.push(renders);
       this.emitterDriven.push(new Set<string>());
     }
 
@@ -283,6 +356,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       this.add(mesh);
       this.meshIndexByName.set(meshSpec.name, this.meshes.length);
       this.meshes.push(mesh);
+      snapshotBakedValues([render], NO_BEHAVIOR_BINDINGS);
       this.meshRenders.push(render);
       this.meshMaterials.push(material);
       this.meshMotionTrackers.push(new FXObjectMotionTracker());
@@ -438,7 +512,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     const uniforms: Record<string, number | number[]> = {};
     const bindings: Record<string, number | Float32Array> = {};
     writeParameterSlots(
-      this.meshRenders[index],
+      [this.meshRenders[index]],
       NO_BEHAVIOR_BINDINGS,
       parameter,
       materializeValue(value),
@@ -597,17 +671,17 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
 
   private driveEmitterValues(index: number, values: Map<string, number | number[]>): void {
     const specification = this.specification.emitters[index];
-    const render = this.emitterRenders[index];
+    const renders = this.emitterRenders[index];
     const driven = this.emitterDriven[index];
     const uniforms: Record<string, number | number[]> = {};
     const bindings: Record<string, number | Float32Array> = {};
     for (const [name, value] of values) {
-      writeParameterSlots(render, specification.behavior, name, value, uniforms, bindings);
+      writeParameterSlots(renders, specification.behavior, name, value, uniforms, bindings);
       driven.add(name);
     }
     for (const name of [...driven]) {
       if (!values.has(name)) {
-        writeParameterBaseline(render, specification.behavior, name, uniforms, bindings);
+        writeParameterBaseline(renders, specification.behavior, name, uniforms, bindings);
         driven.delete(name);
       }
     }
@@ -622,12 +696,12 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     const uniforms: Record<string, number | number[]> = {};
     const bindings: Record<string, number | Float32Array> = {};
     for (const [name, value] of values) {
-      writeParameterSlots(render, NO_BEHAVIOR_BINDINGS, name, value, uniforms, bindings);
+      writeParameterSlots([render], NO_BEHAVIOR_BINDINGS, name, value, uniforms, bindings);
       driven.add(name);
     }
     for (const name of [...driven]) {
       if (!values.has(name)) {
-        writeParameterBaseline(render, NO_BEHAVIOR_BINDINGS, name, uniforms, bindings);
+        writeParameterBaseline([render], NO_BEHAVIOR_BINDINGS, name, uniforms, bindings);
         driven.delete(name);
       }
     }

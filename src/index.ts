@@ -10,6 +10,7 @@ export type {
   FXGeometrySource,
   FXKernelBuffers,
   FXParticleKernelArtifact,
+  FXParticleReads,
   FXRenderArtifact,
   FXShaderStageSource,
   FXUniformInit,
@@ -59,6 +60,7 @@ export type {
   FXEffectOptions,
   FXEffectPlayOptions,
   FXEffectSpec,
+  FXEffectTrailSpec,
   FXKeyEase,
 } from "./effect/FXEffectSpec.js";
 

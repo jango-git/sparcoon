@@ -1,6 +1,9 @@
-import type { BufferGeometry, Material } from "three";
-import { GLBufferAttribute, InstancedBufferGeometry, Mesh } from "three";
-import type { GLTypeInfo } from "./glTypeInfo.js";
+import type { BufferGeometry, InterleavedBufferAttribute, Material } from "three";
+import { InstancedBufferGeometry, Mesh } from "three";
+import type { FXBufferLayout } from "../artifact/FXArtifact.js";
+import { meshPropertyKeyFor } from "../coreLayout.js";
+import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
+import { packConsecutive } from "../render/FXAttributePacking.js";
 
 /** One state buffer's place in a particle's interleaved slot, in floats. */
 export interface FXSlotField {
@@ -13,14 +16,19 @@ export interface FXSlotField {
 /**
  * The interleaved per-particle slot a transform-feedback kernel writes: its state buffers back to
  * back, in the kernel's buffer order, `stride` floats in all. That order is also the order of the
- * kernel's input locations and output varyings, so a field's index is its attribute location.
+ * kernel's input locations and output varyings, so a field's index is its attribute location -
+ * which is why the runtime never reorders it: the editor lays the kernel's buffers out in
+ * `packingOrder` (see `FXAttributePacking.ts`), and {@link packed} only groups over that.
  */
 export interface FXSlotLayout {
   readonly stride: number;
   readonly fields: readonly FXSlotField[];
+  /** Every field, as the render reads it: adjacent fields packed into views of up to four floats,
+   *  each bound as `a_<view.name>` (`a_pack0`, ...). */
+  readonly packed: readonly FXPackedAttribute[];
 }
 
-/** Lays `buffers` out back to back, in order. */
+/** Lays `buffers` out back to back, in order, and packs the result. */
 export function slotLayout(
   buffers: readonly { readonly name: string; readonly components: number }[],
 ): FXSlotLayout {
@@ -30,23 +38,27 @@ export function slotLayout(
     stride += buffer.components;
     return field;
   });
-  return { stride, fields };
+  return { stride, fields, packed: packConsecutive(fields, (index) => `pack${String(index)}`) };
 }
 
 /**
- * @internal A `GLBufferAttribute` additionally declared instanced (divisor 1, one value per drawn
- * particle instead of per vertex): three drives the per-instance divisor purely from
- * `isInstancedBufferAttribute`/`meshPerAttribute` on the attribute object (`WebGLBindingStates`),
- * which a plain `GLBufferAttribute` never sets. Backs the attributes the kernel does not write.
+ * @internal The interleaved slot a kernel with these `buffers` writes: in order, under the mesh's
+ * property keys. A kernel's `buffers[].name` is the raw kernel name (`velocity`); the mesh keys a
+ * non-core buffer as `fx_velocity`, the same mapping the JS backend uses (`meshPropertyKeyFor`).
+ * The simulation holder lays its slot out by this, and the render budget does too.
  */
-class FXGLInstancedBufferAttribute extends GLBufferAttribute {
-  public readonly isInstancedBufferAttribute = true;
-  public readonly meshPerAttribute = 1;
+export function kernelSlotLayout(buffers: readonly FXBufferLayout[]): FXSlotLayout {
+  return slotLayout(
+    buffers.map((buffer) => ({
+      name: meshPropertyKeyFor(buffer.name),
+      components: buffer.stride,
+    })),
+  );
 }
 
 /**
- * @internal One field of the interleaved slot, as three's renderer reads it: per instance, at its
- * own offset, with the slot as stride, straight from our raw `WebGLBuffer`. No three class does
+ * @internal One packed view of the interleaved slot, as three's renderer reads it: per instance, at
+ * its own offset, with the slot as stride, straight from our raw `WebGLBuffer`. No three class does
  * that - a `GLBufferAttribute` is always bound tightly packed, and an `InterleavedBufferAttribute`
  * needs a CPU array three uploads itself - so this duck-types both: `isGLBufferAttribute` makes
  * `WebGLAttributes` register `buffer` as is, and `isInterleavedBufferAttribute` over an
@@ -55,7 +67,7 @@ class FXGLInstancedBufferAttribute extends GLBufferAttribute {
  * after checking `isGLBufferAttribute`, depending on the version; this works in either order
  * (checked against three 0.157, 0.165 and 0.179 on real WebGL2).
  */
-class FXInterleavedGLAttribute {
+export class FXInterleavedGLAttribute {
   public readonly isGLBufferAttribute = true;
   public readonly isInterleavedBufferAttribute = true;
   public readonly isInstancedInterleavedBuffer = true;
@@ -82,42 +94,48 @@ class FXInterleavedGLAttribute {
   }
 }
 
-type FXParticleAttribute = FXGLInstancedBufferAttribute | FXInterleavedGLAttribute;
+/** An attribute three binds over one of our buffers: interleaved over a CPU array, or over a raw
+ *  `WebGLBuffer` ({@link FXInterleavedGLAttribute}). */
+export type FXMountableAttribute = InterleavedBufferAttribute | FXInterleavedGLAttribute;
 
 /**
- * `InstancedBufferGeometry.setAttribute` is typed only for `BufferAttribute`/
- * `InterleavedBufferAttribute`, though three's renderer takes both shapes above. Narrow, isolated
- * escape hatch - matches the three.js-typing-gap precedent in
- * `FXInstancedParticle.invalidateInstanceCap`.
+ * @internal Sets one attribute per packed view onto `geometry` - `name(view)`, made by
+ * `makeView(view)` - the one mounting loop the CPU and GPU trail histories and the GPU particle
+ * mesh share, so what is bound is always exactly the views the layout lists (and the material
+ * declares). `InstancedBufferGeometry.setAttribute` is typed only for three's own attribute
+ * classes, though its renderer takes {@link FXInterleavedGLAttribute} too: a narrow escape hatch
+ * for a gap in three's typings, not in its behavior.
  */
-function setInstancedGLAttribute(
+export function mountPacked(
   geometry: InstancedBufferGeometry,
-  name: string,
-  attribute: FXParticleAttribute,
+  packed: readonly FXPackedAttribute[],
+  name: (view: FXPackedAttribute) => string,
+  makeView: (view: FXPackedAttribute) => FXMountableAttribute,
 ): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (geometry as any).setAttribute(name, attribute);
+  for (const view of packed) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (geometry as any).setAttribute(name(view), makeView(view));
+  }
 }
 
 /**
  * @internal GPU-resident sibling of `FXInstancedParticle`: the same instanced-mesh shape (one base
- * primitive drawn `capacity` times, an `a_<name>` attribute per declared varying), but its state
- * lives in one **ping-pong pair** of raw `WebGLBuffer`s that the transform-feedback simulation
- * holder writes directly, each particle one interleaved slot of {@link FXSlotLayout} - never a
- * `Float32Array` three uploads itself. A varying the kernel does not write (an attribute only the
- * render graph reads) gets a buffer of its own, zero-filled once and never swapped - the value the
- * JS backend gives it too.
+ * primitive drawn `capacity` times), but its state lives in one **ping-pong pair** of raw
+ * `WebGLBuffer`s that the transform-feedback simulation holder writes directly, each particle one
+ * interleaved slot of {@link FXSlotLayout} - never a `Float32Array` three uploads itself. The render
+ * reads the slot through its packed views (`FXSlotLayout.packed`), several fields per attribute. A
+ * field the kernel does not write (an attribute only the render graph reads) has no buffer here at
+ * all: the material declares it as the constant zero (`FXParticleLayout.missing`).
  *
- * Capacity is fixed at construction, no growth (unlike `FXInstancedParticle.ensureCapacity`).
+ * Capacity is fixed at construction, no growth - the same ring as `FXInstancedParticle`.
  * Every particle slot is always drawn (`instanceCount` is always `capacity`) - the CPU never knows
  * the true live count for a GPU-driven emitter, so dead slots are hidden by the render shader's
  * own age/lifetime test, not by shrinking the draw range.
  */
 export class FXTransformFeedbackParticle extends Mesh {
-  public readonly propertyBuffers: Record<string, FXParticleAttribute> = {};
   public readonly capacity: number;
 
-  private readonly layout: FXSlotLayout;
+  public readonly layout: FXSlotLayout;
   private readonly instancedGeometry: InstancedBufferGeometry;
   private readonly gl: WebGL2RenderingContext;
 
@@ -125,12 +143,10 @@ export class FXTransformFeedbackParticle extends Mesh {
   // next transform-feedback pass writes. Never read and written in the same pass.
   private readonly slotBuffers: readonly [WebGLBuffer, WebGLBuffer];
   private currentIndex: 0 | 1 = 0;
-  private readonly constantBuffers: WebGLBuffer[] = [];
 
   constructor(
     gl: WebGL2RenderingContext,
     layout: FXSlotLayout,
-    varyings: Record<string, GLTypeInfo>,
     capacity: number,
     material: Material,
     baseGeometry: BufferGeometry,
@@ -164,19 +180,6 @@ export class FXTransformFeedbackParticle extends Mesh {
       this.createSizedBuffer(layout.stride * capacity),
     ];
     this.mountSlotAttributes();
-
-    const written = new Set(layout.fields.map((field) => field.name));
-    for (const name in varyings) {
-      if (written.has(name)) {
-        continue;
-      }
-      const { bufferSize } = varyings[name];
-      const buffer = this.createZeroedBuffer(bufferSize * capacity);
-      this.constantBuffers.push(buffer);
-      const attribute = new FXGLInstancedBufferAttribute(buffer, gl.FLOAT, bufferSize, 4, capacity);
-      setInstancedGLAttribute(this.instancedGeometry, `a_${name}`, attribute);
-      this.propertyBuffers[name] = attribute;
-    }
   }
 
   /** The half a transform-feedback pass reads as its input - last pass's result. */
@@ -191,7 +194,7 @@ export class FXTransformFeedbackParticle extends Mesh {
 
   /**
    * Call once after a pass has written {@link writeBuffer}: flips which half is current and gives
-   * every field a fresh attribute object on the new half - never the same object retargeted. Three
+   * every packed view a fresh attribute object on the new half - never the same object retargeted. Three
    * decides whether a cached VAO needs its pointers rebound purely by attribute object identity
    * (`WebGLBindingStates.needsUpdate`), so a reused object would leave the draw bound to the first
    * buffer forever (three.js issue #22843, the same root cause).
@@ -245,26 +248,28 @@ export class FXTransformFeedbackParticle extends Mesh {
     this.instancedGeometry.setIndex(null);
     this.instancedGeometry.dispose();
     (this.material as Material | undefined)?.dispose();
-    for (const buffer of [...this.slotBuffers, ...this.constantBuffers]) {
+    for (const buffer of this.slotBuffers) {
       this.gl.deleteBuffer(buffer);
     }
   }
 
-  /** Points every slot field's `a_<name>` attribute at the current half. */
+  /** Points every packed view's `a_<view.name>` attribute at the current half. */
   private mountSlotAttributes(): void {
     const buffer = this.readBuffer();
-    for (const field of this.layout.fields) {
-      const attribute = new FXInterleavedGLAttribute(
-        this.gl,
-        buffer,
-        field.components,
-        field.offset,
-        this.layout.stride,
-        this.capacity,
-      );
-      setInstancedGLAttribute(this.instancedGeometry, `a_${field.name}`, attribute);
-      this.propertyBuffers[field.name] = attribute;
-    }
+    mountPacked(
+      this.instancedGeometry,
+      this.layout.packed,
+      (view) => `a_${view.name}`,
+      (view) =>
+        new FXInterleavedGLAttribute(
+          this.gl,
+          buffer,
+          view.components,
+          view.offset,
+          this.layout.stride,
+          this.capacity,
+        ),
+    );
   }
 
   /** A buffer of `floats` floats, sized but uninitialized. */
@@ -276,15 +281,6 @@ export class FXTransformFeedbackParticle extends Mesh {
       floats * Float32Array.BYTES_PER_ELEMENT,
       this.gl.DYNAMIC_DRAW,
     );
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
-    return buffer;
-  }
-
-  /** A buffer of `floats` zeros. */
-  private createZeroedBuffer(floats: number): WebGLBuffer {
-    const buffer = this.gl.createBuffer();
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(floats), this.gl.DYNAMIC_DRAW);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
     return buffer;
   }

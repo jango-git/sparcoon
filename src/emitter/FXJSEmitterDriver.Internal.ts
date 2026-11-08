@@ -1,69 +1,83 @@
 import type { BufferGeometry, InstancedBufferAttribute, Vector3 } from "three";
 import type { FXBehaviorArtifact, FXEmitterTransform } from "../artifact/FXArtifact.js";
-import {
-  FX_AGE,
-  FX_CORE_LIFECYCLE,
-  FX_CORE_POSITION,
-  FX_ID,
-  meshPropertyKeyFor,
-} from "../coreLayout.js";
+import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_ID, meshPropertyKeyFor } from "../coreLayout.js";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
-import type { FXEmitterDriver } from "./FXEmitterDriver.Internal.js";
-import {
-  mergeAttributeWidths,
-  sameVaryings,
-  varyingsFromComponents,
-} from "./FXEmitterDriver.Internal.js";
+import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
+import type { FXEmitterDriver, FXHeldParticleFields } from "./FXEmitterDriver.Internal.js";
+import { jsHeldFields, particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
+import { warnInDevelopment } from "../miscellaneous/asserts.js";
+import { heldBehaviorFields, trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
+import { FXCPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 
 /**
- * @internal The CPU (JS) particle-simulation backend: a dense, compacting `FXInstancedParticle`
+ * @internal The CPU (JS) particle-simulation backend: a fixed-capacity ring `FXInstancedParticle`
  * mesh driven by a precompiled `FXBehaviorArtifact` through `FXSimulationHolder`. Self-sufficient
- * from its own artifact - its varyings come from `behavior.attributeWrites` (+ the render
- * artifact's `attributeReads`), never from a GPU kernel artifact.
+ * from its own artifact - its buffers come from `behavior.attributeWrites` alone, never from a GPU
+ * kernel artifact; a field only the render reads is a zero constant in the shader, not a buffer
+ * (see `particleLayout`). Its attributes stay one per field: the emitted kernel indexes each
+ * field's own array by literal offsets, so packing them would change that ABI.
+ *
+ * Kept step-for-step with the GPU backend's fused pass, so an emitter looks the same on either:
+ * each tick first updates every slot that existed before it, reading its age as of the previous
+ * tick, then ages it - and only then do the tick's births land, seeded but not updated until the
+ * next tick. A birth overwrites the slot at the cursor whether it is live or not, on both backends.
+ *
+ * While no particle is alive (after the last one died, until the next birth), a tick skips the
+ * update, the aging and every upload: every slot is dead - and stays dead, its age frozen at or
+ * past its lifetime - so none of it would change anything drawn (the mesh draws no instance then,
+ * see `FXInstancedParticle.instanceCount`). The drawn range itself is kept (a trail's history
+ * relies on it never shrinking, see `FXCPUTrailHistory`).
  */
 export class FXJSEmitterDriver implements FXEmitterDriver {
   public readonly mesh: FXInstancedParticle;
-  public readonly varyings: Record<string, GLTypeInfo>;
 
   private readonly simulation: FXSimulationHolder;
+  // What the mesh holds - fixed by the behavior - and the current render's layout over it.
+  private readonly held: FXHeldParticleFields;
+  private currentLayout: FXParticleLayout;
 
-  // Frame-loop cache for kernelBuffers(); rebuilt when the mesh's buffer set changes.
-  private kernelBuffersCache?: Record<string, Float32Array>;
-  private kernelBuffersCacheVersion = -1;
+  // Name -> backing array, handed to every kernel call. Built once: the ring never reallocates.
+  private readonly kernelBuffers: Record<string, Float32Array>;
 
   // Host-owned, monotonic per-emitter counter (like age, never touched by the compiled kernel/
   // graph) - persists across reset() the same way FXTransformFeedbackSimulationHolder's
   // randSeedCounter does, only restarting when this driver itself is rebuilt from artifacts.
   private nextParticleId = 0;
+  // The first overflow of this emitter's ring is reported once, in development builds.
+  private warnedAboutOverflow = false;
 
   constructor(
     behavior: FXBehaviorArtifact,
     material: FXArtifactMaterial,
     capacity: number,
-    capacityStep: number,
     baseGeometry: BufferGeometry,
   ) {
     this.simulation = new FXSimulationHolder(behavior);
-    const components = mergeAttributeWidths(
-      this.simulation.attributeWrites,
-      material.attributeReads,
-    );
-    this.varyings = varyingsFromComponents(components);
-    const threeMaterial = material.buildThreeMaterial(this.varyings);
+    this.held = jsHeldFields(this.simulation.attributeWrites);
+    this.currentLayout = particleLayout(this.held, material.attributeReads);
+    const threeMaterial = material.buildThreeMaterial(this.currentLayout);
     this.mesh = new FXInstancedParticle(
-      this.varyings,
+      { ...this.held.fields },
       capacity,
-      capacityStep,
       threeMaterial,
       baseGeometry,
     );
+    this.kernelBuffers = this.buildKernelBuffers();
+  }
+
+  public get layout(): FXParticleLayout {
+    return this.currentLayout;
   }
 
   public get particleCount(): number {
-    return this.mesh.instanceCount;
+    return this.mesh.liveCount;
+  }
+
+  public get particleOverflowCount(): number {
+    return this.mesh.overflowCount;
   }
 
   public get particleCapacity(): number {
@@ -75,56 +89,58 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
   }
 
   public spawn(count: number, transform: FXEmitterTransform): void {
-    const instanceBegin = this.mesh.instanceCount;
-    this.mesh.createInstances(count);
-    const instanceEnd = this.mesh.instanceCount;
-
     // Host-owned, like age: no write slot exists for id (the editor's FXParticleBehaviorTarget.ts
     // scalarWriteSlots never lists it), so no graph can ever collide with this assignment.
+    //
+    // Every birth asked for takes an id, seeded or not - a burst larger than the ring seeds only
+    // `capacity` slots, `firstId + 0..capacity-1` in claim order, yet consumes `count` ids - exactly
+    // as the GPU kernel numbers a spawn range (`u_fxSpawnIdBase + relative index`, the base then
+    // advanced by the whole count), so the two backends hand out the same ids.
     const lifecycle = this.mesh.propertyBuffers[FX_CORE_LIFECYCLE];
     const { array: lifecycleArray, itemSize: lifecycleItemSize } = lifecycle;
-    for (let i = instanceBegin; i < instanceEnd; i++) {
-      lifecycleArray[i * lifecycleItemSize + FX_ID] = this.nextParticleId++;
+    const firstId = this.nextParticleId;
+    this.nextParticleId += count;
+    let nextId = firstId;
+    for (const range of this.mesh.claim(count)) {
+      for (let i = range.start; i < range.start + range.count; i++) {
+        lifecycleArray[i * lifecycleItemSize + FX_ID] = nextId++;
+      }
+      // Re-checked (defensive): no spawn function would leave the freshly zeroed rows born dead.
+      if (this.simulation.canSpawn) {
+        this.simulation.spawn(this.kernelBuffers, range.start, range.count, transform);
+      }
     }
-
-    // Re-checked (defensive): no spawn function would leave the freshly zeroed rows born dead.
-    if (this.simulation.canSpawn) {
-      this.simulation.spawn(
-        this.kernelBuffers(),
-        instanceBegin,
-        instanceEnd - instanceBegin,
-        transform,
+    this.markBuffersNeedUpdate(this.simulation.spawnWrittenBuffers);
+    if (!this.warnedAboutOverflow && this.mesh.overflowCount > 0) {
+      this.warnedAboutOverflow = true;
+      warnInDevelopment(
+        "FXEmitter: a birth overwrote a live particle (or a burst exceeded the ring) - the " +
+          `emitter's capacity (${String(this.mesh.instanceCapacity)}) is smaller than its spawn ` +
+          "rate x maximum lifetime, so particles die early. See particleOverflowCount.",
       );
-      this.markBuffersNeedUpdate(this.simulation.spawnWrittenBuffers);
     }
   }
 
-  public beginTick(deltaTime: number): void {
-    // Age increment + cull. Age is owned by this fixed loop, not the graph - same for every effect.
-    const lifecycle = this.mesh.propertyBuffers[FX_CORE_LIFECYCLE];
-    const { array, itemSize } = lifecycle;
-    const instanceCount = this.mesh.instanceCount;
-
-    for (let i = 0; i < instanceCount; i++) {
-      array[i * itemSize + FX_AGE] += deltaTime;
-    }
-
-    this.mesh.removeDeadParticles();
-  }
-
-  public endTick(deltaTime: number, transform: FXEmitterTransform): void {
-    if (this.mesh.instanceCount === 0) {
+  public beginTick(deltaTime: number, transform: FXEmitterTransform): void {
+    const slotCount = this.mesh.instanceCount;
+    // Nothing alive (or nothing ever born): see the class doc.
+    if (slotCount === 0 || this.mesh.liveCount === 0) {
       return;
     }
-
     // Motion integration lives in the graph (an `integrate-motion` node writes
-    // `position += velocity * dt`), not in this host loop.
-    this.simulation.update(this.kernelBuffers(), this.mesh.instanceCount, deltaTime, transform);
+    // `position += velocity * dt`), not in this host loop. Every drawn slot is passed, dead ones
+    // too, exactly as the GPU pass covers every slot - a dead slot's state is never shown.
+    this.simulation.update(this.kernelBuffers, slotCount, deltaTime, transform);
     this.markBuffersNeedUpdate(this.simulation.updateWrittenBuffers);
 
-    // Age (written in beginTick) must reach the GPU this frame; the update phase's buffers were
-    // flagged already.
-    this.mesh.propertyBuffers[FX_CORE_LIFECYCLE].needsUpdate = true;
+    // After the update, as the GPU pass does: the update reads last tick's age. Age is owned by
+    // this fixed loop, not the graph - same for every effect.
+    this.mesh.advanceAges(deltaTime);
+  }
+
+  public endTick(): void {
+    // Nothing left: the update ran in beginTick, before this tick's births, and births seed
+    // themselves in spawn().
   }
 
   public sortByDistance(cameraWorldPosition: Vector3): void {
@@ -145,37 +161,35 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
   }
 
   public applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void {
-    // Recomputed exactly as the constructor does, against this driver's OWN behavior writes
-    // (never the other backend's) - a stale merge here would wrongly pass a real layout change.
-    const components = mergeAttributeWidths(
-      this.simulation.attributeWrites,
-      material.attributeReads,
-    );
-    const nextVaryings = varyingsFromComponents(components);
-    if (!sameVaryings(this.varyings, nextVaryings)) {
-      throw new Error(
-        "FXJSEmitterDriver.applyRenderArtifact: the new render artifact's attribute reads no " +
-          "longer match this emitter's allocated buffers - a full rebuild (fromArtifacts) is required",
-      );
-    }
-    // this.varyings is value-equal to nextVaryings (just proved by sameVaryings above) - built
-    // from nextVaryings so a future reader never has to re-derive that equivalence to trust this.
-    const threeMaterial = material.buildThreeMaterial(nextVaryings);
+    // Over this driver's OWN held fields (never the other backend's): they depend on the behavior
+    // alone, so the buffers always fit - a new unwritten read is one more zero constant. Throws
+    // (before anything changes) only on a read at another width than held.
+    const layout = particleLayout(this.held, material.attributeReads);
+    const threeMaterial = material.buildThreeMaterial(layout);
     this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry);
+    this.currentLayout = layout;
+  }
+
+  public createTrailHistory(
+    reads: Readonly<Record<string, GLTypeInfo>>,
+    frames: number,
+  ): FXCPUTrailHistory {
+    return new FXCPUTrailHistory(
+      this.mesh.propertyBuffers,
+      () => this.mesh.instanceCount,
+      () => this.mesh.liveCount,
+      trailHistoryLayout("cpu", reads, heldBehaviorFields(this.simulation.attributeWrites)),
+      this.mesh.instanceCapacity,
+      frames,
+    );
   }
 
   public destroy(): void {
-    this.kernelBuffersCache = undefined;
     this.mesh.destroy();
   }
 
-  // Maps each kernel state-buffer name to its backing Float32Array. Cached across ticks/bursts and
-  // rebuilt only when the mesh's buffer set changes (`bufferVersion` - capacity growth).
-  private kernelBuffers(): Record<string, Float32Array> {
-    const version = this.mesh.bufferVersion;
-    if (this.kernelBuffersCache !== undefined && this.kernelBuffersCacheVersion === version) {
-      return this.kernelBuffersCache;
-    }
+  // Maps each kernel state-buffer name to its backing Float32Array.
+  private buildKernelBuffers(): Record<string, Float32Array> {
     const buffers: Record<string, Float32Array> = {
       [FX_CORE_POSITION]: this.mesh.propertyBuffers[FX_CORE_POSITION].array as Float32Array,
       [FX_CORE_LIFECYCLE]: this.mesh.propertyBuffers[FX_CORE_LIFECYCLE].array as Float32Array,
@@ -187,8 +201,6 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
         buffers[buffer.name] = attribute.array as Float32Array;
       }
     }
-    this.kernelBuffersCache = buffers;
-    this.kernelBuffersCacheVersion = version;
     return buffers;
   }
 

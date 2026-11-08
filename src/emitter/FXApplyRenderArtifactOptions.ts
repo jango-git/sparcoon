@@ -2,7 +2,7 @@ import type { BufferGeometry, Texture } from "three";
 
 /**
  * Options for {@link FXEmitter.applyRenderArtifact}: the render-only subset of
- * {@link FXFromArtifactsOptions} - no `expectedCapacity`/`capacityStep`/`gpuKernel`/`renderer`,
+ * {@link FXFromArtifactsOptions} - no `expectedCapacity`/`gpuKernel`/`renderer`,
  * since none of those can change without a full {@link FXEmitter.fromArtifacts} rebuild. The app
  * owns `textures`/`geometries`' lifecycle; the runtime never disposes them.
  */

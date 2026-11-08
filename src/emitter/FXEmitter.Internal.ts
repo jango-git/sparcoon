@@ -13,10 +13,13 @@ export interface FXApplyValues {
 }
 
 export interface FXEmitterOptions {
-  /** Initial buffer size in particles; grows automatically. default 32 */
+  /**
+   * Particle capacity: a fixed ring on both backends, never grown - a birth overwrites the slot at
+   * the cursor whether its particle is live or not. So it must cover the spawn rate times the
+   * longest lifetime, bursts included; a nonzero `particleOverflowCount` means particles died
+   * early because it did not. An integer >= 1, checked in every build. default 256
+   */
   expectedCapacity: number;
-  /** Growth increment when capacity is reached. default 32 */
-  capacityStep: number;
   /** default false */
   receiveShadow: boolean;
   /** Casts a shape-aware shadow (a customDepthMaterial built from the render artifact). default false */
@@ -39,8 +42,7 @@ export interface FXEmitterPlayOptions {
   duration: number;
 }
 
-export const EMITTER_DEFAULT_EXPECTED_CAPACITY = 32;
-export const EMITTER_DEFAULT_CAPACITY_STEP = 32;
+export const EMITTER_DEFAULT_EXPECTED_CAPACITY = 256;
 export const EMITTER_DEFAULT_RECEIVE_SHADOW = false;
 export const EMITTER_DEFAULT_CAST_SHADOW = false;
 export const EMITTER_DEFAULT_SORT_FRACTION = 1 / 10;

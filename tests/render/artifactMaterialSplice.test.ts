@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
-import { unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
+import {
+  NO_PARTICLE_READS,
+  VEC2_VARYING,
+  VEC3_VARYING,
+  layoutOf,
+  unlitArtifact,
+} from "../helpers/artifacts";
 
 /** The two fixed core buffers plus any named attribute varyings the outputs reference. */
 function varyings(attrs: Record<string, GLTypeInfo> = {}): Record<string, GLTypeInfo> {
@@ -19,7 +25,9 @@ function assembledShaders(
   render: FXRenderArtifact,
   props: Record<string, GLTypeInfo>,
 ): { vertexShader: string; fragmentShader: string; extensions: { derivatives?: boolean } } {
-  const material = new FXArtifactMaterial(render).buildThreeMaterial(props) as unknown as {
+  const material = new FXArtifactMaterial(render).buildThreeMaterial(
+    layoutOf(props),
+  ) as unknown as {
     vertexShader: string;
     fragmentShader: string;
     extensions: { derivatives?: boolean };
@@ -52,8 +60,7 @@ describe("unlit ShaderMaterial assembly", () => {
   });
 
   it("pushes a dead particle's vertex outside the clip volume, unconditionally on render mode", () => {
-    // A GPU-driven emitter always draws its full fixed capacity, dead slots included (no
-    // compaction, unlike FXInstancedParticle's removeDeadParticles) - this line is what keeps
+    // Both backends draw their ring's dead slots in place (no compaction) - this line is what keeps
     // those slots from actually rendering. Checked here (unlit) and not re-checked per render
     // mode: the injection sits before alphaDiscardLines' own per-mode branching entirely.
     const { vertexShader } = assembledShaders(unlitArtifact(), varyings());
@@ -114,8 +121,18 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
   const lit = (intrinsics: readonly string[]): FXRenderArtifact => ({
     lightingIntrinsics: intrinsics,
     uniformDeclarations: [],
-    vertex: { varyingDeclarations: [], helperFunctions: [], body: [] },
-    fragment: { varyingDeclarations: [], helperFunctions: [], body: [] },
+    vertex: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
+    fragment: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
     // Shading lives in the graph: `albedo` already carries the intrinsic call.
     outputs: { albedo: "fxLambertShade(vec4(1.0), geometryNormal)" },
     uniforms: {},
@@ -164,8 +181,18 @@ describe("render mode + additivity blend tail", () => {
   const artifact = (over: Partial<FXRenderArtifact>): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: [],
-    vertex: { varyingDeclarations: [], helperFunctions: [], body: [] },
-    fragment: { varyingDeclarations: [], helperFunctions: [], body: [] },
+    vertex: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
+    fragment: {
+      varyingDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
     outputs: { albedo: "vec4(1.0)" },
     uniforms: {},
     attributeReads: [],
@@ -251,7 +278,9 @@ describe("particle material object-velocity/object-angular-velocity uniforms", (
 
   it("defaults both to zero and updates live through the setters", () => {
     const material = new FXArtifactMaterial(unlitArtifact());
-    const built = material.buildThreeMaterial(varyings()) as unknown as AssembledMaterialUniforms;
+    const built = material.buildThreeMaterial(
+      layoutOf(varyings()),
+    ) as unknown as AssembledMaterialUniforms;
     expect(built.uniforms.objectVelocity.value).toEqual([0, 0, 0]);
     expect(built.uniforms.objectAngularVelocity.value).toEqual([0, 0, 0]);
 
@@ -264,7 +293,7 @@ describe("particle material object-velocity/object-angular-velocity uniforms", (
   it("also wires the depth material's uniforms (shadow-caster geometry pass)", () => {
     const material = new FXArtifactMaterial(unlitArtifact());
     const depth = material.buildThreeDepthMaterial(
-      varyings(),
+      layoutOf(varyings()),
     ) as unknown as AssembledMaterialUniforms;
     material.setObjectVelocity([7, 8, 9]);
     expect(depth.uniforms.objectVelocity.value).toEqual([7, 8, 9]);

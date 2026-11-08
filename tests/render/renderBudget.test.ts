@@ -13,7 +13,7 @@ import {
   packedVaryingVectors,
 } from "../../src/render/FXRenderBudget";
 import { varyingsFromComponents } from "../../src/emitter/FXEmitterDriver.Internal";
-import { unlitArtifact } from "../helpers/artifacts";
+import { layoutOf, unlitArtifact } from "../helpers/artifacts";
 
 const UNIFORMS = [{ value: 0 }, { value: 0 }, { value: [0, 0, 0] }, { value: [0, 0, 0] }] as const;
 
@@ -22,10 +22,13 @@ function lit(render: FXRenderArtifact): FXRenderArtifact {
 }
 
 /** A vec3 behavior attribute `tint`, read by the fragment stage or not. */
-function withTint(fragmentReads: boolean): FXRenderArtifact {
+/** A render whose fragment stage reads the tint (`true`), only its vertex stage (`false`), or
+ *  neither (`"never"`). */
+function withTint(fragmentReads: boolean | "never"): FXRenderArtifact {
   return unlitArtifact({
     attributeReads: [{ name: "tint", components: 3 }],
-    outputs: { albedo: fragmentReads ? "vec4(p_fx_tint, 1.0)" : "vec4(1.0)" },
+    vertexBody: fragmentReads === false ? ["float fxTintSum = dot(p_fx_tint, vec3(1.0));"] : [],
+    outputs: { albedo: fragmentReads === true ? "vec4(p_fx_tint, 1.0)" : "vec4(1.0)" },
   });
 }
 
@@ -59,27 +62,40 @@ describe("packedVaryingVectors (GLSL ES packing rules)", () => {
 describe("particle varying compaction", () => {
   it("makes a property a varying only when the fragment stage reads it", () => {
     const varyings = varyingsFromComponents(new Map([["tint", 3]]));
-    const unread = buildArtifactMaterial(withTint(false), varyings, ...UNIFORMS);
+    const unread = buildArtifactMaterial(withTint(false), layoutOf(varyings), ...UNIFORMS);
     expect(unread.fragmentShader).not.toMatch(/\bp_fx_tint\b/);
     // Still a vertex-stage global the generated vertex code can read.
     expect(unread.vertexShader).toMatch(/^vec3 p_fx_tint;$/m);
     expect(unread.vertexShader).toMatch(/^attribute vec3 a_fx_tint;$/m);
 
-    const read = buildArtifactMaterial(withTint(true), varyings, ...UNIFORMS);
+    const read = buildArtifactMaterial(withTint(true), layoutOf(varyings), ...UNIFORMS);
     expect(read.fragmentShader).toMatch(/^varying vec3 p_fx_tint;$/m);
     expect(read.vertexShader).toMatch(/^varying vec3 p_fx_tint;$/m);
   });
 
+  it("declares no attribute for a held field the render never reads", () => {
+    const varyings = varyingsFromComponents(new Map([["tint", 3]]));
+    const never = buildArtifactMaterial(withTint("never"), layoutOf(varyings), ...UNIFORMS);
+    expect(never.vertexShader).not.toMatch(/^attribute vec3 a_fx_tint;$/m);
+    // The core buffers stay, read or not: the adapters place and hide particles by them.
+    expect(never.vertexShader).toMatch(/^attribute vec3 a_position;$/m);
+    expect(never.vertexShader).toMatch(/^attribute vec3 a_lifecycle;$/m);
+  });
+
   it("counts the core buffers as read through their macros", () => {
     const render = unlitArtifact({ outputs: { albedo: "vec4(vec3(PARTICLE_AGE), 1.0)" } });
-    const material = buildArtifactMaterial(render, varyingsFromComponents(new Map()), ...UNIFORMS);
+    const material = buildArtifactMaterial(
+      render,
+      layoutOf(varyingsFromComponents(new Map())),
+      ...UNIFORMS,
+    );
     expect(material.fragmentShader).toMatch(/^varying vec3 p_lifecycle;$/m);
     expect(material.fragmentShader).not.toMatch(/^varying vec3 p_position;$/m);
   });
 
   it("applies to the shadow depth material too", () => {
     const varyings = varyingsFromComponents(new Map([["tint", 3]]));
-    const depth = buildArtifactDepthMaterial(withTint(false), varyings, ...UNIFORMS);
+    const depth = buildArtifactDepthMaterial(withTint(false), layoutOf(varyings), ...UNIFORMS);
     expect(depth.fragmentShader).not.toMatch(/\bp_fx_tint\b/);
   });
 });
@@ -105,6 +121,20 @@ describe("fxEmitterRenderBudget", () => {
       attributes: 6,
       varyingVectors: 6,
     });
+  });
+
+  it("charges no attribute for a field only the behavior reads", () => {
+    const attributes = [{ name: "tint", components: 3 }] as const;
+    expect(fxEmitterRenderBudget(withTint("never"), attributes).attributes).toBe(5);
+    expect(
+      fxEmitterRenderBudget(withTint("never"), attributes, {
+        kernelBuffers: [
+          { name: "lifecycle", stride: 3 },
+          { name: "position", stride: 3 },
+          { name: "fx_tint", stride: 3 },
+        ],
+      }).attributes,
+    ).toBe(5);
   });
 
   it("adds a lit material's view position and the assumed directional shadow", () => {
@@ -157,9 +187,9 @@ describe("render budget chunk table", () => {
     // If three starts declaring varyings in another chunk, the budget would undercount it.
     const varyings = varyingsFromComponents(new Map());
     const shaders = [
-      buildArtifactMaterial(unlitArtifact(), varyings, ...UNIFORMS),
-      buildArtifactMaterial(lit(unlitArtifact()), varyings, ...UNIFORMS),
-      buildArtifactDepthMaterial(lit(unlitArtifact()), varyings, ...UNIFORMS),
+      buildArtifactMaterial(unlitArtifact(), layoutOf(varyings), ...UNIFORMS),
+      buildArtifactMaterial(lit(unlitArtifact()), layoutOf(varyings), ...UNIFORMS),
+      buildArtifactDepthMaterial(lit(unlitArtifact()), layoutOf(varyings), ...UNIFORMS),
       buildMeshArtifactMaterial(lit(unlitArtifact()), ...UNIFORMS),
     ].map((material) => material.fragmentShader);
     const chunks = new Set(

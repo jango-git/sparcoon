@@ -48,5 +48,33 @@ export {
   FX_RENDER_BUDGET_MINIMUMS,
   fxEmitterRenderBudget,
   fxMeshRenderBudget,
+  fxTrailRenderBudget,
 } from "../render/FXRenderBudget.js";
-export type { FXRenderBudget } from "../render/FXRenderBudget.js";
+export type {
+  FXEmitterRenderBudgetOptions,
+  FXRenderBudget,
+  FXTrailRenderBudgetOptions,
+} from "../render/FXRenderBudget.js";
+
+// Attribute packing: the order the editor lays a GPU kernel's buffers out in (packingOrder), and
+// how the runtime groups any layout into vertex attributes (packConsecutive) - one implementation
+// both sides use, so a kernel slot and the views bound over it agree by construction.
+export {
+  FX_ATTRIBUTE_MAX_COMPONENTS,
+  floatGLSLType,
+  packConsecutive,
+  packingOrder,
+  unpackedAttributes,
+} from "../render/FXAttributePacking.js";
+export type {
+  FXPackConsecutiveOptions,
+  FXPackedAttribute,
+  FXPackedMember,
+  FXPackingField,
+  FXPlacedField,
+} from "../render/FXAttributePacking.js";
+
+// Particle trails: the options an emitter's trail is built from, and the most history frames one
+// may keep.
+export { FX_TRAIL_MAX_FRAMES } from "../trail/FXTrail.js";
+export type { FXTrailOptions } from "../trail/FXTrail.js";

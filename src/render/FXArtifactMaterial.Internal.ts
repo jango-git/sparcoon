@@ -1,8 +1,15 @@
 import type { IUniform, Texture } from "three";
 import { DoubleSide, NormalBlending, ShaderMaterial, UniformsLib, UniformsUtils } from "three";
-import type { FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
-import { FX_CORE_LIFECYCLE, FX_CORE_PARTICLE_DEFINES, FX_CORE_POSITION } from "../coreLayout.js";
+import type { FXParticleReads, FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
+import {
+  FX_CORE_LIFECYCLE,
+  FX_CORE_PARTICLE_DEFINES,
+  FX_CORE_POSITION,
+  meshPropertyKeyFor,
+} from "../coreLayout.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
+import type { FXPackedAttribute, FXPackedMember } from "./FXAttributePacking.js";
+import { floatGLSLType } from "./FXAttributePacking.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";
 
 // Mutable holder wired into the Three material as `u_time`/`u_deltaTime`; shape-compatible with IUniform.
@@ -32,68 +39,133 @@ function materialFlags(renderMode: FXRenderMode): {
   return { transparent: blended, depthWrite: !blended, alphaHash: renderMode === "alphaHash" };
 }
 
-/** The GLSL names a render artifact uses for a particle property, in either stage. */
-function propertyTokens(name: string): RegExp {
-  // The core buffers are read through FX_CORE_PARTICLE_DEFINES' macros as well as directly.
-  const macros =
-    name === FX_CORE_POSITION
-      ? "|PARTICLE_POSITION(?:_[XYZ])?"
-      : name === FX_CORE_LIFECYCLE
-        ? "|PARTICLE_AGE|PARTICLE_LIFETIME|PARTICLE_ID"
-        : "";
-  return new RegExp(`\\b(?:p_${name}${macros})\\b`);
+/** The particle properties (`position`, `lifecycle`, `fx_<name>`) `reads` names. */
+function readProperties(reads: FXParticleReads): string[] {
+  const properties = reads.attributes.map(meshPropertyKeyFor);
+  if (reads.position) {
+    properties.push(FX_CORE_POSITION);
+  }
+  if (reads.lifecycle) {
+    properties.push(FX_CORE_LIFECYCLE);
+  }
+  return properties;
+}
+
+/** The particle properties the fragment stage reads - each one a varying. */
+function fragmentReadProperties(render: FXRenderArtifact): ReadonlySet<string> {
+  return new Set(readProperties(render.fragment.particleReads));
+}
+
+/** The particle properties either stage reads. */
+export function renderReadProperties(render: FXRenderArtifact): ReadonlySet<string> {
+  return new Set([
+    ...readProperties(render.vertex.particleReads),
+    ...readProperties(render.fragment.particleReads),
+  ]);
 }
 
 /**
- * The particle properties the fragment stage reads: those named anywhere in the artifact's
- * fragment code, its helper functions or its outputs (a vertex-side output naming one only costs
- * a varying it could have spared - never a missing one).
+ * What a particle material reads from its mesh (built by the driver that owns the mesh, see
+ * `FXEmitterDriver.Internal.ts`, and by the render budget the same way): the fields the mesh holds
+ * and the packed attribute views it binds them through, plus the fields the render reads that the
+ * mesh does not hold at all.
  */
-function fragmentReadProperties(
-  render: FXRenderArtifact,
-  varyings: Record<string, GLTypeInfo>,
-): ReadonlySet<string> {
-  const code = [
-    ...render.fragment.body,
-    ...render.fragment.helperFunctions,
-    ...Object.values(render.outputs),
-  ].join("\n");
-  return new Set(Object.keys(varyings).filter((name) => propertyTokens(name).test(code)));
+export interface FXParticleLayout {
+  /** Every field the mesh holds per particle (property key -> type): the two core buffers and
+   *  every attribute its simulation writes. */
+  readonly fields: Readonly<Record<string, GLTypeInfo>>;
+  /** The views the mesh binds those fields through, each as `a_<view.name>`. */
+  readonly packed: readonly FXPackedAttribute[];
+  /**
+   * The fields the render reads that nothing writes. Attributes have no defaults, so such a field
+   * is always zero: the shader declares it as that constant - no buffer, no attribute slot - the
+   * same as a trail reading a field its emitter does not hold (see {@link FXTrailLayout.missing}).
+   */
+  readonly missing: Readonly<Record<string, GLTypeInfo>>;
+}
+
+/** The GLSL type of a packed view: `float` .. `vec4`. */
+function viewType(view: FXPackedAttribute): string {
+  return floatGLSLType(view.components);
 }
 
 /**
- * Each property becomes an `a_<name>` attribute mirrored into `p_<name>`, which the generated code
- * reads (directly, or through FX_CORE_PARTICLE_DEFINES' macros). Only a property the fragment stage
- * reads makes `p_<name>` a varying; for the rest it is a plain vertex-shader global, so it costs
- * none of the GPU's few varying vectors. Shared by both adapters.
+ * `attribute`'s components holding `member`: a swizzle (`.xyz`, `.w`), or nothing when the member
+ * is the whole view - so an unpacked field reads exactly as it did before packing.
+ */
+function memberSwizzle(view: FXPackedAttribute, member: FXPackedMember): string {
+  if (member.componentOffset === 0 && member.components === view.components) {
+    return "";
+  }
+  return `.${"xyzw".slice(member.componentOffset, member.componentOffset + member.components)}`;
+}
+
+/**
+ * The statements splitting packed views back into one value per field: `target(member)` takes
+ * the member's components of the view bound as `attributeName(view)`. GLSL ES 1.00 throughout -
+ * a swizzle of an attribute is an ordinary expression.
+ */
+function unpackStatements(
+  views: readonly FXPackedAttribute[],
+  attributeName: (view: FXPackedAttribute) => string,
+  target: (member: FXPackedMember) => string,
+): string[] {
+  return views.flatMap((view) =>
+    view.members.map(
+      (member) => `${target(member)} = ${attributeName(view)}${memberSwizzle(view, member)};`,
+    ),
+  );
+}
+
+/**
+ * Each packed view becomes an `a_<view.name>` attribute, split back into the `p_<name>` property
+ * of every field it carries, which the generated code reads (directly, or through
+ * FX_CORE_PARTICLE_DEFINES' macros) - unchanged by packing; a view carrying no field the render
+ * reads (its stages' `particleReads`) is not declared at all. A missing field's property is a zero
+ * constant instead. Only a property the fragment stage reads makes `p_<name>` a varying; for the
+ * rest it is a plain vertex-shader global, so it costs none of the GPU's few varying vectors.
+ * Shared by both adapters and the depth material.
  */
 function declareVaryings(
   render: FXRenderArtifact,
-  varyings: Record<string, GLTypeInfo>,
+  layout: FXParticleLayout,
 ): {
   attributeDeclarations: string;
   vertexVaryingDeclarations: string;
   fragmentVaryingDeclarations: string;
   vertexAssignments: string;
 } {
-  const fragmentReads = fragmentReadProperties(render, varyings);
-  const attributeDeclarations: string[] = [];
+  const properties: Record<string, GLTypeInfo> = { ...layout.fields, ...layout.missing };
+  const fragmentReads = fragmentReadProperties(render);
   const vertexVaryingDeclarations: string[] = [];
   const fragmentVaryingDeclarations: string[] = [];
-  const vertexAssignments: string[] = [];
-  for (const name in varyings) {
-    const { glslTypeName } = varyings[name];
-    attributeDeclarations.push(`attribute ${glslTypeName} a_${name};`);
+  for (const name in properties) {
+    const { glslTypeName } = properties[name];
     if (fragmentReads.has(name)) {
       vertexVaryingDeclarations.push(`varying ${glslTypeName} p_${name};`);
       fragmentVaryingDeclarations.push(`varying ${glslTypeName} p_${name};`);
     } else {
       vertexVaryingDeclarations.push(`${glslTypeName} p_${name};`);
     }
-    vertexAssignments.push(`p_${name} = a_${name};`);
   }
+  // A view none of whose fields the render reads is left undeclared: still mounted (three skips
+  // what the program lacks), but counted by no budget. The core buffers are always read - the
+  // adapters place the particle and hide a dead one by them.
+  const reads = renderReadProperties(render);
+  const read = (name: string): boolean =>
+    name === FX_CORE_POSITION || name === FX_CORE_LIFECYCLE || reads.has(name);
+  const views = layout.packed.filter((view) => view.members.some((member) => read(member.name)));
+  const attributeName = (view: FXPackedAttribute): string => `a_${view.name}`;
+  const vertexAssignments = [
+    ...unpackStatements(views, attributeName, (member) => `p_${member.name}`),
+    ...Object.keys(layout.missing).map(
+      (name) => `p_${name} = ${layout.missing[name].glslTypeName}(0.0);`,
+    ),
+  ];
   return {
-    attributeDeclarations: attributeDeclarations.join("\n"),
+    attributeDeclarations: views
+      .map((view) => `attribute ${viewType(view)} ${attributeName(view)};`)
+      .join("\n"),
     vertexVaryingDeclarations: vertexVaryingDeclarations.join("\n"),
     fragmentVaryingDeclarations: fragmentVaryingDeclarations.join("\n"),
     vertexAssignments: vertexAssignments.join("\n"),
@@ -143,10 +215,9 @@ function projectFromModelPos(): string {
     // A dead particle (age >= lifetime, coreLayout.ts's convention) is pushed outside the clip
     // volume on every axis so the GPU's trivial-reject clip test drops the whole primitive before
     // rasterization - a fragment discard would defeat opaque mode's early-Z instead (see
-    // alphaDiscardLines, which already skips discard for that reason). A JS-driven emitter never
-    // draws a dead particle at all (removeDeadParticles keeps it out of the instance range), so
-    // this is a no-op there; a GPU-driven emitter always draws its full fixed capacity with no
-    // such compaction (FXTransformFeedbackParticle), which is what this actually guards.
+    // alphaDiscardLines, which already skips discard for that reason). Both backends keep dead
+    // slots in place in a fixed ring (FXInstancedParticle, FXTransformFeedbackParticle) and draw
+    // them, so this is what actually hides them - in the depth (shadow) material too.
     "if (PARTICLE_AGE >= PARTICLE_LIFETIME) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }",
     "#ifdef USE_ALPHAHASH",
     "  vPosition = fxModelPos;",
@@ -249,6 +320,60 @@ function blendTail(renderMode: FXRenderMode, outputs: Readonly<Record<string, st
   return lines.join("\n");
 }
 
+/** The fragment tail every color material ends with: the graph's `albedo`, the render mode's
+ *  discard, then three's opaque -> tone mapping -> color space -> fog chunks and the blend tail. */
+function colorFragmentTail(render: FXRenderArtifact, renderMode: FXRenderMode): string[] {
+  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
+  return [
+    `vec4 diffuseColor = ${render.outputs["albedo"]};`,
+    alphaDiscardLines(renderMode, alphaThreshold),
+    "vec3 outgoingLight = diffuseColor.rgb;",
+    "#include <opaque_fragment>",
+    "#include <tonemapping_fragment>",
+    "#include <colorspace_fragment>",
+    "#include <fog_fragment>",
+    blendTail(renderMode, render.outputs),
+  ];
+}
+
+/**
+ * The `ShaderMaterial` every color material is: fogged, double-sided, premultiplied normal
+ * blending (additive is in-shader), the render mode's transparency/depth flags, and a program
+ * cache key from the artifact's GLSL.
+ */
+function colorMaterial(options: {
+  readonly name: string;
+  readonly uniforms: Record<string, IUniform>;
+  readonly vertexShader: string;
+  readonly fragmentShader: string;
+  readonly renderMode: FXRenderMode;
+  readonly lit: boolean;
+  readonly cacheKey: string;
+}): ShaderMaterial {
+  const flags = materialFlags(options.renderMode);
+  const material = new ShaderMaterial({
+    name: options.name,
+    uniforms: options.uniforms,
+    vertexShader: options.vertexShader,
+    fragmentShader: options.fragmentShader,
+    ...(options.lit ? { lights: true } : {}),
+    fog: true,
+    ...flags,
+    depthTest: true,
+    blending: NormalBlending,
+    side: DoubleSide,
+    forceSinglePass: true,
+    premultipliedAlpha: true,
+  });
+  // `alphaHash` pulls in Three's own alphahash_pars_fragment chunk, which calls dFdx/dFdy - under
+  // a real WebGL1 context those need an explicit extension request or the shader fails to
+  // compile ("extension is disabled"); under WebGL2 this is a no-op (dFdx/dFdy are core there,
+  // and three skips extension generation entirely for a WebGL2 context either way).
+  material.extensions.derivatives = flags.alphaHash;
+  material.customProgramCacheKey = (): string => options.cacheKey;
+  return material;
+}
+
 // Builds an unlit artifact as a self-contained ShaderMaterial: fog uniforms/defines come from Three
 // (`fog: true`), the tone-mapping + output-colorspace functions from Three's fragment prefix; the rest
 // is ours. The fragment tail mirrors MeshBasic (`opaque_fragment` -> tonemapping -> colorspace -> fog
@@ -259,7 +384,7 @@ function blendTail(renderMode: FXRenderMode, outputs: Readonly<Record<string, st
 // node present; the lit builder does the same.
 export function buildUnlitArtifactMaterial(
   render: FXRenderArtifact,
-  varyings: Record<string, GLTypeInfo>,
+  layout: FXParticleLayout,
   timeUniform: FXFrameTimeUniform,
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
@@ -268,18 +393,16 @@ export function buildUnlitArtifactMaterial(
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
-  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
 
   if (!("albedo" in render.outputs)) {
     throw new Error("buildUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const albedo = render.outputs["albedo"];
   const {
     attributeDeclarations,
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
-  } = declareVaryings(render, varyings);
+  } = declareVaryings(render, layout);
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -362,14 +485,7 @@ export function buildUnlitArtifactMaterial(
     "vec3 geometryTangent = normalize( vWorldTangent );",
     "vec3 worldPosition   = vWorldPos;",
     render.fragment.body.join("\n"),
-    `vec4 diffuseColor = ${albedo};`,
-    alphaDiscardLines(renderMode, alphaThreshold),
-    "vec3 outgoingLight = diffuseColor.rgb;",
-    "#include <opaque_fragment>",
-    "#include <tonemapping_fragment>",
-    "#include <colorspace_fragment>",
-    "#include <fog_fragment>",
-    blendTail(renderMode, render.outputs),
+    ...colorFragmentTail(render, renderMode),
     "}",
   ].join("\n");
 
@@ -379,28 +495,15 @@ export function buildUnlitArtifactMaterial(
   bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
-  const material = new ShaderMaterial({
+  return colorMaterial({
     name: "FXUnlitArtifactMaterial",
     uniforms,
     vertexShader,
     fragmentShader,
-    fog: true,
-    ...materialFlags(renderMode),
-    depthTest: true,
-    blending: NormalBlending,
-    side: DoubleSide,
-    forceSinglePass: true,
-    premultipliedAlpha: true,
+    renderMode,
+    lit: false,
+    cacheKey: `fx-unlit_${cacheKey}`,
   });
-
-  // `alphaHash` pulls in Three's own alphahash_pars_fragment chunk, which calls dFdx/dFdy - under
-  // a real WebGL1 context those need an explicit extension request or the shader fails to
-  // compile ("extension is disabled"); under WebGL2 this is a no-op (dFdx/dFdy are core there,
-  // and three skips extension generation entirely for a WebGL2 context either way).
-  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
-  material.customProgramCacheKey = (): string => `fx-unlit_${cacheKey}`;
-
-  return material;
 }
 
 // The lighting-node intrinsics the graph calls by name (`fn.raw(... "fxLambertShade" ...)`) but never
@@ -455,7 +558,7 @@ const FX_LIGHTING_NODE_INTRINSICS = [
 // normal/emission are node inputs, not surface slots.
 function buildLitArtifactMaterial(
   render: FXRenderArtifact,
-  varyings: Record<string, GLTypeInfo>,
+  layout: FXParticleLayout,
   timeUniform: FXFrameTimeUniform,
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
@@ -464,18 +567,16 @@ function buildLitArtifactMaterial(
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
-  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
 
   if (!("albedo" in render.outputs)) {
     throw new Error("buildLitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const albedo = render.outputs["albedo"];
   const {
     attributeDeclarations,
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
-  } = declareVaryings(render, varyings);
+  } = declareVaryings(render, layout);
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -569,14 +670,7 @@ function buildLitArtifactMaterial(
     "vec3 geometryTangent = normalize( vWorldTangent );",
     "vec3 worldPosition   = vWorldPos;",
     render.fragment.body.join("\n"),
-    `vec4 diffuseColor = ${albedo};`,
-    alphaDiscardLines(renderMode, alphaThreshold),
-    "vec3 outgoingLight = diffuseColor.rgb;",
-    "#include <opaque_fragment>",
-    "#include <tonemapping_fragment>",
-    "#include <colorspace_fragment>",
-    "#include <fog_fragment>",
-    blendTail(renderMode, render.outputs),
+    ...colorFragmentTail(render, renderMode),
     "}",
   ].join("\n");
 
@@ -587,26 +681,15 @@ function buildLitArtifactMaterial(
   bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
-  const material = new ShaderMaterial({
+  return colorMaterial({
     name: "FXLightingNodesArtifactMaterial",
     uniforms,
     vertexShader,
     fragmentShader,
-    lights: true,
-    fog: true,
-    ...materialFlags(renderMode),
-    depthTest: true,
-    blending: NormalBlending,
-    side: DoubleSide,
-    forceSinglePass: true,
-    premultipliedAlpha: true,
+    renderMode,
+    lit: true,
+    cacheKey: `fx-lit-nodes_${cacheKey}`,
   });
-
-  // See buildUnlitArtifactMaterial's identical line for why this is needed.
-  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
-  material.customProgramCacheKey = (): string => `fx-lit-nodes_${cacheKey}`;
-
-  return material;
 }
 
 // Single entry point the material driver calls: the render artifact's lighting capability
@@ -615,7 +698,7 @@ function buildLitArtifactMaterial(
 // Three's infrastructure. There is no per-model dispatch - the shading lives in the graph.
 export function buildArtifactMaterial(
   render: FXRenderArtifact,
-  varyings: Record<string, GLTypeInfo>,
+  layout: FXParticleLayout,
   timeUniform: FXFrameTimeUniform,
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
@@ -626,7 +709,7 @@ export function buildArtifactMaterial(
     render.lightingIntrinsics.length > 0 ? buildLitArtifactMaterial : buildUnlitArtifactMaterial;
   return build(
     render,
-    varyings,
+    layout,
     timeUniform,
     deltaUniform,
     velocityUniform,
@@ -687,12 +770,10 @@ function buildMeshUnlitArtifactMaterial(
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
-  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
 
   if (!("albedo" in render.outputs)) {
     throw new Error("buildMeshUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const albedo = render.outputs["albedo"];
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -747,14 +828,7 @@ function buildMeshUnlitArtifactMaterial(
     "vec3 geometryTangent = normalize( vWorldTangent );",
     "vec3 worldPosition   = vWorldPos;",
     render.fragment.body.join("\n"),
-    `vec4 diffuseColor = ${albedo};`,
-    alphaDiscardLines(renderMode, alphaThreshold),
-    "vec3 outgoingLight = diffuseColor.rgb;",
-    "#include <opaque_fragment>",
-    "#include <tonemapping_fragment>",
-    "#include <colorspace_fragment>",
-    "#include <fog_fragment>",
-    blendTail(renderMode, render.outputs),
+    ...colorFragmentTail(render, renderMode),
     "}",
   ].join("\n");
 
@@ -762,25 +836,15 @@ function buildMeshUnlitArtifactMaterial(
   bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
-  const material = new ShaderMaterial({
+  return colorMaterial({
     name: "FXMeshUnlitArtifactMaterial",
     uniforms,
     vertexShader,
     fragmentShader,
-    fog: true,
-    ...materialFlags(renderMode),
-    depthTest: true,
-    blending: NormalBlending,
-    side: DoubleSide,
-    forceSinglePass: true,
-    premultipliedAlpha: true,
+    renderMode,
+    lit: false,
+    cacheKey: `fx-mesh-unlit_${cacheKey}`,
   });
-
-  // See buildUnlitArtifactMaterial's identical line for why this is needed.
-  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
-  material.customProgramCacheKey = (): string => `fx-mesh-unlit_${cacheKey}`;
-
-  return material;
 }
 
 // Lit mesh material: the lighting-nodes twin of buildLitArtifactMaterial (Three's Lambert light
@@ -796,12 +860,10 @@ function buildMeshLitArtifactMaterial(
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
-  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
 
   if (!("albedo" in render.outputs)) {
     throw new Error("buildMeshLitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const albedo = render.outputs["albedo"];
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -872,14 +934,7 @@ function buildMeshLitArtifactMaterial(
     "vec3 geometryTangent = normalize( vWorldTangent );",
     "vec3 worldPosition   = vWorldPos;",
     render.fragment.body.join("\n"),
-    `vec4 diffuseColor = ${albedo};`,
-    alphaDiscardLines(renderMode, alphaThreshold),
-    "vec3 outgoingLight = diffuseColor.rgb;",
-    "#include <opaque_fragment>",
-    "#include <tonemapping_fragment>",
-    "#include <colorspace_fragment>",
-    "#include <fog_fragment>",
-    blendTail(renderMode, render.outputs),
+    ...colorFragmentTail(render, renderMode),
     "}",
   ].join("\n");
 
@@ -890,26 +945,15 @@ function buildMeshLitArtifactMaterial(
   bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
-  const material = new ShaderMaterial({
+  return colorMaterial({
     name: "FXMeshLightingNodesArtifactMaterial",
     uniforms,
     vertexShader,
     fragmentShader,
-    lights: true,
-    fog: true,
-    ...materialFlags(renderMode),
-    depthTest: true,
-    blending: NormalBlending,
-    side: DoubleSide,
-    forceSinglePass: true,
-    premultipliedAlpha: true,
+    renderMode,
+    lit: true,
+    cacheKey: `fx-mesh-lit-nodes_${cacheKey}`,
   });
-
-  // See buildUnlitArtifactMaterial's identical line for why this is needed.
-  material.extensions.derivatives = materialFlags(renderMode).alphaHash;
-  material.customProgramCacheKey = (): string => `fx-mesh-lit-nodes_${cacheKey}`;
-
-  return material;
 }
 
 // Mesh entry point (the mesh twin of buildArtifactMaterial): the lighting capability picks flat vs lit.
@@ -956,7 +1000,7 @@ const DEPTH_FRAGMENT_TAIL = [
 // depth cutout stays correct. Fog/logdepth/clipping-planes are dropped, same as the 4 color builders.
 export function buildArtifactDepthMaterial(
   render: FXRenderArtifact,
-  varyings: Record<string, GLTypeInfo>,
+  layout: FXParticleLayout,
   timeUniform: FXFrameTimeUniform,
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
@@ -977,7 +1021,7 @@ export function buildArtifactDepthMaterial(
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
-  } = declareVaryings(render, varyings);
+  } = declareVaryings(render, layout);
   const cacheKey = fxRenderArtifactCacheKey(render);
 
   const vertexShader = [
@@ -1219,4 +1263,381 @@ export function buildMeshArtifactDepthMaterial(
   material.customProgramCacheKey = (): string => `fx-mesh-depth_${cacheKey}`;
 
   return material;
+}
+
+// Trail material path: one ribbon segment per (history frame, particle slot) instance, compiled
+// against the editor's trail render target. It shares the particle path's attribute-free helpers
+// and the particle builtins - each one interpolated along the segment between two recorded points
+// of a particle's path instead of read off a live particle.
+
+/** The most history frames a trail may keep - the size of the shader's packed age table. */
+export const FX_TRAIL_MAX_FRAMES = 64;
+
+/** The trail's per-tick uniforms, updated in place by the trail that owns them. */
+export interface FXTrailUniforms {
+  /** The frame being recorded into (a `"gpu"` history: the segment starting there is skipped). */
+  readonly head: { value: number };
+  /** The history length in frames. */
+  readonly frames: { value: number };
+  /** Seconds the whole trail spans, head to tail - what `p_uv.x` runs 0 -> 1 over. */
+  readonly span: { value: number };
+  /** The trail's clock: a `"cpu"` point's age is this minus the time it was recorded. */
+  readonly now: { value: number };
+  /**
+   * A `"cpu"` history's oldest valid start time: a segment starting at a point recorded before it
+   * is not part of the trail. Lies strictly between the tail frame's time and the time of the
+   * point the head frame held one lap ago - the one a `"cpu"` history leaves un-uploaded in frame
+   * 0 while the head is there (see `FXCPUTrailHistory`), which this rejects.
+   */
+  readonly tail: { value: number };
+  /** A `"gpu"` history's seconds since each frame was recorded, four per vec4. */
+  readonly ages: { value: Float32Array };
+}
+
+/** A trail's uniforms as they read before its first record: `frames` frames spanning `span`. */
+export function createTrailUniforms(frames: number, span: number): FXTrailUniforms {
+  return {
+    head: { value: 0 },
+    frames: { value: frames },
+    span: { value: span },
+    now: { value: 0 },
+    tail: { value: 0 },
+    ages: { value: new Float32Array(FX_TRAIL_MAX_FRAMES) },
+  };
+}
+
+/**
+ * The names the trail shader reads one recorded field by at a segment's start (A) and end (B) -
+ * vertex-shader globals the prologue fills from the packed views (see {@link FXTrailLayout.packed}),
+ * which are themselves named by this applied to the view's name (`a_tA_pack0`). The CPU point and
+ * joint vec4s are real attributes under these names.
+ */
+export function trailAttributeNames(name: string): { readonly a: string; readonly b: string } {
+  return { a: `a_tA_${name}`, b: `a_tB_${name}` };
+}
+
+/** The same for a `"gpu"` history's point before a segment's start (position and lifecycle). */
+export function trailPreviousAttributeName(name: string): string {
+  return `a_tC_${name}`;
+}
+
+/** A `"gpu"` history's per-instance attribute: the frame a segment starts at. */
+export const FX_TRAIL_FRAME_ATTRIBUTE = "a_trailFrame";
+
+/** A `"cpu"` history's packed point: `vec4(position, id + 1)`, `0` when dead. */
+export const FX_TRAIL_CPU_POINT = "trailPoint";
+/** A `"cpu"` history's packed joint: `vec4(tangent, time recorded)`. */
+export const FX_TRAIL_CPU_TANGENT = "trailTangent";
+
+/**
+ * What a trail material reads from its history: the layout (see `FXTrailHistory.kind`), the
+ * particle fields it records and how they are packed into attributes, and the fields the trail
+ * reads that it does not hold - read as zero, the value the particle path gives an attribute
+ * nothing simulates. Built only by `trailHistoryLayout`, which both drivers and the trail budget go
+ * through; the history mounts exactly these views and the material declares exactly these.
+ */
+export interface FXTrailLayout {
+  readonly kind: "cpu" | "gpu";
+  readonly recorded: Readonly<Record<string, GLTypeInfo>>;
+  readonly missing: Readonly<Record<string, GLTypeInfo>>;
+  /**
+   * The recorded fields as packed views of one point, each mounted twice - at the segment's start
+   * and end, named by {@link trailAttributeNames} of the view's name. Offsets are in floats into a
+   * point: on `"cpu"` the history's own point (after its packed point and joint), on `"gpu"` the
+   * kernel's slot, which the history copies whole.
+   */
+  readonly packed: readonly FXPackedAttribute[];
+  /** `"gpu"` only (empty on `"cpu"`): views of the position and lifecycle at the point before a
+   *  segment's start, named by {@link trailPreviousAttributeName}. */
+  readonly previous: readonly FXPackedAttribute[];
+  /** Floats per point: the `"cpu"` history's stride, or the kernel's slot stride on `"gpu"`. */
+  readonly stride: number;
+}
+
+/**
+ * The segment's two points and how they join, per history layout. Both define `fxTrailPosA` /
+ * `fxTrailPosB`, `fxTrailLinked` (both points alive, one particle, and a real segment of its
+ * path), `fxTrailTangent` (the joint direction at this vertex's end, zero when there is none) and
+ * the vertex's `p_trailAge`.
+ *
+ * The joint tangent at a point is the direction the path arrived there from - one value for both
+ * segments meeting at the point, so their shared vertices coincide and the ribbon has no seams.
+ */
+function trailPrologue(kind: "cpu" | "gpu"): string[] {
+  if (kind === "cpu") {
+    const point = trailAttributeNames(FX_TRAIL_CPU_POINT);
+    const tangent = trailAttributeNames(FX_TRAIL_CPU_TANGENT);
+    return [
+      `vec3 fxTrailPosA = ${point.a}.xyz;`,
+      `vec3 fxTrailPosB = ${point.b}.xyz;`,
+      // The end must be newer than the start (from the head frame on lies the oldest one), and
+      // the start no older than the tail (frame 0 still holds last lap's point while the head is
+      // there - see FXTrailUniforms.tail).
+      "bool fxTrailLinked =",
+      `  ${point.a}.w > 0.5 && abs(${point.a}.w - ${point.b}.w) < 0.5 &&`,
+      `  ${tangent.b}.w > ${tangent.a}.w && ${tangent.a}.w >= u_trailTail;`,
+      `vec3 fxTrailTangent = fxTrailT < 0.5 ? ${tangent.a}.xyz : ${tangent.b}.xyz;`,
+      `p_trailAge = u_trailNow - mix(${tangent.a}.w, ${tangent.b}.w, fxTrailT);`,
+    ];
+  }
+  const position = trailAttributeNames(FX_CORE_POSITION);
+  const lifecycle = trailAttributeNames(FX_CORE_LIFECYCLE);
+  const previousPosition = trailPreviousAttributeName(FX_CORE_POSITION);
+  const previousLifecycle = trailPreviousAttributeName(FX_CORE_LIFECYCLE);
+  const frame = FX_TRAIL_FRAME_ATTRIBUTE;
+  return [
+    `vec3 fxTrailPosA = ${position.a};`,
+    `vec3 fxTrailPosB = ${position.b};`,
+    "bool fxTrailLinked =",
+    `  abs(${frame} - u_trailHead) > 0.5 &&`,
+    `  abs(${lifecycle.a}.z - ${lifecycle.b}.z) < 0.5 &&`,
+    `  ${lifecycle.a}.x < ${lifecycle.a}.y && ${lifecycle.b}.x < ${lifecycle.b}.y;`,
+    // The point before the start is this particle's previous point when the segment ending at the
+    // start is itself linked - the same test, one frame earlier.
+    `float fxTrailPrevious = mod(${frame} + u_trailFrames - 1.0, u_trailFrames);`,
+    "bool fxTrailHasPrevious =",
+    "  abs(fxTrailPrevious - u_trailHead) > 0.5 &&",
+    `  abs(${previousLifecycle}.z - ${lifecycle.a}.z) < 0.5 &&`,
+    `  ${previousLifecycle}.x < ${previousLifecycle}.y;`,
+    "vec3 fxTrailTangent = fxTrailPosB - fxTrailPosA;",
+    `if (fxTrailT < 0.5) { fxTrailTangent = fxTrailHasPrevious ? fxTrailPosA - ${previousPosition} : vec3(0.0); }`,
+    `float fxTrailNext = mod(${frame} + 1.0, u_trailFrames);`,
+    `p_trailAge = mix(fxTrailAgeOf(${frame}), fxTrailAgeOf(fxTrailNext), fxTrailT);`,
+  ];
+}
+
+/**
+ * The attribute declarations a history layout's prologue reads, and the statements that split its
+ * packed views back into the A / B / previous globals of every field ({@link trailAttributeNames}),
+ * which the prologue and the property assignments read - unchanged by packing.
+ */
+function trailLayoutAttributes(layout: FXTrailLayout): {
+  readonly declarations: string[];
+  readonly unpack: string[];
+} {
+  const declarations: string[] = [];
+  const unpack: string[] = [];
+  if (layout.kind === "cpu") {
+    for (const name of [FX_TRAIL_CPU_POINT, FX_TRAIL_CPU_TANGENT]) {
+      const { a, b } = trailAttributeNames(name);
+      declarations.push(`attribute vec4 ${a};`, `attribute vec4 ${b};`);
+    }
+  } else {
+    declarations.push(`attribute float ${FX_TRAIL_FRAME_ATTRIBUTE};`);
+  }
+  const ends = [
+    { views: layout.packed, named: (name: string): string => trailAttributeNames(name).a },
+    { views: layout.packed, named: (name: string): string => trailAttributeNames(name).b },
+    { views: layout.previous, named: trailPreviousAttributeName },
+  ];
+  for (const { views, named } of ends) {
+    for (const view of views) {
+      declarations.push(`attribute ${viewType(view)} ${named(view.name)};`);
+      for (const member of view.members) {
+        declarations.push(`${floatGLSLType(member.components)} ${named(member.name)};`);
+      }
+    }
+    unpack.push(
+      ...unpackStatements(
+        views,
+        (view) => named(view.name),
+        (member) => named(member.name),
+      ),
+    );
+  }
+  return { declarations, unpack };
+}
+
+/**
+ * The `p_<name>` property each particle field becomes - the same names the particle path declares,
+ * a varying only when the fragment stage reads it. The position is always one (the ribbon is built
+ * around it); a recorded field is interpolated between the segment's points; a missing one is zero.
+ */
+function declareTrailProperties(
+  render: FXRenderArtifact,
+  layout: FXTrailLayout,
+): {
+  vertexDeclarations: string;
+  fragmentDeclarations: string;
+  assignments: string;
+} {
+  const properties: Record<string, GLTypeInfo> = {
+    ...layout.missing,
+    ...layout.recorded,
+    [FX_CORE_POSITION]: { glslTypeName: "vec3", bufferSize: 3, instantiable: true },
+  };
+  const fragmentReads = fragmentReadProperties(render);
+  const vertexDeclarations: string[] = [];
+  const fragmentDeclarations: string[] = [];
+  const assignments: string[] = [];
+  for (const name in properties) {
+    const { glslTypeName } = properties[name];
+    if (fragmentReads.has(name)) {
+      vertexDeclarations.push(`varying ${glslTypeName} p_${name};`);
+      fragmentDeclarations.push(`varying ${glslTypeName} p_${name};`);
+    } else {
+      vertexDeclarations.push(`${glslTypeName} p_${name};`);
+    }
+    if (name === FX_CORE_POSITION) {
+      assignments.push(`p_${name} = mix(fxTrailPosA, fxTrailPosB, fxTrailT);`);
+    } else if (name in layout.recorded) {
+      const { a, b } = trailAttributeNames(name);
+      assignments.push(`p_${name} = mix(${a}, ${b}, fxTrailT);`);
+    } else {
+      assignments.push(`p_${name} = ${glslTypeName}(0.0);`);
+    }
+  }
+  return {
+    vertexDeclarations: vertexDeclarations.join("\n"),
+    fragmentDeclarations: fragmentDeclarations.join("\n"),
+    assignments: assignments.join("\n"),
+  };
+}
+
+/** Seconds since `frame` was recorded, from the packed age table - a vertex shader may index a
+ *  uniform array dynamically, WebGL1 included. */
+const TRAIL_AGE_LOOKUP = [
+  "float fxTrailAgeOf(float frame) {",
+  "  float index = floor(frame + 0.5);",
+  "  float row = floor(index / 4.0);",
+  "  float column = index - row * 4.0;",
+  "  vec4 ages = u_trailAges[int(row)];",
+  "  return column < 0.5 ? ages.x : (column < 1.5 ? ages.y : (column < 2.5 ? ages.z : ages.w));",
+  "}",
+].join("\n");
+
+/**
+ * Builds a trail artifact's material: a camera-facing ribbon through every particle's recorded
+ * path. Each instance is the segment from history frame `f` to the next one, for one particle slot;
+ * the base quad's `position.x` runs along it (0 -> 1) and `position.y` across it (-1 -> 1). Unlit
+ * and without a surface frame: a ribbon has no authored normal (the editor keeps the nodes that
+ * read one out of a trail graph).
+ *
+ * A segment whose points are not linked (see {@link trailPrologue}), or that has no length, is
+ * pushed outside the clip volume, as the particle path hides a dead particle.
+ */
+export function buildTrailArtifactMaterial(
+  render: FXRenderArtifact,
+  layout: FXTrailLayout,
+  timeUniform: FXFrameTimeUniform,
+  deltaUniform: FXFrameTimeUniform,
+  velocityUniform: FXFrameVec3Uniform,
+  angularVelocityUniform: FXFrameVec3Uniform,
+  trailUniforms: FXTrailUniforms,
+  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+): ShaderMaterial {
+  const renderMode = render.options?.renderMode ?? "blending";
+  if (!("albedo" in render.outputs)) {
+    throw new Error("buildTrailArtifactMaterial: render artifact has no 'albedo' output");
+  }
+  if (render.lightingIntrinsics.length > 0) {
+    throw new Error("buildTrailArtifactMaterial: a trail is unlit - its graph calls lighting");
+  }
+  if (
+    layout.kind === "gpu" &&
+    (!(FX_CORE_POSITION in layout.recorded) || !(FX_CORE_LIFECYCLE in layout.recorded))
+  ) {
+    throw new Error("buildTrailArtifactMaterial: a gpu history must record position and lifecycle");
+  }
+  const width = outputOrDefault(render.outputs, "width", "0.1");
+  const properties = declareTrailProperties(render, layout);
+  const attributes = trailLayoutAttributes(layout);
+  const ageVectors = FX_TRAIL_MAX_FRAMES / 4;
+  const sharedDeclarations = [
+    "varying vec2 p_uv;",
+    "uniform float u_time;",
+    "uniform float u_deltaTime;",
+    "uniform vec3 objectVelocity;",
+    "uniform vec3 objectAngularVelocity;",
+    "varying float p_cameraDistance;",
+    "varying vec3 vWorldPos;",
+  ];
+
+  const vertexShader = [
+    FX_CORE_PARTICLE_DEFINES,
+    ...attributes.declarations,
+    ...sharedDeclarations,
+    // Seconds since this vertex's point of the path was recorded - what p_uv.x is made of.
+    "float p_trailAge;",
+    "uniform float u_trailSpan;",
+    ...(layout.kind === "cpu"
+      ? ["uniform float u_trailNow;", "uniform float u_trailTail;"]
+      : [
+          "uniform float u_trailHead;",
+          "uniform float u_trailFrames;",
+          `uniform vec4 u_trailAges[${String(ageVectors)}];`,
+        ]),
+    properties.vertexDeclarations,
+    render.vertex.varyingDeclarations.join("\n"),
+    render.uniformDeclarations.join("\n"),
+    render.vertex.helperFunctions.join("\n"),
+    "#include <common>",
+    "#include <fog_pars_vertex>",
+    ...(layout.kind === "gpu" ? [TRAIL_AGE_LOOKUP] : []),
+    "void main() {",
+    "float fxTrailT = position.x;",
+    "float fxTrailSide = position.y;",
+    ...attributes.unpack,
+    ...trailPrologue(layout.kind),
+    properties.assignments,
+    // Along the trail from its head (0) to its tail (1), and across it (0 -> 1).
+    "p_uv = vec2(clamp(p_trailAge / max(u_trailSpan, 1e-6), 0.0, 1.0), fxTrailSide * 0.5 + 0.5);",
+    render.vertex.body.join("\n"),
+    `float fxTrailWidth = ${width};`,
+    "vec3 fxTrailDirection = fxTrailPosB - fxTrailPosA;",
+    // A point with no joint (a particle's first or last point) faces its own segment.
+    "if (dot(fxTrailTangent, fxTrailTangent) < 1e-12) { fxTrailTangent = fxTrailDirection; }",
+    "vec3 fxTrailAcross = cross(fxTrailTangent, cameraPosition - PARTICLE_POSITION);",
+    "float fxTrailAcrossLength = length(fxTrailAcross);",
+    "bool fxTrailVisible = fxTrailLinked && dot(fxTrailDirection, fxTrailDirection) > 1e-12 && fxTrailAcrossLength > 1e-10;",
+    "fxTrailAcross = fxTrailVisible ? fxTrailAcross / fxTrailAcrossLength : vec3(0.0);",
+    "vec3 fxModelPos = PARTICLE_POSITION + fxTrailAcross * (fxTrailSide * 0.5 * fxTrailWidth);",
+    "vWorldPos = fxModelPos;",
+    "vec4 mvPosition = viewMatrix * vec4(fxModelPos, 1.0);",
+    "p_cameraDistance = length(mvPosition.xyz);",
+    "gl_Position = projectionMatrix * mvPosition;",
+    "if (!fxTrailVisible) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }",
+    "#ifdef USE_ALPHAHASH",
+    "  vPosition = fxModelPos;",
+    "#endif",
+    "#include <fog_vertex>",
+    "}",
+  ].join("\n");
+
+  const fragmentShader = [
+    FX_CORE_PARTICLE_DEFINES,
+    ...sharedDeclarations,
+    properties.fragmentDeclarations,
+    render.fragment.varyingDeclarations.join("\n"),
+    render.uniformDeclarations.join("\n"),
+    render.fragment.helperFunctions.join("\n"),
+    "#include <common>",
+    "#include <alphahash_pars_fragment>",
+    "#include <fog_pars_fragment>",
+    "void main() {",
+    "vec3 worldPosition = vWorldPos;",
+    render.fragment.body.join("\n"),
+    ...colorFragmentTail(render, renderMode),
+    "}",
+  ].join("\n");
+
+  const uniforms: Record<string, IUniform> = { ...UniformsUtils.clone(UniformsLib.fog) };
+  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
+  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  uniforms["u_trailHead"] = trailUniforms.head;
+  uniforms["u_trailFrames"] = trailUniforms.frames;
+  uniforms["u_trailSpan"] = trailUniforms.span;
+  uniforms["u_trailNow"] = trailUniforms.now;
+  uniforms["u_trailTail"] = trailUniforms.tail;
+  uniforms["u_trailAges"] = trailUniforms.ages;
+
+  return colorMaterial({
+    name: "FXTrailArtifactMaterial",
+    uniforms,
+    vertexShader,
+    fragmentShader,
+    renderMode,
+    lit: false,
+    cacheKey: `fx-trail-${layout.kind}_${fxRenderArtifactCacheKey(render)}`,
+  });
 }

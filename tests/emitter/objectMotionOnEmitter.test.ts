@@ -110,6 +110,10 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
     );
     try {
       tickEmitter(emitter, 1); // establishes the position-(0,0,0) baseline, no particles yet
+      // One particle alive before the measured tick, so its update phase has a slot to run on
+      // (the update runs before the tick's own births, which it never sees).
+      emitter.burst(1);
+      spawnCaptures.length = 0;
 
       emitter.position.set(3, 0, 0);
       // Both bursts are pending (not fired yet) and expire inside the next tick's dt, so both
