@@ -57,6 +57,9 @@ describe("unlit ShaderMaterial assembly", () => {
     expect(fragmentShader).toContain("vec4 diffuseColor = vec4(1.0);");
     expect(fragmentShader).toContain("#include <opaque_fragment>");
     expect(fragmentShader).toContain("#include <fog_fragment>");
+    // Three declares modelMatrix for the vertex stage only; a fragment-stage world-matrix read
+    // needs it declared there too.
+    expect(fragmentShader).toContain("uniform highp mat4 modelMatrix;");
   });
 
   it("pushes a dead particle's vertex outside the clip volume, unconditionally on render mode", () => {
@@ -210,6 +213,28 @@ describe("render mode + additivity blend tail", () => {
     // Near-zero floor + the default 0.0075 cutoff (unwired alphaThreshold), clamped to [0,1].
     expect(fragmentShader).toContain("if (diffuseColor.a < 0.0035) discard;");
     expect(fragmentShader).toContain("if (diffuseColor.a < clamp(0.0075, 0.0, 1.0)) discard;");
+  });
+
+  it("intensity scales the color alone, after the discards and before tone mapping", () => {
+    const { fragmentShader } = assembledShaders(
+      artifact({ outputs: { albedo: "vec4(1.0)", intensity: "2.5" } }),
+      varyings(),
+    );
+    const line = "diffuseColor.rgb *= max(2.5, 0.0);";
+    expect(fragmentShader).toContain(line);
+    // The discards read the alpha before it; tone mapping and the premultiply come after it
+    expect(fragmentShader.indexOf("if (diffuseColor.a < 0.0035) discard;")).toBeLessThan(
+      fragmentShader.indexOf(line),
+    );
+    expect(fragmentShader.indexOf(line)).toBeLessThan(
+      fragmentShader.indexOf("gl_FragColor.rgb *= gl_FragColor.a;"),
+    );
+    expect(fragmentShader).not.toContain("diffuseColor.a *=");
+  });
+
+  it("no intensity slot: no multiplier line", () => {
+    const { fragmentShader } = assembledShaders(artifact({}), varyings());
+    expect(fragmentShader).not.toContain("diffuseColor.rgb *= max(");
   });
 
   it("alphaTest mode: hard cutoff from the wired threshold, clamped; no floor, no additivity", () => {

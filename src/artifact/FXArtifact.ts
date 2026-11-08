@@ -111,7 +111,8 @@ export interface FXRenderArtifact {
   readonly fragment: FXShaderStageSource;
   /**
    * slot -> GLSL expression: `albedo` (required; already carries the shaded color when lit), the
-   * optional fragment-stage compositing slots (`additivity` / `alphaThreshold`), and the optional
+   * optional fragment-stage compositing slots (`additivity` / `alphaThreshold`, and `intensity`: a
+   * multiplier on the color alone, never its alpha, in linear light), and the optional
    * vertex-stage `particleTransform` / `vertexTransform` (mat4). Shading normal and emission are node
    * inputs now, not surface slots.
    */

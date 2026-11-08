@@ -364,6 +364,81 @@ describe("FXEffect event order", () => {
   });
 });
 
+describe("FXEffect transform drive", () => {
+  function movingEffect(world: FXWorld) {
+    return makeEffect(
+      world,
+      spec({
+        duration: 2,
+        fps: 30,
+        emitters: [
+          emitterSpec("e", {
+            transformTracks: [
+              {
+                channel: "position",
+                keys: [
+                  { time: 0, value: [0, 0, 0] },
+                  { time: 1, value: [10, 0, 0] },
+                ],
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+  }
+
+  it("poses at the continuous time while playing, between two frames too", () => {
+    // Updates faster than the fps grid: a pose held to the grid would stand still on every update
+    // between two frames, which anything reading the emitter's velocity sees as no motion.
+    const world = newWorld();
+    const effect = movingEffect(world);
+    const emitter = effect.getEmitter("e")!;
+    effect.play();
+    const positions: number[] = [];
+    for (let i = 0; i < 8; i += 1) {
+      world.update(1 / 120);
+      positions.push(emitter.position.x);
+    }
+    positions.forEach((x, i) => {
+      expect(x).toBeCloseTo(((i + 1) / 120) * 10, 6);
+    });
+  });
+
+  it("keeps value tracks on the fps grid", () => {
+    const world = newWorld();
+    const render = unlitArtifact({
+      uniformDeclarations: ["uniform float u_param_size;"],
+      uniforms: { u_param_size: { type: "float", value: 0 } },
+    });
+    const effect = makeEffect(
+      world,
+      spec({
+        fps: 30,
+        emitters: [
+          emitterSpec("e", {
+            render,
+            tracks: [
+              {
+                name: "size",
+                keys: [
+                  { time: 0, value: 0 },
+                  { time: 1, value: 30 },
+                ],
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    effect.play();
+    world.update(1 / 120); // still frame 0 (t = 1/120 rounds to 0)
+    expect(render.uniforms["u_param_size"].value).toBe(0);
+    world.update(1 / 40); // t = 1/30: frame 1
+    expect(render.uniforms["u_param_size"].value).toBeCloseTo(1, 6);
+  });
+});
+
 describe("FXEffect once-through playback", () => {
   function onceEffect(world: FXWorld, loop: boolean | undefined) {
     return makeEffect(

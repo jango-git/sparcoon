@@ -13,7 +13,10 @@
  * - `opaque` - fully opaque (alpha forced to 1).
  *
  * The `alphaThreshold` output slot (hard discard cutoff, default 0.0075) applies in every mode except
- * `opaque`; `additivity` applies only in `blending`.
+ * `opaque`; `additivity` applies only in `blending`. The `intensity` slot (a multiplier on the color,
+ * default 1) applies in every mode and never touches the alpha: in `blending` the light a fragment adds
+ * is its color times its alpha, so dimming a glow through its color's alpha also pushes it under the
+ * discard floor - `intensity` dims (or brightens) it instead.
  */
 export type FXRenderMode = "blending" | "alphaHash" | "alphaTest" | "opaque";
 

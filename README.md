@@ -8,7 +8,7 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.11.0)
+[npm](https://www.npmjs.com/package/sparcoon/v/0.11.1)
 
 > **0.x.** The artifact format is not frozen yet - a minor release may still break it, so play an
 > effect with the runtime version the editor that exported it names.

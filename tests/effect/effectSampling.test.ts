@@ -207,7 +207,7 @@ describe("sampleTransform", () => {
 });
 
 describe("key easing", () => {
-  it("bends the fraction along each cubic curve, keeping the ends", () => {
+  it("bends the fraction along each curve, keeping the ends", () => {
     for (const ease of FX_KEY_EASES) {
       expect(easeFraction(ease, 0)).toBe(0);
       expect(easeFraction(ease, 1)).toBeCloseTo(1, 12);
@@ -219,10 +219,37 @@ describe("key easing", () => {
     expect(easeFraction("inOut", 0.25)).toBeCloseTo(0.0625);
     expect(easeFraction("inOut", 0.5)).toBeCloseTo(0.5);
     expect(easeFraction("inOut", 0.75)).toBeCloseTo(0.9375);
+    expect(easeFraction("step", 0.5)).toBe(0);
+    expect(easeFraction("step", 0.999)).toBe(0);
+  });
+
+  it("holds a step key's value until the next key, values and transforms alike", () => {
+    const track = {
+      name: "hit",
+      keys: [
+        { time: 0, value: [1, 2, 3], ease: "step" as const },
+        { time: 1, value: [4, 5, 6] },
+      ],
+    };
+    expect(sampleTrack(track, 0.25)).toEqual([1, 2, 3]);
+    expect(sampleTrack(track, 0.99)).toEqual([1, 2, 3]);
+    expect(sampleTrack(track, 1)).toEqual([4, 5, 6]);
+    const base: FXTransform = { position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] };
+    const tracks: FXTransformTrack[] = [
+      {
+        channel: "position",
+        keys: [
+          { time: 0, value: [0, 0, 0], ease: "step" },
+          { time: 1, value: [2, 0, 0] },
+        ],
+      },
+    ];
+    expect(sampleTransform(base, tracks, 0.5).position).toEqual([0, 0, 0]);
+    expect(sampleTransform(base, tracks, 1).position).toEqual([2, 0, 0]);
   });
 
   it("reads a raw value as a curve only when it names one", () => {
-    expect(FX_KEY_EASES).toEqual(["linear", "in", "out", "inOut"]);
+    expect(FX_KEY_EASES).toEqual(["linear", "in", "out", "inOut", "step"]);
     expect(asKeyEase("inOut")).toBe("inOut");
     expect(asKeyEase("bounce")).toBeUndefined();
     expect(asKeyEase(undefined)).toBeUndefined();

@@ -33,6 +33,7 @@ const KEY_EASE_SET: Readonly<Record<FXKeyEase, true>> = {
   in: true,
   out: true,
   inOut: true,
+  step: true,
 };
 
 /** Every curve a key can take, for tools that offer them. */
@@ -43,7 +44,7 @@ export function asKeyEase(value: unknown): FXKeyEase | undefined {
   return FX_KEY_EASES.find((ease) => ease === value);
 }
 
-/** `u` in [0, 1] along `ease`'s cubic curve. */
+/** `u` in [0, 1] along `ease`'s curve: a cubic, or for `"step"` 0 until the segment's end. */
 export function easeFraction(ease: FXKeyEase | undefined, u: number): number {
   switch (ease) {
     case "in":
@@ -52,6 +53,8 @@ export function easeFraction(ease: FXKeyEase | undefined, u: number): number {
       return 1 - (1 - u) ** 3;
     case "inOut":
       return u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
+    case "step":
+      return u < 1 ? 0 : 1;
     case "linear":
     case undefined:
       return u;

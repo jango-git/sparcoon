@@ -12,6 +12,18 @@ import type { FXPackedAttribute, FXPackedMember } from "./FXAttributePacking.js"
 import { floatGLSLType } from "./FXAttributePacking.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";
 
+// Three declares `modelMatrix` in the vertex prefix only, yet sets it on every program it draws: a
+// fragment-stage read (`world-matrix`, `inverse-world-matrix` - the artifact's targets list it in
+// both stages) needs its own declaration, or the fragment shader fails to compile. At the vertex
+// stage's precision (highp) where the fragment stage has it, so the two declarations link.
+const FX_FRAGMENT_MODEL_MATRIX = [
+  "#ifdef GL_FRAGMENT_PRECISION_HIGH",
+  "uniform highp mat4 modelMatrix;",
+  "#else",
+  "uniform mat4 modelMatrix;",
+  "#endif",
+].join("\n");
+
 // Mutable holder wired into the Three material as `u_time`/`u_deltaTime`; shape-compatible with IUniform.
 export interface FXFrameTimeUniform {
   value: number;
@@ -320,13 +332,22 @@ function blendTail(renderMode: FXRenderMode, outputs: Readonly<Record<string, st
   return lines.join("\n");
 }
 
+// The optional `intensity` slot: a multiplier on the color alone, never its alpha - so a glow can be
+// brightened or dimmed without the discard floor or the additive weight (both off the alpha) moving.
+// Applied before tone mapping and the color-space conversion, in linear light. Absent: no line.
+function intensityLine(outputs: Readonly<Record<string, string>>): string {
+  return "intensity" in outputs ? `diffuseColor.rgb *= max(${outputs["intensity"]}, 0.0);` : "";
+}
+
 /** The fragment tail every color material ends with: the graph's `albedo`, the render mode's
- *  discard, then three's opaque -> tone mapping -> color space -> fog chunks and the blend tail. */
+ *  discard, the `intensity` multiplier, then three's opaque -> tone mapping -> color space -> fog
+ *  chunks and the blend tail. */
 function colorFragmentTail(render: FXRenderArtifact, renderMode: FXRenderMode): string[] {
   const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
   return [
     `vec4 diffuseColor = ${render.outputs["albedo"]};`,
     alphaDiscardLines(renderMode, alphaThreshold),
+    intensityLine(render.outputs),
     "vec3 outgoingLight = diffuseColor.rgb;",
     "#include <opaque_fragment>",
     "#include <tonemapping_fragment>",
@@ -453,6 +474,7 @@ export function buildUnlitArtifactMaterial(
   // `opaque_fragment` below forces alpha to 1 when the material is opaque (the hash case,
   // `transparent: false`), exactly as MeshBasic did.
   const fragmentShader = [
+    FX_FRAGMENT_MODEL_MATRIX,
     FX_CORE_PARTICLE_DEFINES,
     "varying vec2 p_uv;",
     "uniform float u_time;",
@@ -631,6 +653,7 @@ function buildLitArtifactMaterial(
   ].join("\n");
 
   const fragmentShader = [
+    FX_FRAGMENT_MODEL_MATRIX,
     "#define LAMBERT",
     FX_CORE_PARTICLE_DEFINES,
     "varying vec2 p_uv;",
@@ -807,6 +830,7 @@ function buildMeshUnlitArtifactMaterial(
   ].join("\n");
 
   const fragmentShader = [
+    FX_FRAGMENT_MODEL_MATRIX,
     "varying vec2 p_uv;",
     "uniform float u_time;",
     "uniform float u_deltaTime;",
@@ -906,6 +930,7 @@ function buildMeshLitArtifactMaterial(
   ].join("\n");
 
   const fragmentShader = [
+    FX_FRAGMENT_MODEL_MATRIX,
     "#define LAMBERT",
     "varying vec2 p_uv;",
     "uniform float u_time;",
@@ -1074,6 +1099,7 @@ export function buildArtifactDepthMaterial(
   ].join("\n");
 
   const fragmentShader = [
+    FX_FRAGMENT_MODEL_MATRIX,
     ...(lit ? ["#define LAMBERT"] : []),
     FX_CORE_PARTICLE_DEFINES,
     "varying vec2 p_uv;",
@@ -1206,6 +1232,7 @@ export function buildMeshArtifactDepthMaterial(
   ].join("\n");
 
   const fragmentShader = [
+    FX_FRAGMENT_MODEL_MATRIX,
     ...(lit ? ["#define LAMBERT"] : []),
     "varying vec2 p_uv;",
     "uniform float u_time;",
@@ -1605,6 +1632,7 @@ export function buildTrailArtifactMaterial(
   ].join("\n");
 
   const fragmentShader = [
+    FX_FRAGMENT_MODEL_MATRIX,
     FX_CORE_PARTICLE_DEFINES,
     ...sharedDeclarations,
     properties.fragmentDeclarations,

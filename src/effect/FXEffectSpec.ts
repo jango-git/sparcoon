@@ -29,10 +29,11 @@ export interface FXTransform {
 }
 
 /**
- * How a value moves from a key to the next one: at a constant rate (`"linear"`), or easing in
- * (starting slow), out (arriving slow) or both - cubic curves, as animation tools usually offer.
+ * How a value moves from a key to the next one: at a constant rate (`"linear"`), easing in
+ * (starting slow), out (arriving slow) or both - cubic curves, as animation tools usually offer -
+ * or not at all (`"step"`): held at this key's value until the next key, then jumping to it.
  */
-export type FXKeyEase = "linear" | "in" | "out" | "inOut";
+export type FXKeyEase = "linear" | "in" | "out" | "inOut" | "step";
 
 export interface FXKeyframe {
   readonly time: number;

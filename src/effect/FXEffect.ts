@@ -234,7 +234,10 @@ const NO_BEHAVIOR_BINDINGS = { bindings: {} } as unknown as FXBehaviorArtifact;
  * subclass; this base class is identical for every export.
  *
  * The timeline drive mirrors the editor's own transport: burst/play events fire across the
- * continuous swept interval, while value + transform tracks are frame-stepped onto the `fps` grid.
+ * continuous swept interval, and while playing, transform tracks are sampled at the continuous time
+ * too - a pose that held still between two frames would read as no motion on every tick between
+ * them, and as a jump on the next, to anything reading the object's velocity. Value tracks are
+ * frame-stepped onto the `fps` grid.
  */
 export abstract class FXEffect extends Group<FXEffectEventMap> {
   private readonly specification: FXEffectSpec;
@@ -415,7 +418,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     for (let i = 0; i < this.meshes.length; i += 1) {
       const mesh = this.meshes[i];
       // World-space velocity/angular velocity since the previous frame, from the mesh's own
-      // matrixWorld (posed by `advance()` -> `driveFrame()` above, or by a host live-driving it
+      // matrixWorld (posed by `advance()` -> `poseAt()` above, or by a host live-driving it
       // directly through `getMesh()`) - never from PARTICLE_POSITION-style local state, since a
       // mesh is a single non-instanced object with no such thing.
       mesh.updateWorldMatrix(true, false);
@@ -575,7 +578,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     const duration = this.specification.duration;
     let now = this.time + deltaSeconds;
     if (duration > 0 && now >= duration) {
-      // The end of the timeline: finish the tail from the last frame's pose.
+      // The end of the timeline: finish the tail from the pose at its end.
       this.poseAt(duration);
       this.fire(this.lastTime, duration);
       if (!this.looping) {
@@ -609,12 +612,14 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     this.time = now;
   }
 
-  /** Poses every entity for the frame `time` falls in, unless it already is. */
+  /** Poses every entity at `time` itself, and drives the values of the frame it falls in unless
+   *  they already are. */
   private poseAt(time: number): void {
+    this.poseEntities(time);
     const frame = frameOfTime(time, this.specification.fps);
     if (frame !== this.lastFrame) {
       this.lastFrame = frame;
-      this.driveFrame(timeOfFrame(frame, this.specification.fps));
+      this.driveValues(timeOfFrame(frame, this.specification.fps));
     }
   }
 
@@ -647,7 +652,13 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
    * root itself is never re-posed here (see {@link FXEffectSpec.transformTracks}) - only
    * emitters/meshes, and only their non-live channels/parameters.
    */
+  /** Poses every entity and drives every value at `time`. */
   private driveFrame(time: number): void {
+    this.poseEntities(time);
+    this.driveValues(time);
+  }
+
+  private poseEntities(time: number): void {
     for (let i = 0; i < this.specification.emitters.length; i += 1) {
       const emitterSpec = this.specification.emitters[i];
       applyTransform(
@@ -655,9 +666,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
         sampleTransform(emitterSpec.transform, emitterSpec.transformTracks, time),
         emitterSpec.liveChannels,
       );
-      this.driveEmitterValues(i, sampleTracks(emitterSpec.tracks, time));
     }
-
     for (let i = 0; i < this.specification.meshes.length; i += 1) {
       const meshSpec = this.specification.meshes[i];
       applyTransform(
@@ -665,7 +674,15 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
         sampleTransform(meshSpec.transform, meshSpec.transformTracks, time),
         meshSpec.liveChannels,
       );
-      this.driveMeshValues(i, sampleTracks(meshSpec.tracks, time));
+    }
+  }
+
+  private driveValues(time: number): void {
+    for (let i = 0; i < this.specification.emitters.length; i += 1) {
+      this.driveEmitterValues(i, sampleTracks(this.specification.emitters[i].tracks, time));
+    }
+    for (let i = 0; i < this.specification.meshes.length; i += 1) {
+      this.driveMeshValues(i, sampleTracks(this.specification.meshes[i].tracks, time));
     }
   }
 
