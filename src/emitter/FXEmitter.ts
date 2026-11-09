@@ -9,6 +9,7 @@ import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import {
   assertValidNonNegativeNumber,
+  assertValidNumber,
   assertValidPositiveInteger,
   assertValidPositiveNumber,
 } from "../miscellaneous/asserts.js";
@@ -17,7 +18,7 @@ import type { FXRenderBudget } from "../render/FXRenderBudget.js";
 import type { FXTrailOptions } from "../trail/FXTrail.js";
 import { assertValidTrailOptions, FXTrail } from "../trail/FXTrail.js";
 import { trailReadFields } from "../trail/FXTrailFields.Internal.js";
-import type { FXEmitterDriver } from "./FXEmitterDriver.Internal.js";
+import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
 import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
 import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
 import type {
@@ -25,6 +26,8 @@ import type {
   FXEmitterBurstOptions,
   FXEmitterOptions,
   FXEmitterPlayOptions,
+  FXParticleDeathListener,
+  FXSpawnOrigin,
 } from "./FXEmitter.Internal.js";
 import {
   EMITTER_DEFAULT_CAST_SHADOW,
@@ -44,7 +47,8 @@ import {
  *
  * A thin facade over one {@link FXEmitterDriver} (JS or GPU - see `FXEmitterDriver.Internal.ts`),
  * chosen once by {@link fromArtifacts} and never switched mid-playback. This class itself owns only
- * what is genuinely backend-independent: play/burst/stop/prewarm scheduling, sort-fraction timing,
+ * what is genuinely backend-independent: play/burst/stop/prewarm scheduling, the births queue and
+ * when the driver seeds it (see {@link tick}), death listeners, sort-fraction timing,
  * object motion tracking, the render material and the optional {@link FXTrail} (with its own
  * material) - both CAN be replaced in place, by {@link applyRenderArtifact} and
  * {@link applyTrailArtifact}, without touching the driver or its particle state.
@@ -75,7 +79,14 @@ export class FXEmitter extends Object3D {
   private readonly appliedUniforms: Record<string, number | readonly number[] | Texture> = {};
 
   private nextHandler = 0;
-  private readonly pendingBursts: { handler: number; count: number; delay: number }[] = [];
+  // The schedule - what will spawn later: delayed bursts and plays, each with its handler. `stop`
+  // cancels it; `loopTimeline` cancels the part that follows this emitter's pose (no `origin`).
+  private readonly pendingBursts: {
+    handler: number;
+    count: number;
+    delay: number;
+    origin: FXEmitterTransform | undefined;
+  }[] = [];
   private readonly activePlays: {
     handler: number;
     rate: number;
@@ -83,7 +94,21 @@ export class FXEmitter extends Object3D {
     elapsed: number;
     accumulator: number;
     delay: number;
+    origin: FXEmitterTransform | undefined;
   }[] = [];
+  // Births that are due and wait for this emitter's tick to seed them, in call order - the only way
+  // particles are born (see tick). Not cancellable: only `reset` drops them.
+  private readonly dueBirths: FXDueBirth[] = [];
+
+  // Particle-death listeners, and the deaths ticks found (position xyz, velocity xyz, flat), handed
+  // out after the whole world ticked (afterWorldTick). Two queues swapped per hand-out: a death is
+  // taken off `pendingDeaths` before any listener sees it, so one that throws never sees it again.
+  private readonly deathListeners = new Set<FXParticleDeathListener>();
+  private pendingDeaths: number[] = [];
+  private dispatchingDeaths: number[] = [];
+  private readonly deathScratch = { position: [0, 0, 0], velocity: [0, 0, 0] };
+  // This tick's births at a pose other than its own, seeded after its pass (reused per tick).
+  private readonly birthsElsewhere: FXDueBirth[] = [];
 
   private sortingAccumulator = 0;
   private readonly sortingCameraWorldPosition = new Vector3();
@@ -178,6 +203,12 @@ export class FXEmitter extends Object3D {
    */
   public get particleOverflowCount(): number | undefined {
     return this.driver.particleOverflowCount;
+  }
+
+  /** Whether {@link onParticleDeath} works here: a CPU-driven emitter's particles' deaths are seen,
+   *  a GPU-driven one's never leave the GPU. */
+  public get reportsParticleDeaths(): boolean {
+    return this.driver.reportsDeaths;
   }
 
   /**
@@ -330,6 +361,10 @@ export class FXEmitter extends Object3D {
     // Drop scheduled work so nothing references the driver's buffers after teardown.
     this.pendingBursts.length = 0;
     this.activePlays.length = 0;
+    this.dueBirths.length = 0;
+    this.deathListeners.clear();
+    this.pendingDeaths.length = 0;
+    this.dispatchingDeaths.length = 0;
 
     // The material owns no per-emitter GPU resources; the driver teardown disposes the instanced
     // geometry and the mounted material (plus, for a GPU-driven emitter, the compiled program+VAO)
@@ -345,40 +380,54 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * Spawns `count` particles immediately, or after `options.delay`. An immediate burst seeds its
-   * particles from this emitter's pose and parameter values at the moment of the call, on either
-   * backend - so moving the emitter between two bursts of one frame spawns them in two places.
-   * A delayed burst spawns from the pose and values of the tick it expires on.
+   * Spawns `count` particles on this emitter's next tick, or after `options.delay`. Every birth is
+   * seeded in a tick, after its update: a newborn is not updated in the tick it is born in, on
+   * either backend. An undelayed burst spawns from this emitter's pose at the moment of the call -
+   * so moving the emitter between two bursts of one frame spawns them in two places - or from
+   * `options.origin`; parameter values are those of the tick. A delayed burst spawns from the pose
+   * of the tick it expires on, or from its origin.
    * @returns Handler for {@link stop} to cancel a pending delayed burst.
    */
   public burst(count: number, options: Partial<FXEmitterBurstOptions> = {}): number {
     // Whole particles only: a fractional count sets a fractional `instanceCount`.
     assertValidPositiveInteger(count, "FXEmitter.burst.count");
     this.assertCanSpawn("FXEmitter.burst");
+    const delay = options.delay ?? 0;
+    assertValidNonNegativeNumber(delay, "FXEmitter.burst.options.delay");
+    if (options.origin !== undefined) {
+      assertValidOrigin(options.origin, "FXEmitter.burst.options.origin");
+    }
     if (this.destroyed) {
       return DEAD_HANDLER;
     }
     const handler = this.nextHandler++;
-    const delay = options.delay ?? 0;
-    assertValidNonNegativeNumber(delay, "FXEmitter.burst.options.delay");
+    const origin = options.origin === undefined ? undefined : this.originTransform(options.origin);
 
     if (delay <= 0) {
-      this.spawnBurst(count);
+      this.dueBirths.push({
+        count,
+        matrix: origin === undefined ? [...this.worldTransform().worldMatrix] : undefined,
+        origin,
+      });
     } else {
-      this.pendingBursts.push({ handler, count, delay });
+      this.pendingBursts.push({ handler, count, delay, origin });
     }
 
     return handler;
   }
 
   /**
-   * Starts continuous emission at `rate` particles/second.
+   * Starts continuous emission at `rate` particles/second, from this emitter's pose as each tick
+   * finds it, or from `options.origin` for the whole play.
    * @returns Handler for {@link stop} to cancel.
    */
   public play(rate: number, options: Partial<FXEmitterPlayOptions> = {}): number {
     assertValidPositiveNumber(rate, "FXEmitter.play.rate");
     if (options.delay !== undefined) {
       assertValidNonNegativeNumber(options.delay, "FXEmitter.play.options.delay");
+    }
+    if (options.origin !== undefined) {
+      assertValidOrigin(options.origin, "FXEmitter.play.options.origin");
     }
     this.assertCanSpawn("FXEmitter.play");
     if (this.destroyed) {
@@ -393,9 +442,77 @@ export class FXEmitter extends Object3D {
       elapsed: 0,
       accumulator: 0,
       delay: options.delay ?? 0,
+      origin: options.origin === undefined ? undefined : this.originTransform(options.origin),
     });
 
     return handler;
+  }
+
+  /**
+   * Calls `listener` for each of this emitter's particles that dies of age - once per death, after
+   * every emitter of this world has ticked (so a listener spawning elsewhere does it the same way
+   * whatever order the emitters tick in: the births land on the next tick). A particle a birth
+   * overwrites in a full ring, or one {@link reset} clears, does not die; nor do the particles of
+   * {@link prewarm}. Watching costs a copy of the particle positions per tick while any listener
+   * is attached.
+   * @returns Detaches `listener`.
+   * @throws On a GPU-driven emitter (see {@link reportsParticleDeaths}): its particles' ages live
+   *   on the GPU, and reading them back would stall the pipeline. Build a death source without a
+   *   GPU kernel.
+   */
+  public onParticleDeath(listener: FXParticleDeathListener): () => void {
+    if (!this.driver.reportsDeaths) {
+      throw new Error(
+        "FXEmitter.onParticleDeath: a GPU-driven emitter cannot report its particles' deaths - " +
+          "build it without a gpuKernel",
+      );
+    }
+    if (this.destroyed) {
+      return NO_OP;
+    }
+    this.deathListeners.add(listener);
+    if (this.deathListeners.size === 1) {
+      this.driver.watchDeaths(this.recordDeath);
+    }
+    return (): void => {
+      // Deaths already queued are still handed to the listeners attached when they are (the
+      // dispatch snapshots them); with none left, nothing new is queued.
+      if (this.deathListeners.delete(listener) && this.deathListeners.size === 0) {
+        this.driver.watchDeaths(undefined);
+      }
+    };
+  }
+
+  /**
+   * @internal Hands this tick's deaths to the {@link onParticleDeath} listeners. Driven by
+   * {@link FXWorld.update} after every object of the world ticked.
+   */
+  public afterWorldTick(): void {
+    if (this.pendingDeaths.length === 0) {
+      return;
+    }
+    const deaths = this.pendingDeaths;
+    this.pendingDeaths = this.dispatchingDeaths;
+    this.dispatchingDeaths = deaths;
+    // A snapshot: a listener may detach itself (or another). Re-reading the length: a listener may
+    // reset this emitter, which drops the deaths not handed out yet.
+    const listeners = [...this.deathListeners];
+    const death = this.deathScratch;
+    try {
+      for (let offset = 0; offset < deaths.length; offset += DEATH_STRIDE) {
+        death.position[0] = deaths[offset];
+        death.position[1] = deaths[offset + 1];
+        death.position[2] = deaths[offset + 2];
+        death.velocity[0] = deaths[offset + 3];
+        death.velocity[1] = deaths[offset + 4];
+        death.velocity[2] = deaths[offset + 5];
+        for (const listener of listeners) {
+          listener(death);
+        }
+      }
+    } finally {
+      deaths.length = 0;
+    }
   }
 
   /**
@@ -412,6 +529,7 @@ export class FXEmitter extends Object3D {
       this.activePlays.length = 0;
       return hadAnything;
     }
+    // An undelayed burst is due already (dueBirths): there is nothing left of it to cancel.
 
     const burstIndex = this.pendingBursts.findIndex((b) => b.handler === handler);
     if (burstIndex !== -1) {
@@ -451,6 +569,8 @@ export class FXEmitter extends Object3D {
       this.tick(deltaTime);
       remaining -= deltaTime;
     }
+    // Deaths of a simulated past are not events: nothing should spawn where they happened.
+    this.pendingDeaths.length = 0;
   }
 
   /**
@@ -466,6 +586,9 @@ export class FXEmitter extends Object3D {
     }
     this.pendingBursts.length = 0;
     this.activePlays.length = 0;
+    this.dueBirths.length = 0;
+    this.pendingDeaths.length = 0;
+    this.dispatchingDeaths.length = 0;
     this.driver.reset();
     this.trail?.reset();
     // A restarted effect should not report a teleport spike from wherever the emitter was last
@@ -475,16 +598,18 @@ export class FXEmitter extends Object3D {
 
   /**
    * For a timeline that loops back to its start - {@link FXEffect}'s own, or a tool's that drives
-   * the emitter itself: cancels the active plays and pending bursts, as {@link stop} does, and
-   * forgets the motion baseline - the pose jumps from the lap's end to its start, which is no
-   * motion - but leaves live particles to finish their lives, so the loop runs on seamlessly.
-   * Unlike {@link reset}, which clears them.
+   * the emitter itself: cancels the active plays and pending bursts that follow this emitter's
+   * pose, and forgets the motion baseline - the pose jumps from the lap's end to its start, which
+   * is no motion - but leaves live particles to finish their lives, so the loop runs on seamlessly
+   * (unlike {@link reset}, which clears them). Bursts already due, and plays and bursts at an
+   * origin, do not depend on the emitter's pose and run on as well.
    */
   public loopTimeline(): void {
     if (this.destroyed) {
       return;
     }
-    this.stop();
+    removeWhere(this.pendingBursts, (pending) => pending.origin === undefined);
+    removeWhere(this.activePlays, (play) => play.origin === undefined);
     this.motionTracker.reset();
   }
 
@@ -607,9 +732,8 @@ export class FXEmitter extends Object3D {
     }
   }
 
-  // The emitter's world matrix as the reused snapshot the kernel reads. It is the mesh's
-  // `matrixWorld` (same matrix the shader and depth sort see), so a world-space graph stays
-  // consistent under any transform. `Matrix4.elements` is already column-major.
+  // The emitter's world matrix as the reused snapshot the kernel reads: the mesh's `matrixWorld`,
+  // the pose a graph places its particles by. `Matrix4.elements` is already column-major.
   private worldTransform(): FXEmitterTransform {
     this.mesh.updateWorldMatrix(true, false);
     const world = this.mesh.matrixWorld.elements;
@@ -655,14 +779,33 @@ export class FXEmitter extends Object3D {
     this.emitterTransform.angularVelocity[1] = motion.angularVelocity[1];
     this.emitterTransform.angularVelocity[2] = motion.angularVelocity[2];
 
+    const transform = this.worldTransform();
     // Paused (dt == 0): skip the simulation step entirely - no JS age/kernel update, no GPU
     // transform-feedback dispatch, no schedule advance - the emitter keeps rendering whatever
-    // particle state the last active tick left behind.
+    // particle state the last active tick left behind. Births already due still land, each seeded
+    // on its own outside a tick (a host's burst while paused shows at once).
     if (deltaTime <= 0) {
+      for (const birth of this.dueBirths) {
+        this.driver.spawn(birth.count, poseOf(birth, transform));
+      }
+      this.dueBirths.length = 0;
       return;
     }
 
-    this.driver.beginTick(deltaTime, this.worldTransform());
+    // One order on both backends: update, then the births at this tick's pose (on the GPU, one
+    // range of the tick's single pass), then every birth at another pose (one GPU pass each) -
+    // so the two number their particles alike, and no newborn is updated in its own tick.
+    this.driver.beginTick(deltaTime, transform);
+    const elsewhere = this.birthsElsewhere;
+
+    for (const birth of this.dueBirths) {
+      if (birth.matrix !== undefined && sameMatrix(birth.matrix, transform.worldMatrix)) {
+        this.driver.spawn(birth.count, transform);
+      } else {
+        elsewhere.push(birth);
+      }
+    }
+    this.dueBirths.length = 0;
 
     for (let i = this.pendingBursts.length - 1; i >= 0; i--) {
       const pending = this.pendingBursts[i];
@@ -670,7 +813,7 @@ export class FXEmitter extends Object3D {
 
       if (pending.delay <= 0) {
         this.pendingBursts.splice(i, 1);
-        this.spawnBurst(pending.count);
+        this.spawnScheduled(pending.count, pending.origin, transform);
       }
     }
 
@@ -703,7 +846,7 @@ export class FXEmitter extends Object3D {
       const particlesToSpawn = Math.floor(play.accumulator);
 
       if (particlesToSpawn > 0) {
-        this.spawnBurst(particlesToSpawn);
+        this.spawnScheduled(particlesToSpawn, play.origin, transform);
         play.accumulator -= particlesToSpawn;
       }
 
@@ -712,9 +855,54 @@ export class FXEmitter extends Object3D {
       }
     }
 
-    this.driver.endTick(deltaTime, this.worldTransform());
+    this.driver.endTick(deltaTime, transform);
+    for (const birth of elsewhere) {
+      this.driver.spawn(birth.count, poseOf(birth, transform));
+    }
+    elsewhere.length = 0;
     this.trail?.record(deltaTime);
   }
+
+  // A scheduled spawn (a delayed burst expiring, a play's accumulator) inside a tick: at the
+  // tick's pose right away, or at its origin after the tick's pass.
+  private spawnScheduled(
+    count: number,
+    origin: FXEmitterTransform | undefined,
+    transform: FXEmitterTransform,
+  ): void {
+    if (origin === undefined) {
+      this.driver.spawn(count, transform);
+    } else {
+      this.birthsElsewhere.push({ count, matrix: undefined, origin });
+    }
+  }
+
+  // The pose a birth at `origin` spawns from: this emitter's, moved to the origin's position, with
+  // the origin's velocity and no spin.
+  private originTransform(origin: FXSpawnOrigin): FXEmitterTransform {
+    const worldMatrix = [...this.worldTransform().worldMatrix];
+    worldMatrix[12] = origin.position[0];
+    worldMatrix[13] = origin.position[1];
+    worldMatrix[14] = origin.position[2];
+    const velocity = origin.velocity ?? ZERO_VECTOR;
+    return {
+      worldMatrix,
+      velocity: [velocity[0], velocity[1], velocity[2]],
+      angularVelocity: [0, 0, 0],
+    };
+  }
+
+  // The driver's death sink: queues one death for afterWorldTick.
+  private readonly recordDeath: FXParticleDeathSink = (
+    positionX,
+    positionY,
+    positionZ,
+    velocityX,
+    velocityY,
+    velocityZ,
+  ) => {
+    this.pendingDeaths.push(positionX, positionY, positionZ, velocityX, velocityY, velocityZ);
+  };
 
   private readonly onRendering = (deltaTime: number): void => {
     this.tick(deltaTime);
@@ -743,14 +931,68 @@ export class FXEmitter extends Object3D {
       this.driver.sortByDistance(this.sortingCameraWorldPosition);
     }
   };
-
-  private spawnBurst(count: number): void {
-    this.driver.spawn(count, this.worldTransform());
-  }
 }
 
 // Returned by post-destroy `burst`/`play` - never matches a scheduled handler.
 const DEAD_HANDLER = -1;
+
+// Returned by `onParticleDeath` on a destroyed emitter.
+const NO_OP = (): void => undefined;
+
+// Numbers per queued death: position xyz, velocity xyz.
+const DEATH_STRIDE = 6;
+
+const ZERO_VECTOR: readonly number[] = [0, 0, 0];
+
+/** A birth that is due: `count` particles from the emitter's pose at the call (`matrix`, the tick
+ *  supplies its motion), or from a full pose at an origin. */
+interface FXDueBirth {
+  readonly count: number;
+  readonly matrix: readonly number[] | undefined;
+  readonly origin: FXEmitterTransform | undefined;
+}
+
+function poseOf(birth: FXDueBirth, tick: FXEmitterTransform): FXEmitterTransform {
+  if (birth.origin !== undefined) {
+    return birth.origin;
+  }
+  return {
+    worldMatrix: birth.matrix ?? tick.worldMatrix,
+    velocity: tick.velocity,
+    angularVelocity: tick.angularVelocity,
+  };
+}
+
+function sameMatrix(a: readonly number[], b: readonly number[]): boolean {
+  for (let i = 0; i < 16; i += 1) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function removeWhere<T>(items: T[], predicate: (item: T) => boolean): void {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (predicate(items[i])) {
+      items.splice(i, 1);
+    }
+  }
+}
+
+function assertValidOrigin(origin: FXSpawnOrigin, subject: string): void {
+  for (const [name, vector] of [
+    ["position", origin.position],
+    ["velocity", origin.velocity ?? ZERO_VECTOR],
+  ] as const) {
+    if (vector.length !== 3) {
+      throw new Error(`${subject}.${name}: expected [x, y, z]`);
+    }
+    for (const component of vector) {
+      assertValidNumber(component, `${subject}.${name}`);
+    }
+  }
+}
 
 /**
  * What `renderer`'s GPU offers a material: its vertex attribute and varying vector counts, or

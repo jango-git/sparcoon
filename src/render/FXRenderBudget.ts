@@ -9,6 +9,7 @@ import type {
   FXBufferLayout,
   FXGLSLRenderTier,
   FXRenderArtifact,
+  FXSurfaceReads,
 } from "../artifact/FXArtifact.js";
 import {
   gpuHeldFields,
@@ -101,19 +102,30 @@ function chunkVaryings(chunk: string, alphaHash: boolean): readonly FXVarying[] 
   }
 }
 
+/**
+ * How one varying of GLSL type `glslTypeName` packs (see {@link packedVaryingVectors}): its
+ * components per vector and its vectors - for a compiler weighing what it carries between stages
+ * by the same rule this budget counts with.
+ * @throws For a type no varying can have.
+ */
+export function fxVaryingShape(glslTypeName: string): { components: number; count: number } {
+  const shape = PACKED_SHAPES[glslTypeName];
+  if (shape === undefined) {
+    throw new Error(`fxVaryingShape: no packing rule for varying type "${glslTypeName}"`);
+  }
+  return { components: shape.components, count: shape.vectors };
+}
+
 /** Every varying `fragmentShader` declares, its own lines and its chunks' alike. */
 function fragmentVaryings(fragmentShader: string, alphaHash: boolean): readonly FXVarying[] {
   const varyings: FXVarying[] = [];
   for (const match of fragmentShader.matchAll(
-    /^\s*varying\s+(?:(?:lowp|mediump|highp)\s+)?(\w+)\s+\w+\s*(?:\[\s*(\d+)\s*\])?\s*;/gm,
+    /^\s*(?:flat\s+|FX_FLAT\s+)?varying\s+(?:(?:lowp|mediump|highp)\s+)?(\w+)\s+\w+\s*(?:\[\s*(\d+)\s*\])?\s*;/gm,
   )) {
     const [, type, arraySize] = match as unknown as [string, string, string | undefined];
-    const shape = PACKED_SHAPES[type];
-    if (shape === undefined) {
-      throw new Error(`fxRenderBudget: no packing rule for varying type "${type}"`);
-    }
+    const shape = fxVaryingShape(type);
     const count = arraySize === undefined ? 1 : Number(arraySize);
-    varyings.push({ components: shape.components, count: count * shape.vectors });
+    varyings.push({ components: shape.components, count: count * shape.count });
   }
   for (const match of fragmentShader.matchAll(/^\s*#include\s+<(\w+)>/gm)) {
     varyings.push(...chunkVaryings(match[1], alphaHash));
@@ -233,6 +245,37 @@ export function fxEmitterRenderBudget(
     materials.push(buildArtifactDepthMaterial(render, layout, ...frameUniforms()));
   }
   return budgetOf(materials, render.options?.renderMode === "alphaHash");
+}
+
+/**
+ * The varying vectors a particle render graph may spend on what it carries itself between its
+ * stages on `tier`: the tier's minimum less what the heaviest particle material takes besides the
+ * graph - lit, casting a shadow, alpha-hashed, building the surface frame `surfaceReads` asks for.
+ * What a compiler deciding how much to carry may count on, whatever the effect is configured to.
+ */
+export function fxGraphVaryingAllowance(
+  tier: FXGLSLRenderTier,
+  surfaceReads: FXSurfaceReads,
+): number {
+  const noReads = { position: false, lifecycle: false, attributes: [] };
+  const heaviest: FXRenderArtifact = {
+    lightingIntrinsics: ["fxLambertShade"],
+    options: { renderMode: "alphaHash" },
+    uniformDeclarations: [],
+    varyings: [],
+    vertex: { helperFunctions: [], body: [], particleReads: noReads },
+    fragment: {
+      helperFunctions: [],
+      body: [],
+      particleReads: noReads,
+      surfaceReads,
+    },
+    outputs: { albedo: "vec4(1.0)" },
+    uniforms: {},
+    attributeReads: [],
+  };
+  const used = fxEmitterRenderBudget(heaviest, [], { castShadow: true }).varyingVectors;
+  return FX_RENDER_BUDGET_MINIMUMS[tier].varyingVectors - used;
 }
 
 /** The same for a VFX mesh's render artifact, which carries no particle state. */

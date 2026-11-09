@@ -1,6 +1,11 @@
 import type { IUniform, Texture } from "three";
 import { DoubleSide, NormalBlending, ShaderMaterial, UniformsLib, UniformsUtils } from "three";
-import type { FXParticleReads, FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
+import type {
+  FXParticleReads,
+  FXRenderArtifact,
+  FXSurfaceReads,
+  FXValueSlot,
+} from "../artifact/FXArtifact.js";
 import {
   FX_CORE_LIFECYCLE,
   FX_CORE_PARTICLE_DEFINES,
@@ -184,6 +189,31 @@ function declareVaryings(
   };
 }
 
+/**
+ * `FX_FLAT`: the `flat` qualifier where the shader's GLSL has one (ES 3.00 - three upgrades a
+ * material to it on WebGL2), nothing on GLSL ES 1.00 - where interpolating a value the same at all
+ * of a primitive's vertices gives it back.
+ */
+const FX_FLAT_DEFINE = [
+  "#if __VERSION__ >= 300",
+  "#define FX_FLAT flat",
+  "#else",
+  "#define FX_FLAT",
+  "#endif",
+].join("\n");
+
+/** The declarations of what the graph carries between its stages - the same in both stages. */
+function graphVaryings(render: FXRenderArtifact): string {
+  const flat = render.varyings.some((varying) => varying.interpolation === "flat");
+  return [
+    ...(flat ? [FX_FLAT_DEFINE] : []),
+    ...render.varyings.map(
+      (varying) =>
+        `${varying.interpolation === "flat" ? "FX_FLAT " : ""}varying ${varying.type} ${varying.name};`,
+    ),
+  ].join("\n");
+}
+
 /** GLSL expression for a vertex output slot, or its default when the slot is unbound. */
 function outputOrDefault(
   outputs: Readonly<Record<string, string>>,
@@ -212,6 +242,75 @@ function transformPreamble(outputs: Readonly<Record<string, string>>, withNormal
     lines.push("mat3 fxNormalXform = mat3(fxParticleXform) * mat3(fxVertexXform);");
   }
   return lines.join("\n");
+}
+
+/**
+ * The world-space surface frame, built for exactly what the fragment code reads
+ * ({@link FXSurfaceReads}) - `geometryNormal`, `geometryTangent`, `worldPosition`, the canonical
+ * author space for normals. Each builtin rides a varying vector, and the fixed part of a material is
+ * what a graph's own varyings have to fit beside, so an unread one is not declared at all.
+ * `fxModelPos`/`objectNormal` are already world space (no modelMatrix step - see fxWorldMatrix for
+ * the explicit emitter-attach opt-in); the tangent is the plane's local +X (the u axis), so
+ * billboard roll/orientation is baked in here once for every consumer (normal maps, spherical
+ * normal, fresnel).
+ *
+ * `threeNormals` keeps three's view-space chain (`defaultnormal_vertex` -> `transformedNormal`,
+ * `normal_vertex` -> `vNormal`), which a lit material's light and shadow chunks read whatever the
+ * graph does; nothing of ours reads it.
+ */
+interface FXSurfaceFrame {
+  /** Varying declarations, the same in both stages. */
+  readonly varyings: string;
+  /** Vertex pars, after `#include <common>`. */
+  readonly vertexPars: string;
+  /** Vertex statements, after the transform preamble (reads `fxModelPos`, `fxNormalXform`). */
+  readonly vertex: string;
+  /** Fragment pars, after `#include <common>`. */
+  readonly fragmentPars: string;
+  /** Fragment statements, at the top of `main` before the node body. */
+  readonly fragment: string;
+  /** Whether the transform preamble must emit `fxNormalXform`. */
+  readonly normalTransform: boolean;
+}
+
+function surfaceFrame(reads: FXSurfaceReads, threeNormals: boolean): FXSurfaceFrame {
+  const varyings: string[] = [];
+  const vertex: string[] = [];
+  const fragment: string[] = [];
+  if (reads.normal || threeNormals) {
+    vertex.push("vec3 objectNormal = fxNormalXform * normal;");
+  }
+  if (threeNormals) {
+    vertex.push("#include <defaultnormal_vertex>", "#include <normal_vertex>");
+  }
+  if (reads.normal) {
+    varyings.push("varying vec3 vWorldNormal;");
+    vertex.push("vWorldNormal = normalize( objectNormal );");
+    // Front-facing sign (matching `normal_fragment_begin` under DOUBLE_SIDED): a back-facing
+    // fragment flips the normal.
+    fragment.push(
+      "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
+      "vec3 geometryNormal = normalize( vWorldNormal ) * fxFaceDirection;",
+    );
+  }
+  if (reads.tangent) {
+    varyings.push("varying vec3 vWorldTangent;");
+    vertex.push("vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );");
+    fragment.push("vec3 geometryTangent = normalize( vWorldTangent );");
+  }
+  if (reads.position) {
+    varyings.push("varying vec3 vWorldPos;");
+    vertex.push("vWorldPos = fxModelPos;");
+    fragment.push("vec3 worldPosition = vWorldPos;");
+  }
+  return {
+    varyings: varyings.join("\n"),
+    vertexPars: threeNormals ? "#include <normal_pars_vertex>" : "",
+    vertex: vertex.join("\n"),
+    fragmentPars: threeNormals ? "#include <normal_pars_fragment>" : "",
+    fragment: fragment.join("\n"),
+    normalTransform: reads.normal || reads.tangent || threeNormals,
+  };
 }
 
 // `#include <project_vertex>` replacement: projects `fxModelPos`, records camera distance, feeds alpha-hash.
@@ -284,10 +383,9 @@ export function fxRenderArtifactCacheKey(render: FXRenderArtifact): string {
     [
       render.lightingIntrinsics.join(","),
       render.uniformDeclarations.join("|"),
-      render.vertex.varyingDeclarations.join("|"),
+      graphVaryings(render),
       render.vertex.helperFunctions.join("|"),
       render.vertex.body.join("|"),
-      render.fragment.varyingDeclarations.join("|"),
       render.fragment.helperFunctions.join("|"),
       render.fragment.body.join("|"),
       Object.entries(render.outputs)
@@ -400,9 +498,8 @@ function colorMaterial(options: {
 // is ours. The fragment tail mirrors MeshBasic (`opaque_fragment` -> tonemapping -> colorspace -> fog
 // -> premultiply) by reusing those exact ShaderChunks, so pixels match the former onBeforeCompile splice.
 // Deliberately dropped vs MeshBasic: clipping planes, logarithmic depth, dithering (unused by particles).
-// The view-space surface normal (`vNormal` -> `geometryNormal`) is set up unconditionally (a small
-// constant cost) so the `geometryNormal` builtin - fresnel, rim, normal masks - works with no lighting
-// node present; the lit builder does the same.
+// The surface frame is built for what the fragment reads (see surfaceFrame), so the
+// `geometryNormal` builtin - fresnel, rim, normal masks - works with no lighting node present.
 export function buildUnlitArtifactMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
@@ -425,6 +522,7 @@ export function buildUnlitArtifactMaterial(
     vertexAssignments,
   } = declareVaryings(render, layout);
   const cacheKey = fxRenderArtifactCacheKey(render);
+  const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
     FX_CORE_PARTICLE_DEFINES,
@@ -435,37 +533,21 @@ export function buildUnlitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position: the canonical author space for
-    // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
-    // builtins in the fragment stage.
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
     vertexVaryingDeclarations,
-    render.vertex.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
-    // `common` declares `vPosition` (under USE_ALPHAHASH); `fog_pars_vertex` declares `vFogDepth`;
-    // `normal_pars_vertex` declares `vNormal` (the surface normal for the `geometryNormal` builtin).
+    // `common` declares `vPosition` (under USE_ALPHAHASH); `fog_pars_vertex` declares `vFogDepth`.
     "#include <common>",
     "#include <fog_pars_vertex>",
-    "#include <normal_pars_vertex>",
+    frame.vertexPars,
     "void main() {",
     "p_uv = uv;",
     vertexAssignments,
     render.vertex.body.join("\n"),
-    transformPreamble(render.outputs, true),
-    // Our objectNormal (replaces beginnormal_vertex); stock defaultnormal/normal_vertex build vNormal.
-    "vec3 objectNormal = fxNormalXform * normal;",
-    "#include <defaultnormal_vertex>",
-    "#include <normal_vertex>",
-    // World-space surface frame + position: fxModelPos/objectNormal are already world space (no
-    // modelMatrix step - see fxWorldMatrix for the explicit emitter-attach opt-in). The tangent is
-    // the plane's local +X (the u axis), so billboard roll/orientation is baked in here ONCE for
-    // every consumer (normal maps, spherical normal, fresnel).
-    "vWorldNormal  = normalize( objectNormal );",
-    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
-    "vWorldPos     = fxModelPos;",
+    transformPreamble(render.outputs, frame.normalTransform),
+    frame.vertex,
     projectFromModelPos(),
     "#include <fog_vertex>",
     "}",
@@ -482,30 +564,17 @@ export function buildUnlitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position: the canonical author space for
-    // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
-    // builtins in the fragment stage.
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
     fragmentVaryingDeclarations,
-    render.fragment.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
     "#include <fog_pars_fragment>",
-    // `normal_pars_fragment` declares the interpolated `vNormal` used for `geometryNormal` below.
-    "#include <normal_pars_fragment>",
+    frame.fragmentPars,
     "void main() {",
-    // Front-facing sign for the surface frame below (a back-facing fragment flips the normal).
-    "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    // World-space surface frame + position - the canonical author space. The
-    // lighting intrinsics convert world->view at their own boundary; geometryTangent/worldPosition feed
-    // normal maps and camera-correct fresnel. Declared before the node body so any reader resolves.
-    "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
-    "vec3 geometryTangent = normalize( vWorldTangent );",
-    "vec3 worldPosition   = vWorldPos;",
+    frame.fragment,
     render.fragment.body.join("\n"),
     ...colorFragmentTail(render, renderMode),
     "}",
@@ -570,6 +639,15 @@ const FX_LIGHTING_NODE_INTRINSICS = [
   "}",
 ].join("\n");
 
+/**
+ * The lighting-node intrinsics as the depth builders define them: the same signatures, the input
+ * colour back unshaded. Depth reads only its alpha, which the real intrinsics pass through too.
+ */
+const FX_LIGHTING_NODE_DEPTH_STUBS = [
+  "vec4 fxLambertShade(vec4 diffuseColor, vec3 worldNormal) { return diffuseColor; }",
+  "vec4 fxAmbientShade(vec4 diffuseColor, vec3 worldNormal) { return diffuseColor; }",
+].join("\n");
+
 // The lit material variant ({@link buildArtifactMaterial} picks it when the capability is non-empty):
 // the graph's `albedo` already carries the shaded color (a lighting node emitted `fxLambertShade(...)` /
 // `fxAmbientShade(...)`), so `main` uses the flat unlit tail (`outgoingLight = diffuseColor.rgb`) - no
@@ -600,6 +678,7 @@ function buildLitArtifactMaterial(
     vertexAssignments,
   } = declareVaryings(render, layout);
   const cacheKey = fxRenderArtifactCacheKey(render);
+  const frame = surfaceFrame(render.fragment.surfaceReads, true);
 
   const vertexShader = [
     "#define LAMBERT",
@@ -611,36 +690,22 @@ function buildLitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position: the canonical author space for
-    // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
-    // builtins in the fragment stage.
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
     "varying vec3 vViewPosition;",
     vertexVaryingDeclarations,
-    render.vertex.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
-    "#include <normal_pars_vertex>",
+    frame.vertexPars,
     "#include <shadowmap_pars_vertex>",
     "void main() {",
     "p_uv = uv;",
     vertexAssignments,
     render.vertex.body.join("\n"),
-    transformPreamble(render.outputs, true),
-    "vec3 objectNormal = fxNormalXform * normal;",
-    "#include <defaultnormal_vertex>",
-    "#include <normal_vertex>",
-    // World-space surface frame + position: fxModelPos/objectNormal are already world space (no
-    // modelMatrix step - see fxWorldMatrix for the explicit emitter-attach opt-in). The tangent is
-    // the plane's local +X (the u axis), so billboard roll/orientation is baked in here ONCE for
-    // every consumer (normal maps, spherical normal, fresnel).
-    "vWorldNormal  = normalize( objectNormal );",
-    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
-    "vWorldPos     = fxModelPos;",
+    transformPreamble(render.outputs, frame.normalTransform),
+    frame.vertex,
     "vec3 transformed = position;",
     projectFromModelPos(),
     "vViewPosition = - mvPosition.xyz;",
@@ -662,14 +727,9 @@ function buildLitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    // World-space surface frame + position: the canonical author space for
-    // normals. Written in the vertex stage, read as the geometryNormal/geometryTangent/worldPosition
-    // builtins in the fragment stage.
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
     fragmentVaryingDeclarations,
-    render.fragment.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -678,20 +738,13 @@ function buildLitArtifactMaterial(
     "#include <fog_pars_fragment>",
     "#include <bsdfs>",
     "#include <lights_pars_begin>",
-    "#include <normal_pars_fragment>",
+    frame.fragmentPars,
     "#include <lights_lambert_pars_fragment>",
     "#include <shadowmap_pars_fragment>",
     FX_LIGHTING_NODE_INTRINSICS,
     "void main() {",
-    // Front-facing sign (matching `normal_fragment_begin` under DOUBLE_SIDED): a back-facing fragment
-    // flips the surface frame below.
-    "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    // World-space surface frame + position - the canonical author space. The
-    // lighting intrinsics convert world->view at their own boundary; geometryTangent/worldPosition feed
-    // normal maps and camera-correct fresnel. Declared before the node body so any reader resolves.
-    "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
-    "vec3 geometryTangent = normalize( vWorldTangent );",
-    "vec3 worldPosition   = vWorldPos;",
+    // The lighting intrinsics convert the world-space frame to view space at their own boundary.
+    frame.fragment,
     render.fragment.body.join("\n"),
     ...colorFragmentTail(render, renderMode),
     "}",
@@ -798,6 +851,7 @@ function buildMeshUnlitArtifactMaterial(
     throw new Error("buildMeshUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const cacheKey = fxRenderArtifactCacheKey(render);
+  const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
     "varying vec2 p_uv;",
@@ -805,25 +859,18 @@ function buildMeshUnlitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
-    render.vertex.varyingDeclarations.join("\n"),
+    frame.varyings,
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
-    "#include <normal_pars_vertex>",
+    frame.vertexPars,
     "void main() {",
     "p_uv = uv;",
     render.vertex.body.join("\n"),
-    meshTransformPreamble(render.outputs, true),
-    "vec3 objectNormal = fxNormalXform * normal;",
-    "#include <defaultnormal_vertex>",
-    "#include <normal_vertex>",
-    "vWorldNormal  = normalize( objectNormal );",
-    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
-    "vWorldPos     = fxModelPos;",
+    meshTransformPreamble(render.outputs, frame.normalTransform),
+    frame.vertex,
     meshProjectFromModelPos(),
     "#include <fog_vertex>",
     "}",
@@ -836,21 +883,16 @@ function buildMeshUnlitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
-    render.fragment.varyingDeclarations.join("\n"),
+    frame.varyings,
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
     "#include <fog_pars_fragment>",
-    "#include <normal_pars_fragment>",
+    frame.fragmentPars,
     "void main() {",
-    "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
-    "vec3 geometryTangent = normalize( vWorldTangent );",
-    "vec3 worldPosition   = vWorldPos;",
+    frame.fragment,
     render.fragment.body.join("\n"),
     ...colorFragmentTail(render, renderMode),
     "}",
@@ -889,6 +931,7 @@ function buildMeshLitArtifactMaterial(
     throw new Error("buildMeshLitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const cacheKey = fxRenderArtifactCacheKey(render);
+  const frame = surfaceFrame(render.fragment.surfaceReads, true);
 
   const vertexShader = [
     "#define LAMBERT",
@@ -897,27 +940,20 @@ function buildMeshLitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
     "varying vec3 vViewPosition;",
-    render.vertex.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
-    "#include <normal_pars_vertex>",
+    frame.vertexPars,
     "#include <shadowmap_pars_vertex>",
     "void main() {",
     "p_uv = uv;",
     render.vertex.body.join("\n"),
-    meshTransformPreamble(render.outputs, true),
-    "vec3 objectNormal = fxNormalXform * normal;",
-    "#include <defaultnormal_vertex>",
-    "#include <normal_vertex>",
-    "vWorldNormal  = normalize( objectNormal );",
-    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
-    "vWorldPos     = fxModelPos;",
+    meshTransformPreamble(render.outputs, frame.normalTransform),
+    frame.vertex,
     "vec3 transformed = position;",
     meshProjectFromModelPos(),
     "vViewPosition = - mvPosition.xyz;",
@@ -937,10 +973,8 @@ function buildMeshLitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
-    render.fragment.varyingDeclarations.join("\n"),
+    frame.varyings,
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -949,15 +983,12 @@ function buildMeshLitArtifactMaterial(
     "#include <fog_pars_fragment>",
     "#include <bsdfs>",
     "#include <lights_pars_begin>",
-    "#include <normal_pars_fragment>",
+    frame.fragmentPars,
     "#include <lights_lambert_pars_fragment>",
     "#include <shadowmap_pars_fragment>",
     FX_LIGHTING_NODE_INTRINSICS,
     "void main() {",
-    "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
-    "vec3 geometryTangent = normalize( vWorldTangent );",
-    "vec3 worldPosition   = vWorldPos;",
+    frame.fragment,
     render.fragment.body.join("\n"),
     ...colorFragmentTail(render, renderMode),
     "}",
@@ -1019,10 +1050,12 @@ const DEPTH_FRAGMENT_TAIL = [
 // the visible material. A stock MeshDepthMaterial would ignore all of that and, worse, collapse every
 // instanced particle onto one un-instanced vertex. It mirrors buildUnlit/LitArtifactMaterial's whole
 // vertex+fragment scope (every builtin the IR body reads must be declared, since the body is the same
-// IR) and only swaps the color tail for the RGBA depth pack. The lit branch keeps Three's full Lambert
-// light infrastructure so the fx_ shade intrinsics the graph calls in `albedo` still compile - only
-// the discarded RGB depends on shading, and fxLambertShade returns the input alpha unchanged, so the
-// depth cutout stays correct. Fog/logdepth/clipping-planes are dropped, same as the 4 color builders.
+// IR) and only swaps the color tail for the RGBA depth pack. A lit graph's shade intrinsics resolve to
+// FX_LIGHTING_NODE_DEPTH_STUBS: only the discarded RGB depends on shading, and every intrinsic returns
+// its input alpha unchanged, so the depth cutout stays correct. No light uniforms (`lights: true`): in
+// the shadow pass Three would bind the light's shadow map - the very target being drawn - to a sampler
+// the shade intrinsics read, a feedback loop the driver answers by dropping the draw (no shadow).
+// Fog/logdepth/clipping-planes are dropped, same as the 4 color builders.
 export function buildArtifactDepthMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
@@ -1048,9 +1081,9 @@ export function buildArtifactDepthMaterial(
     vertexAssignments,
   } = declareVaryings(render, layout);
   const cacheKey = fxRenderArtifactCacheKey(render);
+  const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
-    ...(lit ? ["#define LAMBERT"] : []),
     FX_CORE_PARTICLE_DEFINES,
     attributeDeclarations,
     "varying vec2 p_uv;",
@@ -1059,48 +1092,28 @@ export function buildArtifactDepthMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
-    ...(lit ? ["varying vec3 vViewPosition;"] : []),
+    frame.varyings,
     // High-precision NDC z/w carried to the fragment for the depth pack (mirrors stock depth.glsl.js).
     "varying vec2 vHighPrecisionZW;",
     vertexVaryingDeclarations,
-    render.vertex.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
-    "#include <normal_pars_vertex>",
-    ...(lit ? ["#include <shadowmap_pars_vertex>"] : []),
+    frame.vertexPars,
     "void main() {",
     "p_uv = uv;",
     vertexAssignments,
     render.vertex.body.join("\n"),
-    transformPreamble(render.outputs, true),
-    "vec3 objectNormal = fxNormalXform * normal;",
-    "#include <defaultnormal_vertex>",
-    "#include <normal_vertex>",
-    "vWorldNormal  = normalize( objectNormal );",
-    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
-    "vWorldPos     = fxModelPos;",
-    ...(lit ? ["vec3 transformed = position;"] : []),
+    transformPreamble(render.outputs, frame.normalTransform),
+    frame.vertex,
     projectFromModelPos(),
-    ...(lit
-      ? [
-          "vViewPosition = - mvPosition.xyz;",
-          "#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined( USE_SHADOWMAP ) || defined( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0",
-          "  vec4 worldPosition = vec4(particleCenter, 1.0);",
-          "#endif",
-          "#include <shadowmap_vertex>",
-        ]
-      : []),
     "vHighPrecisionZW = gl_Position.zw;",
     "}",
   ].join("\n");
 
   const fragmentShader = [
     FX_FRAGMENT_MODEL_MATRIX,
-    ...(lit ? ["#define LAMBERT"] : []),
     FX_CORE_PARTICLE_DEFINES,
     "varying vec2 p_uv;",
     "uniform float u_time;",
@@ -1108,34 +1121,19 @@ export function buildArtifactDepthMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
     "varying vec2 vHighPrecisionZW;",
     fragmentVaryingDeclarations,
-    render.fragment.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
     "#include <alphahash_pars_fragment>",
-    // Fragment include ORDER mirrors buildLit/UnlitArtifactMaterial exactly (minus fog): the only hard
-    // dependency is lights_lambert_pars_fragment needing bsdfs + lights_pars_begin declared before it.
-    ...(lit
-      ? [
-          "#include <bsdfs>",
-          "#include <lights_pars_begin>",
-          "#include <normal_pars_fragment>",
-          "#include <lights_lambert_pars_fragment>",
-          "#include <shadowmap_pars_fragment>",
-          FX_LIGHTING_NODE_INTRINSICS,
-        ]
-      : ["#include <normal_pars_fragment>"]),
+    frame.fragmentPars,
+    ...(lit ? [FX_LIGHTING_NODE_DEPTH_STUBS] : []),
     "void main() {",
-    "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
-    "vec3 geometryTangent = normalize( vWorldTangent );",
-    "vec3 worldPosition   = vWorldPos;",
+    frame.fragment,
     render.fragment.body.join("\n"),
     `vec4 diffuseColor = ${albedo};`,
     alphaDiscardLines(renderMode, alphaThreshold),
@@ -1146,7 +1144,7 @@ export function buildArtifactDepthMaterial(
   // A pure depth target: blending/transparency are meaningless, so force the depth flags regardless
   // of the color material's render mode (never `materialFlags`). DoubleSide so a two-sided billboard
   // or open mesh casts from both faces.
-  const uniforms: Record<string, IUniform> = lit ? UniformsUtils.merge([UniformsLib.lights]) : {};
+  const uniforms: Record<string, IUniform> = {};
   bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
@@ -1155,7 +1153,6 @@ export function buildArtifactDepthMaterial(
     uniforms,
     vertexShader,
     fragmentShader,
-    ...(lit ? { lights: true } : {}),
     depthTest: true,
     depthWrite: true,
     side: DoubleSide,
@@ -1187,84 +1184,50 @@ export function buildMeshArtifactDepthMaterial(
   const albedo = render.outputs["albedo"];
   const lit = render.lightingIntrinsics.length > 0;
   const cacheKey = fxRenderArtifactCacheKey(render);
+  const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
-    ...(lit ? ["#define LAMBERT"] : []),
     "varying vec2 p_uv;",
     "uniform float u_time;",
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
-    ...(lit ? ["varying vec3 vViewPosition;"] : []),
+    frame.varyings,
     "varying vec2 vHighPrecisionZW;",
-    render.vertex.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
-    "#include <normal_pars_vertex>",
-    ...(lit ? ["#include <shadowmap_pars_vertex>"] : []),
+    frame.vertexPars,
     "void main() {",
     "p_uv = uv;",
     render.vertex.body.join("\n"),
-    meshTransformPreamble(render.outputs, true),
-    "vec3 objectNormal = fxNormalXform * normal;",
-    "#include <defaultnormal_vertex>",
-    "#include <normal_vertex>",
-    "vWorldNormal  = normalize( objectNormal );",
-    "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
-    "vWorldPos     = fxModelPos;",
-    ...(lit ? ["vec3 transformed = position;"] : []),
+    meshTransformPreamble(render.outputs, frame.normalTransform),
+    frame.vertex,
     meshProjectFromModelPos(),
-    ...(lit
-      ? [
-          "vViewPosition = - mvPosition.xyz;",
-          "#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined( USE_SHADOWMAP ) || defined( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0",
-          "  vec4 worldPosition = vec4(fxModelPos, 1.0);",
-          "#endif",
-          "#include <shadowmap_vertex>",
-        ]
-      : []),
     "vHighPrecisionZW = gl_Position.zw;",
     "}",
   ].join("\n");
 
   const fragmentShader = [
     FX_FRAGMENT_MODEL_MATRIX,
-    ...(lit ? ["#define LAMBERT"] : []),
     "varying vec2 p_uv;",
     "uniform float u_time;",
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
-    "varying vec3 vWorldNormal;",
-    "varying vec3 vWorldTangent;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
     "varying vec2 vHighPrecisionZW;",
-    render.fragment.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
     "#include <alphahash_pars_fragment>",
-    // Fragment include ORDER mirrors buildMeshLit/UnlitArtifactMaterial exactly (minus fog).
-    ...(lit
-      ? [
-          "#include <bsdfs>",
-          "#include <lights_pars_begin>",
-          "#include <normal_pars_fragment>",
-          "#include <lights_lambert_pars_fragment>",
-          "#include <shadowmap_pars_fragment>",
-          FX_LIGHTING_NODE_INTRINSICS,
-        ]
-      : ["#include <normal_pars_fragment>"]),
+    frame.fragmentPars,
+    ...(lit ? [FX_LIGHTING_NODE_DEPTH_STUBS] : []),
     "void main() {",
-    "float fxFaceDirection = gl_FrontFacing ? 1.0 : - 1.0;",
-    "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
-    "vec3 geometryTangent = normalize( vWorldTangent );",
-    "vec3 worldPosition   = vWorldPos;",
+    frame.fragment,
     render.fragment.body.join("\n"),
     `vec4 diffuseColor = ${albedo};`,
     alphaDiscardLines(renderMode, alphaThreshold),
@@ -1272,7 +1235,7 @@ export function buildMeshArtifactDepthMaterial(
     "}",
   ].join("\n");
 
-  const uniforms: Record<string, IUniform> = lit ? UniformsUtils.merge([UniformsLib.lights]) : {};
+  const uniforms: Record<string, IUniform> = {};
   bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
@@ -1281,7 +1244,6 @@ export function buildMeshArtifactDepthMaterial(
     uniforms,
     vertexShader,
     fragmentShader,
-    ...(lit ? { lights: true } : {}),
     depthTest: true,
     depthWrite: true,
     side: DoubleSide,
@@ -1566,6 +1528,12 @@ export function buildTrailArtifactMaterial(
   ) {
     throw new Error("buildTrailArtifactMaterial: a gpu history must record position and lifecycle");
   }
+  // A ribbon has no surface normal or tangent of its own (the editor's trail target offers neither).
+  const { surfaceReads } = render.fragment;
+  if (surfaceReads.normal || surfaceReads.tangent) {
+    throw new Error("buildTrailArtifactMaterial: a trail has no surface normal or tangent");
+  }
+  const frame = surfaceFrame(surfaceReads, false);
   const width = outputOrDefault(render.outputs, "width", "0.1");
   const properties = declareTrailProperties(render, layout);
   const attributes = trailLayoutAttributes(layout);
@@ -1577,7 +1545,7 @@ export function buildTrailArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     "varying float p_cameraDistance;",
-    "varying vec3 vWorldPos;",
+    frame.varyings,
   ];
 
   const vertexShader = [
@@ -1595,7 +1563,7 @@ export function buildTrailArtifactMaterial(
           `uniform vec4 u_trailAges[${String(ageVectors)}];`,
         ]),
     properties.vertexDeclarations,
-    render.vertex.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
@@ -1619,7 +1587,7 @@ export function buildTrailArtifactMaterial(
     "bool fxTrailVisible = fxTrailLinked && dot(fxTrailDirection, fxTrailDirection) > 1e-12 && fxTrailAcrossLength > 1e-10;",
     "fxTrailAcross = fxTrailVisible ? fxTrailAcross / fxTrailAcrossLength : vec3(0.0);",
     "vec3 fxModelPos = PARTICLE_POSITION + fxTrailAcross * (fxTrailSide * 0.5 * fxTrailWidth);",
-    "vWorldPos = fxModelPos;",
+    frame.vertex,
     "vec4 mvPosition = viewMatrix * vec4(fxModelPos, 1.0);",
     "p_cameraDistance = length(mvPosition.xyz);",
     "gl_Position = projectionMatrix * mvPosition;",
@@ -1636,14 +1604,14 @@ export function buildTrailArtifactMaterial(
     FX_CORE_PARTICLE_DEFINES,
     ...sharedDeclarations,
     properties.fragmentDeclarations,
-    render.fragment.varyingDeclarations.join("\n"),
+    graphVaryings(render),
     render.uniformDeclarations.join("\n"),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
     "#include <fog_pars_fragment>",
     "void main() {",
-    "vec3 worldPosition = vWorldPos;",
+    frame.fragment,
     render.fragment.body.join("\n"),
     ...colorFragmentTail(render, renderMode),
     "}",

@@ -19,6 +19,11 @@ import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js
 import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 import { FXWorld } from "../world/FXWorld.js";
+import {
+  assertDeathReactionAction,
+  connectDeathReaction,
+  fireSpawnAction,
+} from "./FXSpawnAction.js";
 import type {
   FXEffectEventMap,
   FXEffectOptions,
@@ -287,8 +292,11 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     applyTransform(this, specification.transform);
     const geometries = geometriesFromAssets(assets);
     const isWebGL2 = options.renderer?.capabilities.isWebGL2 ?? false;
+    // Checked before anything is built: a throw past here would leave emitters registered in
+    // the world with no effect to dispose them.
+    const deathSources = deathReactionSources(specification);
 
-    for (const emitterSpec of specification.emitters) {
+    for (const [index, emitterSpec] of specification.emitters.entries()) {
       const textures = texturesForSlots(emitterSpec.externalSlots, assets);
       const render = resolveRenderArtifact(emitterSpec.render, isWebGL2);
       const trail =
@@ -315,7 +323,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           // picking `render`'s "standard" tier above. FXEmitter itself decides whether GPU setup
           // then actually succeeds, falling back to `emitterSpec.behavior` in place if not - this
           // effect never needs to know which one ends up driving a given emitter.
-          gpuKernel: isWebGL2 ? emitterSpec.gpuBehavior : undefined,
+          gpuKernel: isWebGL2 && !deathSources.has(index) ? emitterSpec.gpuBehavior : undefined,
           renderer: options.renderer,
           trail,
         },
@@ -338,6 +346,13 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       this.emitters.push(emitter);
       this.emitterRenders.push(renders);
       this.emitterDriven.push(new Set<string>());
+    }
+
+    // Once every emitter exists: a reaction may name any of them as its source.
+    for (const [index, emitterSpec] of specification.emitters.entries()) {
+      for (const reaction of emitterSpec.reactions ?? []) {
+        connectDeathReaction(this.emitters[reaction.source], this.emitters[index], reaction);
+      }
     }
 
     for (const meshSpec of specification.meshes) {
@@ -550,6 +565,8 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
         mesh.geometry.dispose();
       }
       (mesh.material as Material).dispose();
+      // Built here for a shadow caster, like the material above.
+      mesh.customDepthMaterial?.dispose();
     }
     this.meshes.length = 0;
     this.meshMaterials.length = 0;
@@ -634,15 +651,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
         if (event.time < from || event.time >= to) {
           continue;
         }
-        // Guard degenerate authored counts/rates: FXEmitter asserts a positive count/rate and would
-        // throw straight out of the host's frame loop, so a zero-count burst is a no-op here.
-        if (event.kind === "burst") {
-          if (event.count > 0) {
-            emitter.burst(event.count);
-          }
-        } else if (event.rate > 0) {
-          emitter.play(event.rate, event.duration > 0 ? { duration: event.duration } : {});
-        }
+        fireSpawnAction(emitter, event);
       }
     }
   }
@@ -726,4 +735,31 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       this.meshMaterials[index].applyUniformValues(uniforms);
     }
   }
+}
+
+/**
+ * The indices of the emitters some reaction in `specification` listens to - built on the CPU, the
+ * only simulation that sees deaths.
+ * @throws On a reaction naming an emitter the effect does not have, or one that cannot be fired by
+ *   a death (see {@link assertDeathReactionAction}).
+ */
+function deathReactionSources(specification: FXEffectSpec): ReadonlySet<number> {
+  const sources = new Set<number>();
+  for (const emitter of specification.emitters) {
+    for (const reaction of emitter.reactions ?? []) {
+      if (
+        !Number.isInteger(reaction.source) ||
+        reaction.source < 0 ||
+        reaction.source >= specification.emitters.length
+      ) {
+        throw new RangeError(
+          `FXEffect: emitter "${emitter.name}" reacts to emitter #${String(reaction.source)}, ` +
+            "which does not exist",
+        );
+      }
+      assertDeathReactionAction(reaction, `FXEffect: emitter "${emitter.name}"`);
+      sources.add(reaction.source);
+    }
+  }
+  return sources;
 }

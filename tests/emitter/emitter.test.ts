@@ -1,18 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
-import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { FX_POSITION_Y } from "../../src/coreLayout";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
-
-/** Reaches the emitter's private mesh to inspect its per-particle buffers. */
-function meshOf(emitter: FXEmitter): FXInstancedParticle {
-  return (emitter as unknown as { mesh: FXInstancedParticle }).mesh;
-}
-
-/** Drives one private tick on `emitter` with the given dt. */
-function tickEmitter(emitter: FXEmitter, dt: number): void {
-  (emitter as unknown as { tick(deltaTime: number): void }).tick(dt);
-}
+import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
 
 describe("FXEmitter wires the behavior attribute channel", () => {
   it("allocates a_fx_<name> at construction and fills it on spawn", () => {
@@ -25,12 +15,14 @@ describe("FXEmitter wires the behavior attribute channel", () => {
       }),
     );
     try {
-      const mesh = meshOf(emitter);
+      const mesh = particlesOf(emitter);
       // Allocated up front from the behavior artifact's attributeWrites.
       expect(mesh.propertyBuffers["fx_seed"]).toBeDefined();
       expect(mesh.propertyBuffers["fx_seed"].itemSize).toBe(1);
 
       emitter.burst(2);
+      expect(emitter.particleCount).toBe(0); // due, seeded in the next tick
+      landBirths(emitter);
       expect(emitter.particleCount).toBe(2);
 
       const seed = mesh.propertyBuffers["fx_seed"].array;
@@ -41,46 +33,30 @@ describe("FXEmitter wires the behavior attribute channel", () => {
     }
   });
 
-  it("ticks without error and keeps particles alive within their lifetime", () => {
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      behaviorArtifact({
-        lifetime: 5,
-        attributes: [{ name: "seed", components: 1, value: [0.5] }],
-      }),
-    );
-    try {
-      emitter.burst(3);
-      // Drive a few frames; particles have lifetime 5, so all survive.
-      emitter.prewarm(1);
-      expect(emitter.particleCount).toBe(3);
-      expect(meshOf(emitter).propertyBuffers["fx_seed"].array[0]).toBeCloseTo(0.5, 6);
-    } finally {
-      emitter.destroy();
-    }
-  });
-
   it("shares one buffer when behavior writes and render reads the same attribute", () => {
-    // Behavior stores a vec3 `offset` at spawn; the material reads it back into albedo.
-    // Both sides name `offset` -> a single a_fx_offset buffer.
+    // Behavior seeds a per-particle vec3 `tint`; the material reads it back into albedo. Both
+    // sides name `tint` -> a single a_fx_tint buffer.
     const emitter = FXEmitter.fromArtifacts(
       unlitArtifact({
-        attributeReads: [{ name: "offset", components: 3 }],
-        outputs: { albedo: "vec4(p_fx_offset, 1.0)" },
+        attributeReads: [{ name: "tint", components: 3 }],
+        outputs: { albedo: "vec4(p_fx_tint, 1.0)" },
       }),
       behaviorArtifact({
         lifetime: 5,
-        attributes: [{ name: "offset", components: 3, value: [1, 2, 3] }],
+        attributes: [{ name: "tint", components: 3, valueFn: (slot) => [slot, 2 * slot, 0.5] }],
       }),
     );
     try {
-      const mesh = meshOf(emitter);
+      const mesh = particlesOf(emitter);
       // A single shared vec3 buffer, allocated up front from the merged set.
-      expect(mesh.propertyBuffers["fx_offset"].itemSize).toBe(3);
+      expect(mesh.propertyBuffers["fx_tint"].itemSize).toBe(3);
 
-      emitter.burst(1);
-      const offset = mesh.propertyBuffers["fx_offset"].array;
-      expect([offset[0], offset[1], offset[2]]).toEqual([1, 2, 3]);
+      emitter.burst(2);
+      landBirths(emitter);
+      // Each particle got its own value, in its own slot.
+      expect(Array.from(mesh.propertyBuffers["fx_tint"].array.subarray(0, 6))).toEqual([
+        0, 0, 0.5, 1, 2, 0.5,
+      ]);
     } finally {
       emitter.destroy();
     }
@@ -104,7 +80,10 @@ describe("FXEmitter wires the behavior attribute channel", () => {
     );
     try {
       emitter.burst(1);
-      const position = meshOf(emitter).propertyBuffers.position.array;
+      const position = particlesOf(emitter).propertyBuffers.position.array;
+      tickEmitter(emitter, 1);
+      // Born in this tick: seeded after its update, not moved yet.
+      expect(emitter.particleCount).toBe(1);
       expect(position[FX_POSITION_Y]).toBe(0);
 
       tickEmitter(emitter, 1);

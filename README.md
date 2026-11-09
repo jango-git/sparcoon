@@ -8,7 +8,7 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.11.1)
+[npm](https://www.npmjs.com/package/sparcoon/v/0.12.0)
 
 > **0.x.** The artifact format is not frozen yet - a minor release may still break it, so play an
 > effect with the runtime version the editor that exported it names.
@@ -121,6 +121,7 @@ outside the timeline:
 const sparks = effect.getEmitter("Sparks");
 if (sparks) {
   sparks.burst(64); // one-off release, optionally delayed; returns a handle for stop()
+  sparks.burst(16, { origin: { position: [2, 1, 0] } }); // as if the emitter stood there
   sparks.play(120); // continuous emission in particles per second; also returns a handle
   sparks.stop(); // with no argument, cancels everything scheduled on this emitter
   sparks.prewarm(2); // simulate 2 seconds forward so playback does not start from an empty screen
@@ -130,9 +131,27 @@ if (sparks) {
 }
 ```
 
-An immediate `burst()` spawns from the emitter's pose and parameter values at the moment of the
-call, on the GPU path too - so moving the emitter between two bursts of one frame spawns them in two
-places.
+Every birth lands in the emitter's next tick, after its update, on both paths: a newborn is seeded
+in the frame it is born in and moves from the next one. An undelayed `burst()` keeps the emitter's
+pose at the moment of the call - so moving the emitter between two bursts of one frame still spawns
+them in two places - and takes the parameter values of that tick. With `origin`, a burst or a play
+spawns as if the emitter stood at that point, keeping its own rotation and scale, and moving at the
+given velocity - what its spawn graph reads through `world-matrix` and `object-velocity`.
+
+An emitter simulated on the CPU reports its particles' deaths. The editor wires them up as death
+reactions (a burst or a play on another emitter where each particle died, one frame later, built in
+the export), and the host can listen too - a sound on every firework burst:
+
+```ts
+const shells = effect.getEmitter("Shells");
+const stopListening = shells?.onParticleDeath((death) => {
+  playBang(death.position); // the same object is reused for every death: copy what you keep
+});
+```
+
+Deaths reach their listeners after every emitter of the world has ticked. A GPU-driven emitter has
+no CPU-visible ages (`reportsParticleDeaths` is false) and refuses a listener; the editor builds an
+emitter some reaction listens to on the CPU.
 
 An emitter holds a fixed number of particles - the capacity set in the editor - on both the GPU and
 the JavaScript path: a ring that never grows. Each birth takes the next slot in turn and overwrites

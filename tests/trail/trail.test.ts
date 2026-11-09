@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { InterleavedBufferAttribute, Mesh, ShaderMaterial, WebGLRenderer } from "three";
+import type { InterleavedBufferAttribute, ShaderMaterial, WebGLRenderer } from "three";
 import { PerspectiveCamera } from "three";
 import type {
   FXAttributeDecl,
@@ -7,15 +7,22 @@ import type {
   FXRenderArtifact,
 } from "../../src/artifact/FXArtifact";
 import { FX_CORE_LIFECYCLE, FX_CORE_POSITION } from "../../src/coreLayout";
-import { FXEffect } from "../../src/effect/FXEffect";
 import type { FXEffectSpec } from "../../src/effect/FXEffectSpec";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FXJSEmitterDriver } from "../../src/emitter/FXJSEmitterDriver.Internal";
-import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { FX_RENDER_BUDGET_MINIMUMS, fxTrailRenderBudget } from "../../src/render/FXRenderBudget";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
+import { effectSpec, emitterSpec, TestEffect } from "../helpers/effectSpecs";
+import {
+  driveEmitterValues,
+  landBirths,
+  particlesOf,
+  tickEmitter,
+  trailOf,
+} from "../helpers/internals";
+import { callsNamed, mockRenderer } from "../helpers/mockWebGL";
 
 const GLSL_FLOAT_TYPES = ["float", "vec2", "vec3", "vec4"];
 
@@ -27,28 +34,6 @@ function reading(attributeReads: readonly FXAttributeDecl[]): FXRenderArtifact {
       ({ name, components }) => `${GLSL_FLOAT_TYPES[components - 1]} read_${name} = p_fx_${name};`,
     ),
   });
-}
-
-const IDENTITY = { position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] } as const;
-
-function tick(emitter: FXEmitter, dt: number): void {
-  (emitter as unknown as { tick(deltaTime: number): void }).tick(dt);
-}
-
-function trailOf(emitter: FXEmitter): {
-  mesh: Mesh;
-  history: {
-    array: Float32Array;
-    stride: number;
-    buffer: { updateRanges?: { start: number; count: number }[] };
-  };
-  uniforms: { head: { value: number }; ages: { value: Float32Array } };
-} {
-  return (emitter as unknown as { trail: ReturnType<typeof trailOf> }).trail;
-}
-
-function particlesOf(emitter: FXEmitter): FXInstancedParticle {
-  return (emitter as unknown as { mesh: FXInstancedParticle }).mesh;
 }
 
 /** Each update moves every particle +1 along x. */
@@ -130,17 +115,18 @@ describe("trail history - JS backend", () => {
   it("overwrites the head every tick and moves it on once per sample interval", () => {
     const emitter = cpuEmitter();
     try {
-      emitter.burst(1); // born before the tick, so the tick's update moves it
-      tick(emitter, 0.04); // records frame 0
+      emitter.burst(1);
+      landBirths(emitter); // born before the tick, so the tick's update moves it
+      tickEmitter(emitter, 0.04); // records frame 0
       expect(trailOf(emitter).uniforms.head.value).toBe(0);
       expect(point(emitter, 0, 0).x).toBe(1);
 
-      tick(emitter, 0.04); // still frame 0, overwritten
+      tickEmitter(emitter, 0.04); // still frame 0, overwritten
       expect(trailOf(emitter).uniforms.head.value).toBe(0);
       expect(point(emitter, 0, 0).x).toBe(2);
 
-      tick(emitter, 0.04); // 0.08 since the first record: still frame 0
-      tick(emitter, 0.04); // 0.12: moves on to frame 1
+      tickEmitter(emitter, 0.04); // 0.08 since the first record: still frame 0
+      tickEmitter(emitter, 0.04); // 0.12: moves on to frame 1
       expect(trailOf(emitter).uniforms.head.value).toBe(1);
       expect(point(emitter, 0, 0).x).toBe(3); // frame 0 keeps its last state
       expect(point(emitter, 1, 0).x).toBe(4);
@@ -153,9 +139,10 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 2 }));
     try {
       emitter.burst(1);
-      tick(emitter, 0.1);
-      tick(emitter, 0.1);
-      tick(emitter, 0.1); // head 1 -> 0
+      landBirths(emitter);
+      tickEmitter(emitter, 0.1);
+      tickEmitter(emitter, 0.1);
+      tickEmitter(emitter, 0.1); // head 1 -> 0
       expect(trailOf(emitter).uniforms.head.value).toBe(0);
       expect(point(emitter, 2, 0)).toEqual(point(emitter, 0, 0));
       expect(point(emitter, 2, 0).x).toBe(3);
@@ -168,21 +155,19 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 3 }), 2);
     try {
       const { buffer, stride } = trailOf(emitter).history;
-      // three >= 0.159 keeps a list; this suite runs on the dev dependency's three.
+      // three >= 0.159 keeps a list, as the dev dependency's three this suite runs on does.
       const ranges = buffer.updateRanges;
-      if (ranges === undefined) {
-        return;
-      }
+      expect(ranges).toBeDefined();
       const frame = 2 * stride;
       emitter.burst(2);
       ranges.length = 0;
-      tick(emitter, 0.01); // head 0: the mirror only
+      tickEmitter(emitter, 0.01); // head 0: the mirror only
       expect(ranges).toEqual([{ start: 3 * frame, count: frame }]);
       ranges.length = 0;
-      tick(emitter, 0.1); // moves to 1: frames 0 and 1
+      tickEmitter(emitter, 0.1); // moves to 1: frames 0 and 1
       expect(ranges).toEqual([{ start: 0, count: 2 * frame }]);
       ranges.length = 0;
-      tick(emitter, 0.01); // head 1 again
+      tickEmitter(emitter, 0.01); // head 1 again
       expect(ranges).toEqual([{ start: frame, count: frame }]);
     } finally {
       emitter.destroy();
@@ -193,10 +178,10 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 4 }), 1, movingBehavior(0.15));
     try {
       emitter.burst(1);
-      tick(emitter, 0.1);
-      tick(emitter, 0.1); // dies (age 0.2 >= 0.15)
+      tickEmitter(emitter, 0.1);
+      tickEmitter(emitter, 0.1); // dies (age 0.2 >= 0.15)
       emitter.burst(1); // reuses slot 0
-      tick(emitter, 0.1);
+      tickEmitter(emitter, 0.1);
       const first = point(emitter, 0, 0);
       const second = point(emitter, 2, 0);
       expect(first.tag).toBeGreaterThan(0);
@@ -213,9 +198,9 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 4, sampleInterval: 0.1 }));
     try {
       emitter.burst(1);
-      tick(emitter, 0.1); // frame 0: x 1, the particle's first point
-      tick(emitter, 0.1); // frame 1: x 2
-      tick(emitter, 0.1); // frame 2: x 3
+      tickEmitter(emitter, 0.1); // frame 0: x 1, the particle's first point
+      tickEmitter(emitter, 0.1); // frame 1: x 2
+      tickEmitter(emitter, 0.1); // frame 2: x 3
       expect(point(emitter, 0, 0).tangentX).toBe(0);
       expect(point(emitter, 1, 0).tangentX).toBe(1);
       expect(point(emitter, 2, 0).tangentX).toBe(1);
@@ -229,9 +214,10 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 4 }), 2, movingBehavior(0.15));
     try {
       emitter.burst(1);
-      tick(emitter, 0.1);
+      landBirths(emitter);
+      tickEmitter(emitter, 0.1);
       expect(point(emitter, 0, 1).tag).toBe(0); // slot 1 never claimed
-      tick(emitter, 0.1); // dies
+      tickEmitter(emitter, 0.1); // dies
       expect(point(emitter, 1, 0).tag).toBe(0);
     } finally {
       emitter.destroy();
@@ -242,12 +228,10 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 3 }), 2);
     try {
       const ranges = trailOf(emitter).history.buffer.updateRanges;
-      if (ranges === undefined) {
-        return;
-      }
+      expect(ranges).toBeDefined();
       ranges.length = 0;
-      tick(emitter, 0.05);
-      tick(emitter, 0.2);
+      tickEmitter(emitter, 0.05);
+      tickEmitter(emitter, 0.2);
       expect(ranges).toEqual([]);
     } finally {
       emitter.destroy();
@@ -259,10 +243,9 @@ describe("trail history - JS backend", () => {
     try {
       emitter.burst(1);
       for (let i = 0; i < 40; i++) {
-        tick(emitter, 1 / 60);
+        tickEmitter(emitter, 1 / 60);
       }
-      const span = (trailOf(emitter).uniforms as unknown as { span: { value: number } }).span;
-      expect(span.value).toBeCloseTo(4 / 60, 3);
+      expect(trailOf(emitter).uniforms.span.value).toBeCloseTo(4 / 60, 3);
     } finally {
       emitter.destroy();
     }
@@ -272,8 +255,8 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter();
     try {
       emitter.burst(2);
-      tick(emitter, 0.2);
-      tick(emitter, 0.2);
+      tickEmitter(emitter, 0.2);
+      tickEmitter(emitter, 0.2);
       emitter.reset();
       expect(trailOf(emitter).history.array.every((value) => value === 0)).toBe(true);
       expect(trailOf(emitter).uniforms.head.value).toBe(0);
@@ -285,13 +268,10 @@ describe("trail history - JS backend", () => {
   it("restarts the measured sample gap and the span on reset()", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 5, sampleInterval: 0.001 }));
     try {
-      const trail = trailOf(emitter) as unknown as {
-        advanceGap: number;
-        uniforms: { span: { value: number }; tail: { value: number } };
-      };
+      const trail = trailOf(emitter);
       emitter.burst(1);
       for (let i = 0; i < 40; i++) {
-        tick(emitter, 1 / 60);
+        tickEmitter(emitter, 1 / 60);
       }
       expect(trail.uniforms.span.value).toBeCloseTo(4 / 60, 3);
       emitter.reset();
@@ -300,8 +280,8 @@ describe("trail history - JS backend", () => {
       expect(trail.uniforms.tail.value).toBe(0);
       // Ticks run again from a clean state.
       emitter.burst(1);
-      tick(emitter, 1 / 60);
-      tick(emitter, 1 / 60);
+      tickEmitter(emitter, 1 / 60);
+      tickEmitter(emitter, 1 / 60);
       expect(point(emitter, 1, 0).tag).toBeGreaterThan(0);
     } finally {
       emitter.destroy();
@@ -342,7 +322,7 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter();
     try {
       emitter.burst(1);
-      tick(emitter, 0.1);
+      tickEmitter(emitter, 0.1);
       const before = trailOf(emitter);
       const lit = { ...unlitArtifact(), lightingIntrinsics: ["fxLambertShade"] };
       expect(() => {
@@ -350,7 +330,7 @@ describe("trail history - JS backend", () => {
       }).toThrow(/unlit/);
       expect(trailOf(emitter)).toBe(before);
       expect(before.mesh.parent).toBe(emitter);
-      tick(emitter, 0.1);
+      tickEmitter(emitter, 0.1);
       expect(point(emitter, 1, 0).tag).toBeGreaterThan(0);
     } finally {
       emitter.destroy();
@@ -380,9 +360,9 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 3, sampleInterval: 0.1 }));
     try {
       emitter.burst(1);
-      tick(emitter, 0.1); // frame 0 at t=0.1
-      tick(emitter, 0.1); // frame 1 at t=0.2
-      tick(emitter, 0.05); // frame 1 again at t=0.25
+      tickEmitter(emitter, 0.1); // frame 0 at t=0.1
+      tickEmitter(emitter, 0.1); // frame 1 at t=0.2
+      tickEmitter(emitter, 0.05); // frame 1 again at t=0.25
       const ages = trailOf(emitter).uniforms.ages.value;
       expect(ages[0]).toBeCloseTo(0.15);
       expect(ages[1]).toBeCloseTo(0);
@@ -422,7 +402,7 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter();
     try {
       emitter.burst(2);
-      tick(emitter, 0.1);
+      tickEmitter(emitter, 0.1);
       const before = trailOf(emitter).mesh;
       emitter.applyTrailArtifact(trailOptions({ frames: 6 }));
       expect(before.parent).toBeNull();
@@ -551,7 +531,7 @@ describe("trail material", () => {
       expect(fxTrailRenderBudget(trailReading(5).render, floats(5)).attributes).toBe(9);
       expect(emitter.hasTrail).toBe(false);
       emitter.burst(2);
-      tick(emitter, 0.1);
+      tickEmitter(emitter, 0.1);
       expect(emitter.particleCount).toBe(2);
       // A swap past the limit is skipped too, without a second warning.
       emitter.applyTrailArtifact(trailReading(5));
@@ -639,48 +619,45 @@ describe("trail material", () => {
 });
 
 describe("trail in an effect", () => {
-  class TrailEffect extends FXEffect {
-    constructor(specification: FXEffectSpec) {
-      super(specification, {}, { world: new FXWorld(), camera: new PerspectiveCamera() });
+  const worlds: FXWorld[] = [];
+
+  afterEach(() => {
+    for (const world of worlds.splice(0)) {
+      world.dispose();
     }
+  });
+
+  function trailEffect(specification: FXEffectSpec): TestEffect {
+    const world = new FXWorld();
+    worlds.push(world);
+    return new TestEffect(specification, { world, camera: new PerspectiveCamera() });
   }
 
   function spec(): FXEffectSpec {
     const uniform = (): FXRenderArtifact["uniforms"] => ({
       u_param_glow: { type: "float", value: 0 },
     });
-    return {
+    return effectSpec({
       duration: 1,
-      fps: 30,
-      transform: IDENTITY,
-      transformTracks: [],
-      meshes: [],
       emitters: [
-        {
-          name: "Sparks",
+        emitterSpec("Sparks", {
           render: renderForBothTargets(unlitArtifact({ uniforms: uniform() })),
           behavior: behaviorArtifact(),
           expectedCapacity: 8,
           sortInterval: 1,
-          externalSlots: [],
-          transform: IDENTITY,
-          transformTracks: [],
-          tracks: [],
-          events: [],
-          liveChannels: [],
           liveParams: ["glow"],
           trail: {
             render: renderForBothTargets(unlitArtifact({ uniforms: uniform() })),
             frames: 8,
             sampleInterval: 0.05,
           },
-        },
+        }),
       ],
-    };
+    });
   }
 
   it("drives a shared parameter in both the particle and the trail material", () => {
-    const effect = new TrailEffect(spec());
+    const effect = trailEffect(spec());
     try {
       const emitter = effect.getEmitter("Sparks");
       expect(emitter?.hasTrail).toBe(true);
@@ -696,7 +673,7 @@ describe("trail in an effect", () => {
 
   it("does not hand a trailed emitter the sort camera, and says why in a development build", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const effect = new TrailEffect(spec());
+    const effect = trailEffect(spec());
     try {
       expect(effect.getEmitter("Sparks")?.sortCamera).toBeUndefined();
       expect(warn).toHaveBeenCalledTimes(1);
@@ -730,12 +707,10 @@ describe("trail in an effect", () => {
         },
       ],
     };
-    const effect = new TrailEffect(specification);
+    const effect = trailEffect(specification);
     try {
       const drive = (values: Map<string, number>): void => {
-        (
-          effect as unknown as { driveEmitterValues(index: number, v: Map<string, number>): void }
-        ).driveEmitterValues(0, values);
+        driveEmitterValues(effect, 0, values);
       };
       const sparks = effect.getEmitter("Sparks") as FXEmitter;
       const particles = particlesOf(sparks).material as ShaderMaterial;
@@ -755,67 +730,6 @@ describe("trail in an effect", () => {
 });
 
 describe("trail history - GPU backend", () => {
-  function mockRenderer(): { renderer: unknown; calls: { name: string; args: unknown[] }[] } {
-    const calls: { name: string; args: unknown[] }[] = [];
-    let id = 1;
-    const record =
-      (name: string) =>
-      (...args: unknown[]): void => {
-        calls.push({ name, args });
-      };
-    const gl = {
-      FLOAT: 8,
-      ARRAY_BUFFER: 6,
-      COPY_READ_BUFFER: 12,
-      COPY_WRITE_BUFFER: 13,
-      DYNAMIC_DRAW: 11,
-      MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS: 14,
-      MAX_VERTEX_ATTRIBS: 15,
-      getParameter: (name: number) => (name === 14 ? 64 : 16),
-      createBuffer: () => ({ id: id++ }),
-      createShader: () => ({ id: id++ }),
-      shaderSource: () => undefined,
-      compileShader: () => undefined,
-      getShaderParameter: () => true,
-      deleteShader: () => undefined,
-      createProgram: () => ({ id: id++ }),
-      attachShader: () => undefined,
-      transformFeedbackVaryings: () => undefined,
-      linkProgram: () => undefined,
-      getProgramParameter: () => true,
-      deleteProgram: () => undefined,
-      createVertexArray: () => ({ id: id++ }),
-      deleteVertexArray: () => undefined,
-      getUniformLocation: () => ({ id: id++ }),
-      bindVertexArray: () => undefined,
-      bindBuffer: () => undefined,
-      bufferData: record("bufferData"),
-      deleteBuffer: record("deleteBuffer"),
-      vertexAttribPointer: () => undefined,
-      enableVertexAttribArray: () => undefined,
-      bindBufferBase: () => undefined,
-      bindBufferRange: () => undefined,
-      copyBufferSubData: record("copyBufferSubData"),
-      uniform1i: () => undefined,
-      uniform1f: () => undefined,
-      uniformMatrix4fv: () => undefined,
-      uniform3fv: () => undefined,
-      enable: () => undefined,
-      disable: () => undefined,
-      beginTransformFeedback: () => undefined,
-      endTransformFeedback: () => undefined,
-      drawArrays: () => undefined,
-    };
-    return {
-      renderer: {
-        getContext: () => gl,
-        state: { useProgram: () => undefined },
-        resetState: () => undefined,
-      },
-      calls,
-    };
-  }
-
   const kernel: FXParticleKernelArtifact = {
     vertexSource: "",
     fragmentSource: "",
@@ -828,27 +742,27 @@ describe("trail history - GPU backend", () => {
   };
 
   it("copies the drawn slot buffer into the head frame and the mirrors of the first and last", () => {
-    const { renderer, calls } = mockRenderer();
+    const { renderer, gl } = mockRenderer();
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
       gpuKernel: kernel,
-      renderer: renderer as never,
+      renderer,
       expectedCapacity: 4,
       trail: trailOptions({ frames: 3, sampleInterval: 0.1 }),
     });
     try {
       const frameBytes = 4 * 6 * 4;
-      calls.length = 0;
-      tick(emitter, 0.01); // head 0
-      const copies = (): unknown[][] =>
-        calls.filter((call) => call.name === "copyBufferSubData").map((call) => call.args);
+      gl.calls.length = 0;
+      tickEmitter(emitter, 0.01); // head 0
+      const copies = (): (readonly unknown[])[] =>
+        callsNamed(gl, "copyBufferSubData").map((call) => call.args);
       // Frame f lives at f + 1; frame 0 is mirrored after the last frame (at 4).
       expect(copies().map((args) => args[3])).toEqual([frameBytes, 4 * frameBytes]);
-      calls.length = 0;
-      tick(emitter, 0.1); // head 1
+      gl.calls.length = 0;
+      tickEmitter(emitter, 0.1); // head 1
       expect(copies().map((args) => args[3])).toEqual([2 * frameBytes]);
       expect(copies()[0][4]).toBe(frameBytes);
-      calls.length = 0;
-      tick(emitter, 0.1); // head 2, the last frame: mirrored before frame 0 (at 0)
+      gl.calls.length = 0;
+      tickEmitter(emitter, 0.1); // head 2, the last frame: mirrored before frame 0 (at 0)
       expect(copies().map((args) => args[3])).toEqual([3 * frameBytes, 0]);
     } finally {
       emitter.destroy();
@@ -856,28 +770,28 @@ describe("trail history - GPU backend", () => {
   });
 
   it("keeps a two-frame history: each head frame is a mirror's source as well", () => {
-    const { renderer, calls } = mockRenderer();
+    const { renderer, gl } = mockRenderer();
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
       gpuKernel: kernel,
-      renderer: renderer as never,
+      renderer,
       expectedCapacity: 4,
       trail: trailOptions({ frames: 2, sampleInterval: 0.1 }),
     });
     try {
       const frameBytes = 4 * 6 * 4;
       const copies = (): unknown[] =>
-        calls.filter((call) => call.name === "copyBufferSubData").map((call) => call.args[3]);
+        callsNamed(gl, "copyBufferSubData").map((call) => call.args[3]);
       // Four physical frames: [mirror of 1][frame 0][frame 1][mirror of 0].
-      const allocations = calls.filter((call) => call.name === "bufferData");
+      const allocations = callsNamed(gl, "bufferData");
       expect(allocations.map((call) => call.args[1])).toContain(4 * frameBytes);
-      calls.length = 0;
-      tick(emitter, 0.01); // head 0: itself and its mirror after frame 1
+      gl.calls.length = 0;
+      tickEmitter(emitter, 0.01); // head 0: itself and its mirror after frame 1
       expect(copies()).toEqual([frameBytes, 3 * frameBytes]);
-      calls.length = 0;
-      tick(emitter, 0.1); // head 1, the last frame: itself and its mirror before frame 0
+      gl.calls.length = 0;
+      tickEmitter(emitter, 0.1); // head 1, the last frame: itself and its mirror before frame 0
       expect(copies()).toEqual([2 * frameBytes, 0]);
-      calls.length = 0;
-      tick(emitter, 0.1); // head 0 again
+      gl.calls.length = 0;
+      tickEmitter(emitter, 0.1); // head 0 again
       expect(copies()).toEqual([frameBytes, 3 * frameBytes]);
       const geometry = trailOf(emitter).mesh.geometry as unknown as { instanceCount: number };
       expect(geometry.instanceCount).toBe(2 * 4);
@@ -891,7 +805,7 @@ describe("trail history - GPU backend", () => {
     const render = unlitArtifact({ outputs: { albedo: "vec4(PARTICLE_AGE / PARTICLE_LIFETIME)" } });
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
       gpuKernel: kernel,
-      renderer: renderer as never,
+      renderer,
       expectedCapacity: 4,
       trail: trailOptions({ render }),
     });

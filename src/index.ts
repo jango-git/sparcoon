@@ -7,14 +7,17 @@ export type {
   FXAttributeDecl,
   FXBehaviorArtifact,
   FXBufferLayout,
+  FXFragmentStageSource,
   FXGeometrySource,
   FXKernelBuffers,
   FXParticleKernelArtifact,
   FXParticleReads,
   FXRenderArtifact,
   FXShaderStageSource,
+  FXSurfaceReads,
   FXUniformInit,
   FXValueSlot,
+  FXVaryingDecl,
 } from "./artifact/FXArtifact.js";
 
 export {
@@ -60,14 +63,24 @@ export type {
   FXEffectOptions,
   FXEffectPlayOptions,
   FXEffectSpec,
+  FXEffectEvent,
+  FXEffectReaction,
   FXEffectTrailSpec,
   FXKeyEase,
 } from "./effect/FXEffectSpec.js";
+export type { FXSpawnAction } from "./effect/FXSpawnAction.js";
 
 // Type-only: the return type of `FXEffect.getEmitter`. Exported so an emitted module can name it in
 // a typed `getEmitter` override; the emitter cannot be constructed from the main surface (its
 // factory lives in the `sparcoon/editor` entry).
 export type { FXEmitter } from "./emitter/FXEmitter.js";
+export type {
+  FXEmitterBurstOptions,
+  FXEmitterPlayOptions,
+  FXParticleDeath,
+  FXParticleDeathListener,
+  FXSpawnOrigin,
+} from "./emitter/FXEmitter.Internal.js";
 
 // The tick domain: an effect joins one on construction; a single FXWorld.update per frame drives
 // every effect's timeline and the shared particle pool.

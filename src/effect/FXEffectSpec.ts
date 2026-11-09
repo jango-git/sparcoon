@@ -6,6 +6,7 @@ import type {
   FXRenderArtifactsByGLSLTier,
 } from "../artifact/FXArtifact.js";
 import type { FXWorld } from "../world/FXWorld.js";
+import type { FXSpawnAction } from "./FXSpawnAction.js";
 
 /**
  * Data shapes for {@link FXEffect}: a whole exported project (every emitter + VFX mesh, its
@@ -55,15 +56,17 @@ export interface FXTransformTrack {
   readonly keys: readonly FXKeyframe[];
 }
 
-/** A timeline event: an instantaneous burst or a sustained emission rate over a window. */
-export type FXEffectEvent =
-  | { readonly kind: "burst"; readonly time: number; readonly count: number }
-  | {
-      readonly kind: "play";
-      readonly time: number;
-      readonly rate: number;
-      readonly duration: number;
-    };
+/** A timeline event: a spawn action fired as the timeline crosses `time`. */
+export type FXEffectEvent = FXSpawnAction & { readonly time: number };
+
+/**
+ * A death reaction: a spawn action fired at every death of the `source` emitter's particles, from
+ * where it died (see `FXEmitter.onParticleDeath`). A play here has a finite duration.
+ */
+export type FXEffectReaction = FXSpawnAction & {
+  /** The index of the source in {@link FXEffectSpec.emitters}. */
+  readonly source: number;
+};
 
 /** One emitter's precompiled artifacts, transform, and timeline. */
 export interface FXEffectEmitterSpec {
@@ -104,6 +107,11 @@ export interface FXEffectEmitterSpec {
   readonly transformTracks: readonly FXTransformTrack[];
   readonly tracks: readonly FXTrack[];
   readonly events: readonly FXEffectEvent[];
+  /**
+   * What this emitter spawns when other emitters' particles die; omitted when nothing. A source
+   * is built on the CPU whatever its `gpuBehavior` - only the CPU simulation sees deaths.
+   */
+  readonly reactions?: readonly FXEffectReaction[];
   /** Transform channels the editor marked "fake": never sampled from `transformTracks`, left for
    * {@link FXEffect.getEmitter} to drive directly. */
   readonly liveChannels: readonly FXTransformChannel[];

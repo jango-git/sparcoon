@@ -1,67 +1,36 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Group } from "three";
-import { FXEffect } from "../../src/effect/FXEffect";
+import { Group, PerspectiveCamera, Texture, type ShaderMaterial } from "three";
 import { FXWorld } from "../../src/world/FXWorld";
+import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
 import type {
   FXEffectEmitterSpec,
-  FXEffectEvent,
+  FXEffectReaction,
   FXEffectSpec,
-  FXTrack,
-  FXTransform,
-  FXTransformTrack,
 } from "../../src/effect/FXEffectSpec";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
+import { effectSpec, emitterSpec as baseEmitterSpec, TestEffect } from "../helpers/effectSpecs";
+import { emitterVelocityOf, particlesOf, registeredObjectCount } from "../helpers/internals";
 
-const IDENTITY_TRANSFORM: FXTransform = {
-  position: [0, 0, 0],
-  rotation: [0, 0, 0, 1],
-  scale: [1, 1, 1],
+type EmitterOverrides = Partial<Omit<FXEffectEmitterSpec, "render">> & {
+  render?: FXRenderArtifact;
 };
 
-interface EmitterOverrides {
-  events?: readonly FXEffectEvent[];
-  render?: FXRenderArtifact;
-  transform?: FXTransform;
-  transformTracks?: readonly FXTransformTrack[];
-  tracks?: readonly FXTrack[];
-}
-
+/** An emitter rendering `over.render` (flat white by default) for both render targets. */
 function emitterSpec(name: string, over: EmitterOverrides = {}): FXEffectEmitterSpec {
-  return {
-    name,
-    render: renderForBothTargets(over.render ?? unlitArtifact()),
-    behavior: behaviorArtifact({ lifetime: 100 }),
-    expectedCapacity: 64,
-    sortInterval: 0,
-    externalSlots: [],
-    transform: over.transform ?? IDENTITY_TRANSFORM,
-    transformTracks: over.transformTracks ?? [],
-    tracks: over.tracks ?? [],
-    events: over.events ?? [],
-    liveChannels: [],
-    liveParams: [],
-  };
+  const { render, ...rest } = over;
+  return baseEmitterSpec(name, {
+    ...rest,
+    ...(render === undefined ? {} : { render: renderForBothTargets(render) }),
+  });
 }
 
-function spec(
-  over: Partial<FXEffectSpec> & { emitters: readonly FXEffectEmitterSpec[] },
-): FXEffectSpec {
-  return {
-    duration: over.duration ?? 0,
-    fps: over.fps ?? 30,
-    ...(over.loop !== undefined ? { loop: over.loop } : {}),
-    transform: IDENTITY_TRANSFORM,
-    transformTracks: [],
-    emitters: over.emitters,
-    meshes: over.meshes ?? [],
-  };
-}
-
-class TestEffect extends FXEffect {
-  public constructor(specification: FXEffectSpec, world: FXWorld) {
-    super(specification, {}, { world });
-  }
+/** A render declaring a float `u_param_size`, baked at 0. */
+function sizeRender(): FXRenderArtifact {
+  return unlitArtifact({
+    uniformDeclarations: ["uniform float u_param_size;"],
+    uniforms: { u_param_size: { type: "float", value: 0 } },
+  });
 }
 
 // Each test gets its own world; disposing it between tests frees the effects and their emitters, so
@@ -75,7 +44,7 @@ function newWorld(): FXWorld {
 }
 
 function makeEffect(world: FXWorld, specification: FXEffectSpec): TestEffect {
-  return new TestEffect(specification, world);
+  return new TestEffect(specification, { world });
 }
 
 afterEach(() => {
@@ -87,7 +56,10 @@ afterEach(() => {
 describe("FXEffect lookup", () => {
   it("returns emitters by name and undefined for an unknown name", () => {
     const world = newWorld();
-    const effect = makeEffect(world, spec({ emitters: [emitterSpec("a"), emitterSpec("b")] }));
+    const effect = makeEffect(
+      world,
+      effectSpec({ emitters: [emitterSpec("a"), emitterSpec("b")] }),
+    );
     expect(effect.getEmitter("a")).toBeDefined();
     expect(effect.getEmitter("b")).toBeDefined();
     expect(effect.getEmitter("missing")).toBeUndefined();
@@ -100,7 +72,9 @@ describe("FXEffect timeline events", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({ emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.5, count: 10 }] })] }),
+      effectSpec({
+        emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.5, count: 10 }] })],
+      }),
     );
     effect.play();
     expect(effect.getEmitter("e")!.particleCount).toBe(0); // burst is at t=0.5, not yet reached
@@ -112,7 +86,7 @@ describe("FXEffect timeline events", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         emitters: [
           emitterSpec("e", { events: [{ kind: "play", time: 0, rate: 100, duration: 0 }] }),
         ],
@@ -127,7 +101,7 @@ describe("FXEffect timeline events", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         emitters: [
           emitterSpec("e", {
             events: [
@@ -149,7 +123,9 @@ describe("FXEffect transport", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({ emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.5, count: 5 }] })] }),
+      effectSpec({
+        emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.5, count: 5 }] })],
+      }),
     );
     // Never played: the world tick must not fire the burst.
     world.update(1);
@@ -160,7 +136,9 @@ describe("FXEffect transport", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({ emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.5, count: 8 }] })] }),
+      effectSpec({
+        emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.5, count: 8 }] })],
+      }),
     );
     effect.play();
     world.update(1);
@@ -176,7 +154,7 @@ describe("FXEffect transport", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         duration: 1,
         emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.5, count: 5 }] })],
       }),
@@ -200,7 +178,7 @@ describe("FXEffect transport", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         duration: 1,
         emitters: [
           emitterSpec("e", {
@@ -217,9 +195,7 @@ describe("FXEffect transport", () => {
         ],
       }),
     );
-    const velocityX = (): number =>
-      (effect.getEmitter("e") as unknown as { emitterTransform: { velocity: number[] } })
-        .emitterTransform.velocity[0];
+    const velocityX = (): number => emitterVelocityOf(effect.getEmitter("e")!)[0];
     effect.play();
     world.update(0.5);
     world.update(0.25); // moving at about +10/s (poses are frame-quantized)
@@ -233,7 +209,7 @@ describe("FXEffect transport", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         duration: 1,
         emitters: [emitterSpec("e", { events: [{ kind: "burst", time: 0.95, count: 3 }] })],
       }),
@@ -246,15 +222,12 @@ describe("FXEffect transport", () => {
 });
 
 describe("FXEffect parameter drive", () => {
-  it("drives a value track onto a declared uniform without error", () => {
+  it("drives a value track onto a declared uniform", () => {
     const world = newWorld();
-    const render = unlitArtifact({
-      uniformDeclarations: ["uniform float u_param_size;"],
-      uniforms: { u_param_size: { type: "float", value: 0 } },
-    });
+    const render = sizeRender();
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         emitters: [
           emitterSpec("e", {
             render,
@@ -277,48 +250,91 @@ describe("FXEffect parameter drive", () => {
     expect(render.uniforms["u_param_size"].value).toBeCloseTo(3, 6);
   });
 
-  it("no-ops setEmitterParam / setMeshParam for an unknown name", () => {
+  it("leaves every slot alone for an unknown emitter, mesh or parameter", () => {
     const world = newWorld();
-    const effect = makeEffect(world, spec({ emitters: [emitterSpec("e")] }));
-    expect(() => effect.setEmitterParam("missing", "size", 2)).not.toThrow();
-    expect(() => effect.setMeshParam("missing", "size", 2)).not.toThrow();
+    const render = sizeRender();
+    const effect = makeEffect(world, effectSpec({ emitters: [emitterSpec("e", { render })] }));
+    effect.setEmitterParam("missing", "size", 2);
+    effect.setMeshParam("missing", "size", 2);
+    effect.setEmitterParam("e", "missing", 2);
+    expect(render.uniforms["u_param_size"].value).toBe(0);
+  });
+});
+
+describe("FXEffect emitter construction", () => {
+  it("hands an emitter with a sortInterval the camera, sorting one frame in sortInterval", () => {
+    const world = newWorld();
+    const camera = new PerspectiveCamera();
+    const effect = new TestEffect(
+      effectSpec({
+        emitters: [emitterSpec("sorted", { sortInterval: 4 }), emitterSpec("unsorted")],
+      }),
+      { world, camera },
+    );
+    expect(effect.getEmitter("sorted")!.sortCamera).toBe(camera);
+    expect(effect.getEmitter("sorted")!.sortFraction).toBe(0.25);
+    expect(effect.getEmitter("unsorted")!.sortCamera).toBeUndefined();
   });
 
-  it("writes setEmitterParam into a declared uniform slot", () => {
+  it("resolves an emitter's external texture and custom geometry from the effect's assets", () => {
     const world = newWorld();
-    const render = unlitArtifact({
-      uniformDeclarations: ["uniform float u_param_size;"],
-      uniforms: { u_param_size: { type: "float", value: 0 } },
-    });
-    const effect = makeEffect(world, spec({ emitters: [emitterSpec("e", { render })] }));
-    effect.setEmitterParam("e", "size", 7);
-    expect(render.uniforms["u_param_size"].value).toBe(7);
+    const flame = new Texture();
+    const rock = buildPrimitiveGeometry("sphere");
+    // An asset named in `externalSlots` binds the external slot `u_param_<name>`; a custom
+    // geometry is looked up by its own name.
+    const render: FXRenderArtifact = {
+      ...unlitArtifact({
+        uniformDeclarations: ["uniform sampler2D u_param_flame;"],
+        uniforms: { u_param_flame: { type: "sampler2D", external: "u_param_flame" } },
+      }),
+      geometry: { type: "custom", external: "rock" },
+    };
+    const effect = new TestEffect(
+      effectSpec({ emitters: [emitterSpec("e", { render, externalSlots: ["flame"] })] }),
+      { world },
+      { flame, rock },
+    );
+    const mesh = particlesOf(effect.getEmitter("e")!);
+    expect((mesh.material as ShaderMaterial).uniforms["u_param_flame"].value).toBe(flame);
+    // The instanced geometry takes the custom geometry's vertices.
+    expect(mesh.geometry.getAttribute("position").count).toBe(rock.getAttribute("position").count);
   });
 });
 
 describe("FXEffect dispose", () => {
-  it("empties from its parent, drops its emitters, and is idempotent", () => {
+  it("empties from its parent, drops its emitters, and leaves an inert effect", () => {
     const world = newWorld();
     const parent = new Group();
-    const effect = makeEffect(world, spec({ emitters: [emitterSpec("e")] }));
+    const render = sizeRender();
+    const effect = makeEffect(
+      world,
+      effectSpec({
+        duration: 1,
+        loop: false,
+        emitters: [emitterSpec("e", { render, events: [{ kind: "burst", time: 0, count: 3 }] })],
+      }),
+    );
     parent.add(effect);
-    expect(parent.children).toContain(effect);
+    const emitter = effect.getEmitter("e")!;
+    let finished = 0;
+    effect.addEventListener("finished", () => {
+      finished += 1;
+    });
 
+    effect.dispose();
     effect.dispose();
     expect(parent.children).not.toContain(effect);
     expect(effect.getEmitter("e")).toBeUndefined();
-    expect(() => effect.dispose()).not.toThrow();
-  });
+    expect(emitter.parent).toBeNull();
+    expect(registeredObjectCount(world)).toBe(0);
 
-  it("stops being driven after dispose, and play/stop stay safe no-ops", () => {
-    const world = newWorld();
-    const effect = makeEffect(world, spec({ emitters: [emitterSpec("e")] }));
-    effect.dispose();
-    expect(() => {
-      effect.play();
-      effect.stop();
-      world.update(1); // the disposed effect is unregistered, so the world skips it
-    }).not.toThrow();
+    // Unregistered: nothing plays, drives or finishes any more.
+    effect.play();
+    effect.setEmitterParam("e", "size", 2);
+    world.update(2);
+    expect(emitter.particleCount).toBe(0);
+    expect(render.uniforms["u_param_size"].value).toBe(0);
+    expect(finished).toBe(0);
   });
 });
 
@@ -329,7 +345,7 @@ describe("FXEffect event order", () => {
     const world = newWorld();
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         duration: 2,
         fps: 30,
         emitters: [
@@ -368,7 +384,7 @@ describe("FXEffect transform drive", () => {
   function movingEffect(world: FXWorld) {
     return makeEffect(
       world,
-      spec({
+      effectSpec({
         duration: 2,
         fps: 30,
         emitters: [
@@ -413,7 +429,7 @@ describe("FXEffect transform drive", () => {
     });
     const effect = makeEffect(
       world,
-      spec({
+      effectSpec({
         fps: 30,
         emitters: [
           emitterSpec("e", {
@@ -443,7 +459,7 @@ describe("FXEffect once-through playback", () => {
   function onceEffect(world: FXWorld, loop: boolean | undefined) {
     return makeEffect(
       world,
-      spec({
+      effectSpec({
         duration: 1,
         ...(loop !== undefined ? { loop } : {}),
         emitters: [
@@ -514,5 +530,43 @@ describe("FXEffect once-through playback", () => {
     expect(effect.getEmitter("e")!.particleCount).toBe(5);
     world.update(0.6);
     expect(finished).toBe(2);
+  });
+});
+
+describe("FXEffect death reactions", () => {
+  function shellAndSparks(reaction: FXEffectReaction): FXEffectSpec {
+    return effectSpec({
+      duration: 10,
+      emitters: [
+        {
+          ...emitterSpec("shell", { events: [{ kind: "burst", time: 0, count: 1 }] }),
+          behavior: behaviorArtifact({ lifetime: 0.15 }),
+        },
+        emitterSpec("sparks", { reactions: [reaction] }),
+      ],
+    });
+  }
+
+  it("spawns on the reacting emitter one tick after each death of the source's particles", () => {
+    const world = newWorld();
+    const effect = makeEffect(world, shellAndSparks({ source: 0, kind: "burst", count: 4 }));
+    effect.play();
+    world.update(0.1); // the shell is born
+    world.update(0.1);
+    world.update(0.1); // it dies
+    expect(effect.getEmitter("sparks")!.particleCount).toBe(0);
+    world.update(0.1);
+    expect(effect.getEmitter("sparks")!.particleCount).toBe(4);
+  });
+
+  it("refuses a bad reaction before building anything", () => {
+    const world = newWorld();
+    expect(() => makeEffect(world, shellAndSparks({ source: 5, kind: "burst", count: 4 }))).toThrow(
+      /does not exist/,
+    );
+    expect(() =>
+      makeEffect(world, shellAndSparks({ source: 0, kind: "play", rate: 4, duration: 0 })),
+    ).toThrow(/finite duration/);
+    expect(registeredObjectCount(world)).toBe(0);
   });
 });

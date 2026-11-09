@@ -4,30 +4,18 @@ import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { markRange, type FXRangedBuffer } from "../../src/trail/FXTrailHistory.Internal";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
+import { tickEmitter, trailOf, type TrailInternals } from "../helpers/internals";
 
 /**
  * What the GPU sees of a JS trail history: only the ranges it marks for upload, per tick - so a
  * point left un-uploaded (frame 0 while the head is there) must never be drawn from.
+ *
+ * Every tick is half a sample interval, both exact binary fractions, so two ticks always move the
+ * head on exactly once.
  */
 
-function tick(emitter: FXEmitter, dt: number): void {
-  (emitter as unknown as { tick(deltaTime: number): void }).tick(dt);
-}
-
-interface TrailInternals {
-  history: {
-    array: Float32Array;
-    stride: number;
-    capacity: number;
-    frames: number;
-    buffer: { updateRanges: { start: number; count: number }[]; needsUpdate: boolean };
-  };
-  uniforms: { tail: { value: number } };
-}
-
-function trailOf(emitter: FXEmitter): TrailInternals {
-  return (emitter as unknown as { trail: TrailInternals }).trail;
-}
+const SAMPLE_INTERVAL = 0.125;
+const TICK = SAMPLE_INTERVAL / 2;
 
 /** Each update moves every particle +1 along x. */
 function movingBehavior(lifetime: number): ReturnType<typeof behaviorArtifact> {
@@ -44,7 +32,11 @@ function movingBehavior(lifetime: number): ReturnType<typeof behaviorArtifact> {
 }
 
 function trailEmitter(frames: number, capacity: number, lifetime: number): FXEmitter {
-  const trail: FXTrailOptions = { render: unlitArtifact(), frames, sampleInterval: 0.1 };
+  const trail: FXTrailOptions = {
+    render: unlitArtifact(),
+    frames,
+    sampleInterval: SAMPLE_INTERVAL,
+  };
   return FXEmitter.fromArtifacts(unlitArtifact(), movingBehavior(lifetime), {
     expectedCapacity: capacity,
     trail,
@@ -109,7 +101,7 @@ describe("trail history uploads (JS backend)", () => {
       let staleSeen = false;
       // Three laps of the ring, two ticks per recorded frame.
       for (let i = 0; i < frames * 2 * 3; i++) {
-        tick(emitter, 0.05);
+        tickEmitter(emitter, TICK);
         view.render();
         // One live particle: `frames` recorded points, so at most `frames - 1` segments.
         expect(view.linkedSegments().length).toBeLessThanOrEqual(frames - 1);
@@ -132,11 +124,11 @@ describe("trail history uploads (JS backend)", () => {
       emitter.burst(2);
       // The first tick records frame 0; every second one after it moves the head on.
       for (let i = 0; i < 1 + 2 * frames * 2; i++) {
-        tick(emitter, 0.05);
+        tickEmitter(emitter, TICK);
       }
       view.render();
       // Lap 3 just began: the head is frame 0, its point read only through the mirror.
-      expect((emitter as unknown as { trail: { head: number } }).trail.head).toBe(0);
+      expect(trailOf(emitter).head).toBe(0);
       expect(view.linkedSegments().map((segment) => segment.frame)).toEqual([1, 1, 2, 2]);
     } finally {
       emitter.destroy();
@@ -145,14 +137,15 @@ describe("trail history uploads (JS backend)", () => {
 
   it("stops recording once nothing is alive and every frame is dead, and resyncs on the next birth", () => {
     const frames = 3;
-    const emitter = trailEmitter(frames, 2, 0.15);
+    // Born in the first tick, dead (age 0.125 >= 0.1) in the third.
+    const emitter = trailEmitter(frames, 2, 0.1);
     try {
       const view = new GPUView(trailOf(emitter));
       emitter.burst(2);
-      // Dies on the second tick; the dead points then take `frames` head moves to replace the last
-      // live frame - and one more record finds the history idle.
+      // The dead points then take `frames` head moves to replace the last live frame - and one
+      // more record finds the history idle.
       for (let i = 0; i < 2 + frames * 2 + 2; i++) {
-        tick(emitter, 0.05);
+        tickEmitter(emitter, TICK);
         view.render();
       }
       expect(view.linkedSegments()).toEqual([]);
@@ -160,16 +153,16 @@ describe("trail history uploads (JS backend)", () => {
       const { array, stride } = trailOf(emitter).history;
       expect(array.every((value, index) => index % stride !== 3 || value === 0)).toBe(true);
       for (let i = 0; i < 10; i++) {
-        tick(emitter, 0.05);
+        tickEmitter(emitter, TICK);
         expect(view.render()).toEqual([]);
       }
 
       emitter.burst(1);
-      tick(emitter, 0.05);
+      tickEmitter(emitter, TICK);
       // The whole buffer once, then the usual one range per tick.
       expect(view.render()).toEqual([{ start: 0, count: trailOf(emitter).history.array.length }]);
       expect(view.data).toEqual(trailOf(emitter).history.array);
-      tick(emitter, 0.05);
+      tickEmitter(emitter, TICK);
       expect(view.render()).toHaveLength(1);
     } finally {
       emitter.destroy();
@@ -183,7 +176,7 @@ describe("trail history uploads (JS backend)", () => {
       emitter.burst(4);
       // A prewarm: many ticks, no render in between.
       for (let i = 0; i < 40; i++) {
-        tick(emitter, 0.05);
+        tickEmitter(emitter, TICK);
       }
       expect(trailOf(emitter).history.buffer.updateRanges).toHaveLength(1);
       view.render();

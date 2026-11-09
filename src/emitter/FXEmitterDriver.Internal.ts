@@ -39,12 +39,24 @@ export interface FXEmitterDriver {
   /** Whether this driver's artifact can seed births at all (false = update-only). */
   readonly canSpawn: boolean;
 
-  /** Claims `count` newborn slots (immediate `burst`, a delayed burst's expiry, or `play`'s rate
-   *  accumulator) and seeds them from `transform` and the current binding values - as they are at
-   *  this call, on both backends: JS seeds right away; GPU seeds a spawn outside a tick with a pass
-   *  of its own right away, and gathers the spawns inside a tick (which all share its pose) into
-   *  that tick's pass. */
+  /** Whether this driver can report its particles' deaths ({@link watchDeaths}) - only a CPU
+   *  simulation sees them; the GPU one would need a readback. */
+  readonly reportsDeaths: boolean;
+
+  /** Claims `count` newborn slots and seeds them from `transform` and the current binding values.
+   *  `FXEmitter` is the only caller, once per queued birth, from its own tick (see its `tick`):
+   *  between {@link beginTick} and {@link endTick} for the births at the tick's pose - JS seeds
+   *  them right away, GPU gathers them into the tick's one pass - and after {@link endTick} (or on
+   *  a paused tick, with neither) for every other pose, which JS seeds right away and GPU seeds
+   *  with a pass of its own. Either way a newborn is seeded, not yet updated. */
   spawn(count: number, transform: FXEmitterTransform): void;
+  /**
+   * Starts (`sink`) or stops (`undefined`) reporting each particle that dies of age: during
+   * {@link beginTick}, once per particle alive before the tick and dead after it, with its position
+   * and its velocity over the tick. A slot a birth overwrites, and particles {@link reset} clears,
+   * are not deaths. Throws when {@link reportsDeaths} is false and `sink` is given.
+   */
+  watchDeaths(sink: FXParticleDeathSink | undefined): void;
   /** Runs before this tick's scheduled bursts/plays: JS updates every existing slot, then ages
    *  it; GPU starts gathering this tick's spawns into its pass. */
   beginTick(deltaTime: number, transform: FXEmitterTransform): void;
@@ -78,6 +90,16 @@ export interface FXEmitterDriver {
   createTrailHistory(reads: Readonly<Record<string, GLTypeInfo>>, frames: number): FXTrailHistory;
   destroy(): void;
 }
+
+/** Receives one death from {@link FXEmitterDriver.watchDeaths}: position, then velocity. */
+export type FXParticleDeathSink = (
+  positionX: number,
+  positionY: number,
+  positionZ: number,
+  velocityX: number,
+  velocityY: number,
+  velocityZ: number,
+) => void;
 
 const CORE_POSITION_TYPE: GLTypeInfo = {
   glslTypeName: "vec3",

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ClampToEdgeWrapping, FloatType, NearestFilter, RGBAFormat, Texture } from "three";
+import {
+  FloatType,
+  LinearFilter,
+  NearestFilter,
+  RepeatWrapping,
+  Texture,
+  type ShaderMaterial,
+} from "three";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
@@ -7,11 +14,13 @@ import { fxDataTexture } from "../../src/miscellaneous/texture/fxDataTexture";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 import {
   NO_PARTICLE_READS,
+  NO_SURFACE_READS,
   VEC2_VARYING,
   VEC3_VARYING,
   behaviorArtifact,
   layoutOf,
 } from "../helpers/artifacts";
+import { particlesOf } from "../helpers/internals";
 
 function coreVaryings(): Record<string, GLTypeInfo> {
   return {
@@ -21,26 +30,20 @@ function coreVaryings(): Record<string, GLTypeInfo> {
 }
 
 /** Builds the unlit ShaderMaterial and returns its bound uniforms (fog slots + clock + artifact slots). */
-function compiledUniforms(
-  render: FXRenderArtifact,
-  textures?: Record<string, Texture>,
-): Record<string, { value: unknown }> {
-  const material = new FXArtifactMaterial(render, textures).buildThreeMaterial(
-    layoutOf(coreVaryings()),
-  ) as unknown as { uniforms: Record<string, { value: unknown }> };
-  return material.uniforms;
+function compiledUniforms(render: FXRenderArtifact): ShaderMaterial["uniforms"] {
+  const material = new FXArtifactMaterial(render).buildThreeMaterial(layoutOf(coreVaryings()));
+  return (material as ShaderMaterial).uniforms;
 }
 
 describe("fxDataTexture", () => {
-  it("builds a DataTexture with LUT-friendly defaults", () => {
+  it("builds a float DataTexture over the data, filtered linearly, ready to upload", () => {
+    // Only what differs from a plain DataTexture's defaults (byte texels, nearest filtering).
     const data = new Float32Array([1, 0, 0, 1, 0, 0, 1, 1]); // 2x1 RGBA
     const texture = fxDataTexture(data, 2, 1);
-    expect(texture.image.width).toBe(2);
-    expect(texture.image.height).toBe(1);
-    expect(texture.image.data).toBe(data);
-    expect(texture.format).toBe(RGBAFormat);
+    expect(texture.image).toMatchObject({ width: 2, height: 1, data });
     expect(texture.type).toBe(FloatType);
-    expect(texture.wrapS).toBe(ClampToEdgeWrapping);
+    expect(texture.minFilter).toBe(LinearFilter);
+    expect(texture.magFilter).toBe(LinearFilter);
     // needsUpdate is a write-only setter (bumps version); observe the version instead.
     expect(texture.version).toBeGreaterThan(0);
   });
@@ -49,9 +52,11 @@ describe("fxDataTexture", () => {
     const texture = fxDataTexture(new Float32Array(4), 1, 1, {
       minFilter: NearestFilter,
       magFilter: NearestFilter,
+      wrapS: RepeatWrapping,
     });
     expect(texture.magFilter).toBe(NearestFilter);
     expect(texture.minFilter).toBe(NearestFilter);
+    expect(texture.wrapS).toBe(RepeatWrapping);
   });
 });
 
@@ -59,17 +64,17 @@ describe("render artifact - generated & external textures", () => {
   const withGeneratedTexture = (texture: Texture): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: ["uniform sampler2D u_grad$0;"],
+    varyings: [],
     vertex: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
+      surfaceReads: NO_SURFACE_READS,
     },
     outputs: { albedo: "texture2D(u_grad$0, p_uv)" },
     uniforms: { u_grad$0: { type: "sampler2D", value: texture } },
@@ -79,17 +84,17 @@ describe("render artifact - generated & external textures", () => {
   const withExternalTexture = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: ["uniform sampler2D u_flame$0;"],
+    varyings: [],
     vertex: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
+      surfaceReads: NO_SURFACE_READS,
     },
     outputs: { albedo: "texture2D(u_flame$0, p_uv)" },
     uniforms: { u_flame$0: { type: "sampler2D", external: "flame" } },
@@ -102,39 +107,29 @@ describe("render artifact - generated & external textures", () => {
     expect(uniforms["u_grad$0"].value).toBe(generated);
   });
 
-  it("binds an external texture by slot name from fromArtifacts({ textures })", () => {
-    const flame = new Texture();
-    const uniforms = compiledUniforms(withExternalTexture(), { flame });
-    expect(uniforms["u_flame$0"].value).toBe(flame);
-  });
-
-  it("fails fast when an external texture slot is not supplied", () => {
-    expect(() => new FXArtifactMaterial(withExternalTexture())).toThrow(
-      /no texture supplied for external slot "flame"/,
-    );
-    // ...and through the emitter entry point.
+  it("fails fast through fromArtifacts when an external texture slot is not supplied", () => {
     expect(() =>
       FXEmitter.fromArtifacts(withExternalTexture(), behaviorArtifact({ lifetime: 1 })),
     ).toThrow(/no texture supplied for external slot "flame"/);
   });
 
-  it("launches an emitter with a generated gradient + external sprite from artifacts", () => {
+  it("binds a generated gradient and an external sprite through fromArtifacts({ textures })", () => {
     const gradient = fxDataTexture(new Float32Array([1, 0, 0, 1, 0, 0, 1, 1]), 2, 1);
     const flame = new Texture();
     const render: FXRenderArtifact = {
       lightingIntrinsics: [],
       uniformDeclarations: ["uniform sampler2D u_grad$0;", "uniform sampler2D u_flame$1;"],
+      varyings: [],
       vertex: {
-        varyingDeclarations: [],
         helperFunctions: [],
         body: [],
         particleReads: NO_PARTICLE_READS,
       },
       fragment: {
-        varyingDeclarations: [],
         helperFunctions: [],
         body: [],
         particleReads: NO_PARTICLE_READS,
+        surfaceReads: NO_SURFACE_READS,
       },
       outputs: { albedo: "texture2D(u_grad$0, p_uv) * texture2D(u_flame$1, p_uv)" },
       uniforms: {
@@ -147,9 +142,9 @@ describe("render artifact - generated & external textures", () => {
       textures: { flame },
     });
     try {
-      emitter.burst(2);
-      expect(emitter.particleCount).toBe(2);
-      expect(() => emitter.prewarm(0.5)).not.toThrow();
+      const { uniforms } = particlesOf(emitter).material as ShaderMaterial;
+      expect(uniforms["u_grad$0"].value).toBe(gradient);
+      expect(uniforms["u_flame$1"].value).toBe(flame);
     } finally {
       emitter.destroy();
     }

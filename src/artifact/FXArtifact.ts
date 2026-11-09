@@ -84,13 +84,45 @@ export interface FXParticleReads {
   readonly attributes: readonly string[];
 }
 
+/**
+ * Which builtins of the world-space surface frame the fragment stage's code reads - recorded by the
+ * compiler like {@link FXParticleReads}. The material builds the frame for exactly these: each one
+ * costs a varying vector, the scarcest thing a material has after its attributes.
+ */
+export interface FXSurfaceReads {
+  /** `geometryNormal`. */
+  readonly normal: boolean;
+  /** `geometryTangent`. */
+  readonly tangent: boolean;
+  /** `worldPosition`. */
+  readonly position: boolean;
+}
+
+/** A value the graph's vertex stage computes and its fragment stage reads. */
+export interface FXVaryingDecl {
+  readonly name: string;
+  /** Its GLSL type (`float` .. `vec4`, `matN`, `int` / `ivecN`). */
+  readonly type: string;
+  /** `flat` marks a value the same at all of a primitive's vertices (or an integer, which cannot
+   *  interpolate): it rides a `flat` varying where the context's GLSL has one (WebGL2), and an
+   *  interpolated one otherwise - which gives such a value back unchanged. A property of the
+   *  value, not of the tier, so both tiers' artifacts agree on it. */
+  readonly interpolation: "smooth" | "flat";
+}
+
 /** One shader stage's spliceable source (matches the compiler's per-stage IR shape). */
 export interface FXShaderStageSource {
-  readonly varyingDeclarations: readonly string[];
   readonly helperFunctions: readonly string[];
   readonly body: readonly string[];
   /** What this stage's code - its body and helper functions - reads of each particle. */
   readonly particleReads: FXParticleReads;
+}
+
+/** The fragment stage's source: the surface frame is fragment-only, so only this stage records it. */
+export interface FXFragmentStageSource extends FXShaderStageSource {
+  /** What this stage's code - its body, helper functions and fragment-stage outputs - reads of the
+   *  surface frame. */
+  readonly surfaceReads: FXSurfaceReads;
 }
 
 /** Render half of an emitted effect: compiled GLSL spliced into a Three material, plus live uniforms. */
@@ -107,8 +139,10 @@ export interface FXRenderArtifact {
   readonly geometry?: FXGeometrySource;
   readonly options?: FXGraphUnlitMaterialOptions | FXGraphLambertMaterialOptions;
   readonly uniformDeclarations: readonly string[];
+  /** What the graph carries from its vertex stage to its fragment stage, declared in both. */
+  readonly varyings: readonly FXVaryingDecl[];
   readonly vertex: FXShaderStageSource;
-  readonly fragment: FXShaderStageSource;
+  readonly fragment: FXFragmentStageSource;
   /**
    * slot -> GLSL expression: `albedo` (required; already carries the shaded color when lit), the
    * optional fragment-stage compositing slots (`additivity` / `alphaThreshold`, and `intensity`: a

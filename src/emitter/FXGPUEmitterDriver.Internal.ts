@@ -7,7 +7,11 @@ import {
 } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
-import type { FXEmitterDriver, FXHeldParticleFields } from "./FXEmitterDriver.Internal.js";
+import type {
+  FXEmitterDriver,
+  FXHeldParticleFields,
+  FXParticleDeathSink,
+} from "./FXEmitterDriver.Internal.js";
 import { gpuHeldFields, particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
@@ -35,11 +39,11 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   private currentLayout: FXParticleLayout;
 
   // Cursor/overwrite bookkeeping: `gpuSpawnCursor` is the next write position (mod capacity).
-  // Spawns inside a tick (a delayed burst expiring, a play's rate accumulator) all share that
-  // tick's pose and parameters, so `gpuSpawnRangeStart`/`gpuPendingSpawnCount` gather them into
-  // one contiguous range the tick's own pass seeds. A spawn outside a tick - an immediate
-  // `burst()` from host code or from an effect's timeline - is seeded right away by a pass of its
-  // own instead (see spawn()), so the range is always empty between ticks.
+  // Spawns inside a tick are the births at that tick's pose (FXEmitter.tick), so
+  // `gpuSpawnRangeStart`/`gpuPendingSpawnCount` gather them into one contiguous range the tick's
+  // own pass seeds. A spawn outside a tick - a birth at another pose, or any birth on a paused
+  // tick - is seeded right away by a pass of its own instead (see spawn()), so the range is always
+  // empty between ticks.
   private gpuSpawnCursor = 0;
   private gpuSpawnRangeStart = 0;
   private gpuPendingSpawnCount = 0;
@@ -107,6 +111,17 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     return true;
   }
 
+  // Age and death live in transform-feedback buffers only; seeing them would take a readback.
+  public get reportsDeaths(): boolean {
+    return false;
+  }
+
+  public watchDeaths(sink: FXParticleDeathSink | undefined): void {
+    if (sink !== undefined) {
+      throw new Error("FXEmitter: a GPU-driven emitter cannot report its particles' deaths");
+    }
+  }
+
   public spawn(count: number, transform: FXEmitterTransform): void {
     // Cursor advances by `count`, wrapping at capacity - the buffer slots this claims may already
     // be occupied by still-alive particles, which are simply overwritten (the scheme's cheapness is
@@ -117,9 +132,8 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       this.gpuPendingSpawnCount += count;
       return;
     }
-    // Outside a tick, the emitter may be moved or re-parametrized before the next one (two
-    // bursts from two poses in one frame is an ordinary way to author an effect), so this spawn
-    // is seeded now, from the pose and bindings of this call. More than `capacity` at once
+    // Outside a tick, this birth has a pose of its own (two bursts from two poses in one frame, a
+    // spawn at an origin), so it is seeded now, by a pass of its own with that pose. More than `capacity` at once
     // overwrites the whole ring; the extra births would only overwrite each other - but still take
     // their ids, as inside a tick (and on the JS backend).
     this.simulation.spawn(

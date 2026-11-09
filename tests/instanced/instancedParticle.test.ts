@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MeshBasicMaterial, Vector3, Matrix4 } from "three";
+import { MeshBasicMaterial, Vector3 } from "three";
 import { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
 import { FX_AGE, FX_LIFETIME, FX_POSITION_Z } from "../../src/coreLayout";
@@ -132,7 +132,7 @@ describe("FXInstancedParticle - fixed-capacity ring", () => {
     mesh.propertyBuffers.lifecycle.array[1 * LIFECYCLE_STRIDE + FX_AGE] = 5; // slot 1 dies
     mesh.advanceAges(0);
 
-    mesh.sortByDistance(new Vector3(0, 0, -10), new Matrix4());
+    mesh.sortByDistance(new Vector3(0, 0, -10));
 
     // Back to front from a camera at z = -10: z 3, 2, 0; the dead slot goes behind them all.
     expect([position[0 * 3 + 2], position[1 * 3 + 2], position[2 * 3 + 2]]).toEqual([3, 2, 0]);

@@ -2,20 +2,31 @@ import type {
   FXAttributeDecl,
   FXBehaviorArtifact,
   FXBufferLayout,
+  FXEmitterTransform,
   FXKernelBuffers,
   FXParticleReads,
   FXRenderArtifact,
   FXRenderArtifactsByGLSLTier,
+  FXSurfaceReads,
 } from "../../src/artifact/FXArtifact";
 import {
+  FX_AGE,
   FX_CORE_LIFECYCLE,
   FX_CORE_LIFECYCLE_STRIDE,
   FX_CORE_POSITION,
   FX_LIFETIME,
+  FX_POSITION_X,
 } from "../../src/coreLayout";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 import type { FXParticleLayout } from "../../src/render/FXArtifactMaterial.Internal";
 import { unpackedAttributes } from "../../src/render/FXAttributePacking";
+
+/** The pose of an emitter at the world origin, at rest. */
+export const IDENTITY_EMITTER_TRANSFORM: FXEmitterTransform = {
+  worldMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+  velocity: [0, 0, 0],
+  angularVelocity: [0, 0, 0],
+};
 
 /** Fixture `GLTypeInfo` values for the varying types tests wire up (position/lifecycle/attributes). */
 export const FLOAT_VARYING: GLTypeInfo = {
@@ -78,6 +89,20 @@ export function particleReadsIn(
   };
 }
 
+/** What a fragment stage reading nothing of the surface frame records. */
+export const NO_SURFACE_READS: FXSurfaceReads = { normal: false, tangent: false, position: false };
+
+/** What hand-written fragment `code` reads of the surface frame - the fixture twin of the editor's
+ *  recorded reads, like {@link particleReadsIn}. */
+export function surfaceReadsIn(code: string): FXSurfaceReads {
+  const names = (name: string): boolean => new RegExp(`\\b${name}\\b`).test(code);
+  return {
+    normal: names("geometryNormal"),
+    tangent: names("geometryTangent"),
+    position: names("worldPosition"),
+  };
+}
+
 /** A minimal unlit render artifact (flat white albedo). Override any field. */
 export function unlitArtifact(
   over: {
@@ -99,7 +124,6 @@ export function unlitArtifact(
       .filter((slot) => VERTEX_OUTPUT_SLOTS.has(slot) === vertex)
       .map((slot) => outputs[slot]);
   const stage = (body: readonly string[], vertex: boolean): FXRenderArtifact["vertex"] => ({
-    varyingDeclarations: [],
     helperFunctions: [],
     body,
     particleReads: particleReadsIn([...body, ...outputsOf(vertex)].join("\n"), attributeReads),
@@ -108,8 +132,12 @@ export function unlitArtifact(
     lightingIntrinsics: [],
     geometry: over.geometry,
     uniformDeclarations: over.uniformDeclarations ?? [],
+    varyings: [],
     vertex: stage(vertexBody, true),
-    fragment: stage(fragmentBody, false),
+    fragment: {
+      ...stage(fragmentBody, false),
+      surfaceReads: surfaceReadsIn([...fragmentBody, ...outputsOf(false)].join("\n")),
+    },
     outputs,
     uniforms: over.uniforms ?? {},
     attributeReads,
@@ -191,5 +219,54 @@ export function behaviorArtifact(
     updateWrittenBuffers: spec.updateWrittenBuffers ?? [],
     update: spec.update ?? ((): void => undefined),
     ...spawnPart,
+  };
+}
+
+/**
+ * A behavior placing each newborn at the translation of the pose it spawns from (as a graph reading
+ * `world-matrix` would), recording that pose into `poses`, and moving every live particle +`speed`
+ * along x per second.
+ */
+export function placingBehavior(
+  lifetime: number,
+  poses: FXEmitterTransform[] = [],
+  speed = 2,
+): FXBehaviorArtifact {
+  return {
+    buffers: [
+      { name: FX_CORE_POSITION, stride: 3 },
+      { name: FX_CORE_LIFECYCLE, stride: FX_CORE_LIFECYCLE_STRIDE },
+    ],
+    attributeWrites: [],
+    bindings: {},
+    spawnWrittenBuffers: [FX_CORE_POSITION, FX_CORE_LIFECYCLE],
+    updateWrittenBuffers: [FX_CORE_POSITION],
+    spawn(buffers: FXKernelBuffers, start, count, _bindings, emitter): void {
+      const position = buffers[FX_CORE_POSITION];
+      const lifecycle = buffers[FX_CORE_LIFECYCLE];
+      if (emitter !== undefined) {
+        poses.push({
+          worldMatrix: [...emitter.worldMatrix],
+          velocity: [...emitter.velocity],
+          angularVelocity: [...emitter.angularVelocity],
+        });
+      }
+      for (let i = start; i < start + count; i++) {
+        lifecycle[i * FX_CORE_LIFECYCLE_STRIDE + FX_LIFETIME] = lifetime;
+        for (let c = 0; c < 3; c++) {
+          position[i * 3 + c] = emitter?.worldMatrix[12 + c] ?? 0;
+        }
+      }
+    },
+    update(buffers: FXKernelBuffers, count, dt): void {
+      const position = buffers[FX_CORE_POSITION];
+      const lifecycle = buffers[FX_CORE_LIFECYCLE];
+      for (let i = 0; i < count; i++) {
+        const row = i * FX_CORE_LIFECYCLE_STRIDE;
+        if (lifecycle[row + FX_AGE] < lifecycle[row + FX_LIFETIME]) {
+          position[i * 3 + FX_POSITION_X] += speed * dt;
+        }
+      }
+    },
   };
 }

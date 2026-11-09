@@ -67,7 +67,14 @@ export class FXTransformFeedbackSimulationHolder {
     assertFitsTransformFeedback(gl, this.layout);
 
     const vertexShader = compileShader(gl, gl.VERTEX_SHADER, artifact.vertexSource);
-    const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, artifact.fragmentSource);
+    let fragmentShader: WebGLShader;
+    try {
+      fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, artifact.fragmentSource);
+    } catch (error) {
+      // compileShader deletes only the shader it failed on.
+      gl.deleteShader(vertexShader);
+      throw error;
+    }
     const program = gl.createProgram();
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);

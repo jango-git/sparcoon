@@ -8,18 +8,14 @@ import {
   FX_ID,
   FX_POSITION_X,
 } from "../../src/coreLayout";
-import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
+import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
 
 /**
  * The JS backend kept step-for-step with the GPU backend's fused transform-feedback pass: one
  * fixed ring, the update runs over slots that existed before the tick and reads their age as of
  * the previous tick, and a particle born in a tick is seeded but not updated until the next.
  */
-
-function tickEmitter(emitter: FXEmitter, dt: number): void {
-  (emitter as unknown as { tick(deltaTime: number): void }).tick(dt);
-}
 
 /** Each update moves a live particle +1 along x and records the ages it read. */
 function steppingBehavior(agesSeen: number[], lifetime = 10): FXBehaviorArtifact {
@@ -41,10 +37,7 @@ function steppingBehavior(agesSeen: number[], lifetime = 10): FXBehaviorArtifact
 }
 
 function positionX(emitter: FXEmitter, slot: number): number {
-  const mesh = (
-    emitter as unknown as { mesh: { propertyBuffers: Record<string, { array: Float32Array }> } }
-  ).mesh;
-  return mesh.propertyBuffers[FX_CORE_POSITION].array[slot * 3 + FX_POSITION_X];
+  return particlesOf(emitter).propertyBuffers[FX_CORE_POSITION].array[slot * 3 + FX_POSITION_X];
 }
 
 describe("JS backend tick order matches the GPU fused pass", () => {
@@ -67,11 +60,26 @@ describe("JS backend tick order matches the GPU fused pass", () => {
     }
   });
 
+  it("does not update an undelayed burst in the tick it lands in either", () => {
+    const agesSeen: number[] = [];
+    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), steppingBehavior(agesSeen));
+    try {
+      emitter.burst(1);
+      tickEmitter(emitter, 0.1);
+      expect(emitter.particleCount).toBe(1);
+      expect(positionX(emitter, 0)).toBe(0);
+      expect(agesSeen).toEqual([]);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
   it("lets the update read the age as of the previous tick, then ages the particle", () => {
     const agesSeen: number[] = [];
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), steppingBehavior(agesSeen));
     try {
       emitter.burst(1);
+      tickEmitter(emitter, 0.25); // born
       tickEmitter(emitter, 0.25);
       tickEmitter(emitter, 0.25);
       expect(agesSeen).toEqual([0, 0.25]);
@@ -87,6 +95,7 @@ describe("fixed ring capacity", () => {
     try {
       expect(emitter.particleCapacity).toBe(256);
       emitter.burst(300);
+      landBirths(emitter);
       expect(emitter.particleCapacity).toBe(256);
       expect(emitter.particleCount).toBe(256);
       expect(emitter.particleOverflowCount).toBe(44);
@@ -101,8 +110,10 @@ describe("fixed ring capacity", () => {
     });
     try {
       emitter.burst(4);
+      landBirths(emitter);
       expect(emitter.particleOverflowCount).toBe(0);
       emitter.burst(2);
+      landBirths(emitter);
       expect(emitter.particleCount).toBe(4);
       expect(emitter.particleOverflowCount).toBe(2);
     } finally {
@@ -116,9 +127,11 @@ describe("fixed ring capacity", () => {
     });
     try {
       emitter.burst(4);
+      landBirths(emitter);
       tickEmitter(emitter, 2); // all four die
       expect(emitter.particleCount).toBe(0);
       emitter.burst(4);
+      landBirths(emitter);
       expect(emitter.particleCount).toBe(4);
       expect(emitter.particleOverflowCount).toBe(0);
     } finally {
@@ -133,21 +146,21 @@ describe("fixed ring capacity", () => {
     });
     try {
       emitter.burst(3);
+      landBirths(emitter);
+      emitter.burst(2); // due, dropped by the reset too
       emitter.reset();
       expect(emitter.particleCount).toBe(0);
       tickEmitter(emitter, 0.1);
+      expect(emitter.particleCount).toBe(0);
       expect(agesSeen).toEqual([]); // nothing left alive to update
       emitter.burst(1);
+      landBirths(emitter);
       expect(positionX(emitter, 0)).toBe(0);
     } finally {
       emitter.destroy();
     }
   });
 });
-
-function particlesOf(emitter: FXEmitter): FXInstancedParticle {
-  return (emitter as unknown as { mesh: FXInstancedParticle }).mesh;
-}
 
 describe("an idle JS emitter (nothing alive)", () => {
   /** A behavior counting its update calls. */
@@ -168,6 +181,7 @@ describe("an idle JS emitter (nothing alive)", () => {
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behavior, { expectedCapacity: 1000 });
     try {
       emitter.burst(1000);
+      landBirths(emitter);
       tickEmitter(emitter, 1); // updated, then aged past its lifetime
       expect(updates).toEqual([1000]);
       expect(emitter.particleCount).toBe(0);
@@ -188,6 +202,7 @@ describe("an idle JS emitter (nothing alive)", () => {
 
       // A birth wakes it: drawn again, and updated from the next tick on (dead slots included).
       emitter.burst(1);
+      landBirths(emitter);
       expect((mesh.geometry as unknown as { instanceCount: number }).instanceCount).toBe(1000);
       tickEmitter(emitter, 0.01);
       expect(updates).toEqual([1000, 1000]);
@@ -207,6 +222,49 @@ describe("particle ids", () => {
     return particlesOf(emitter).propertyBuffers[FX_CORE_LIFECYCLE].array[slot * 3 + FX_ID];
   }
 
+  it("numbers births in order across bursts, never reusing an id", () => {
+    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }));
+    try {
+      emitter.burst(3);
+      landBirths(emitter);
+      emitter.burst(2);
+      landBirths(emitter);
+      expect([0, 1, 2, 3, 4].map((slot) => idOf(emitter, slot))).toEqual([0, 1, 2, 3, 4]);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("keeps the id counter across reset(): a replay never reissues an id handed out", () => {
+    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }));
+    try {
+      emitter.burst(2); // ids 0, 1
+      landBirths(emitter);
+      emitter.reset();
+      emitter.burst(1);
+      landBirths(emitter);
+      expect(idOf(emitter, 0)).toBe(2);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("keeps every survivor in its own slot when an earlier slot's particle dies", () => {
+    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }));
+    try {
+      emitter.burst(3); // ids 0, 1, 2 at slots 0, 1, 2
+      landBirths(emitter);
+      // Kill slot 0 alone - the fixture's fixed lifetime would otherwise kill all three together.
+      particlesOf(emitter).propertyBuffers[FX_CORE_LIFECYCLE].array[0 * 3 + FX_AGE] = 100;
+      tickEmitter(emitter, 0.125);
+      expect(emitter.particleCount).toBe(2);
+      // No compaction: the dead slot stays put, and no survivor moves.
+      expect([0, 1, 2].map((slot) => idOf(emitter, slot))).toEqual([0, 1, 2]);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
   it("takes one id per birth asked for, seeded or not, as the GPU kernel numbers them", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }), {
@@ -215,8 +273,10 @@ describe("particle ids", () => {
     try {
       emitter.burst(3); // slots 0..2: ids 0..2, cursor 3
       emitter.burst(6); // seeds slots 3, 0, 1, 2 with ids 3..6; ids 7 and 8 are spent
+      landBirths(emitter);
       expect([0, 1, 2, 3].map((slot) => idOf(emitter, slot))).toEqual([4, 5, 6, 3]);
       emitter.burst(1); // cursor (3 + 6) % 4 = 1
+      landBirths(emitter);
       expect(idOf(emitter, 1)).toBe(9);
     } finally {
       emitter.destroy();
@@ -236,9 +296,11 @@ describe("ring overflow warning", () => {
     });
     try {
       emitter.burst(2);
+      landBirths(emitter);
       expect(warn).not.toHaveBeenCalled();
       emitter.burst(1);
       emitter.burst(5);
+      landBirths(emitter);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0][0])).toMatch(/capacity \(2\)/);
     } finally {

@@ -4,6 +4,7 @@ import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 import {
   NO_PARTICLE_READS,
+  NO_SURFACE_READS,
   VEC2_VARYING,
   VEC3_VARYING,
   layoutOf,
@@ -43,7 +44,7 @@ describe("unlit ShaderMaterial assembly", () => {
   it("assembles a self-contained shader with no stock splice anchors and a fog/opaque tail", () => {
     const { vertexShader, fragmentShader } = assembledShaders(unlitArtifact(), varyings());
 
-    // The shader is ours end to end - none of the former onBeforeCompile anchors survive.
+    // The shader is ours end to end - no stock splice anchor in it.
     expect(vertexShader).not.toContain("#include <begin_vertex>");
     expect(vertexShader).not.toContain("#include <project_vertex>");
     expect(fragmentShader).not.toContain("#include <map_fragment>");
@@ -72,23 +73,70 @@ describe("unlit ShaderMaterial assembly", () => {
     );
   });
 
-  it("always sets up the world-space surface frame for the geometryNormal builtin", () => {
+  it("declares the graph's varyings in both stages, flat ones flat where the GLSL has it", () => {
+    const render = {
+      ...unlitArtifact(),
+      varyings: [
+        { name: "v_bridge_0", type: "float", interpolation: "flat" as const },
+        { name: "v_bridge_1", type: "vec2", interpolation: "smooth" as const },
+      ],
+    };
+    const { vertexShader, fragmentShader } = assembledShaders(render, varyings());
+    for (const shader of [vertexShader, fragmentShader]) {
+      expect(shader).toMatch(/^FX_FLAT varying float v_bridge_0;$/m);
+      expect(shader).toContain(
+        "#if __VERSION__ >= 300\n#define FX_FLAT flat\n#else\n#define FX_FLAT\n#endif",
+      );
+      expect(shader).toMatch(/^varying vec2 v_bridge_1;$/m);
+    }
+  });
+
+  it("defines no flat qualifier when nothing is carried flat", () => {
+    const { vertexShader } = assembledShaders(unlitArtifact(), varyings());
+    expect(vertexShader).not.toContain("FX_FLAT");
+  });
+
+  it("builds no surface frame when the fragment reads none of it", () => {
     const { vertexShader, fragmentShader } = assembledShaders(unlitArtifact(), varyings());
-    // The world frame is built even with no lighting, so a surface-normal / normal-map / fresnel node
-    // resolves. Normals are authored in WORLD space; view stays behind the ABI.
-    expect(vertexShader).toContain("vec3 objectNormal = fxNormalXform * normal;");
-    expect(vertexShader).toContain("vWorldNormal  = normalize( objectNormal );");
-    expect(vertexShader).toContain(
+    for (const shader of [vertexShader, fragmentShader]) {
+      expect(shader).not.toMatch(/vWorldNormal|vWorldTangent|vWorldPos|normal_pars|objectNormal/);
+    }
+    expect(vertexShader).not.toContain("fxNormalXform");
+    expect(vertexShader).not.toContain("defaultnormal_vertex");
+  });
+
+  it("builds each surface builtin the fragment reads, and only that one", () => {
+    // Normals are authored in WORLD space; view stays behind the ABI.
+    const normal = assembledShaders(
+      unlitArtifact({ fragmentBody: ["vec3 n = geometryNormal;"] }),
+      varyings(),
+    );
+    expect(normal.vertexShader).toContain("vec3 objectNormal = fxNormalXform * normal;");
+    expect(normal.vertexShader).toContain("vWorldNormal = normalize( objectNormal );");
+    expect(normal.fragmentShader).toContain(
+      "vec3 geometryNormal = normalize( vWorldNormal ) * fxFaceDirection;",
+    );
+    expect(normal.fragmentShader).not.toMatch(/vWorldTangent|vWorldPos/);
+
+    const tangent = assembledShaders(
+      unlitArtifact({ fragmentBody: ["vec3 t = geometryTangent;"] }),
+      varyings(),
+    );
+    expect(tangent.vertexShader).toContain(
       "vWorldTangent = normalize( fxNormalXform * vec3( 1.0, 0.0, 0.0 ) );",
     );
-    expect(vertexShader).toContain("vWorldPos     = fxModelPos;");
-    expect(fragmentShader).toContain(
-      "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
+    expect(tangent.fragmentShader).toContain("vec3 geometryTangent = normalize( vWorldTangent );");
+    expect(tangent.vertexShader).not.toMatch(/objectNormal|vWorldNormal|vWorldPos/);
+
+    const position = assembledShaders(
+      unlitArtifact({ fragmentBody: ["vec3 p = worldPosition;"] }),
+      varyings(),
     );
-    expect(fragmentShader).toContain("vec3 geometryTangent = normalize( vWorldTangent );");
-    expect(fragmentShader).toContain("vec3 worldPosition   = vWorldPos;");
+    expect(position.vertexShader).toContain("vWorldPos = fxModelPos;");
+    expect(position.fragmentShader).toContain("vec3 worldPosition = vWorldPos;");
+    expect(position.vertexShader).not.toContain("fxNormalXform");
     // Still no light infrastructure (it stays unlit).
-    expect(fragmentShader).not.toContain("#include <lights_pars_begin>");
+    expect(position.fragmentShader).not.toContain("#include <lights_pars_begin>");
   });
 
   it("defaults the particle/vertex transforms to identity when the outputs are unbound", () => {
@@ -124,17 +172,18 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
   const lit = (intrinsics: readonly string[]): FXRenderArtifact => ({
     lightingIntrinsics: intrinsics,
     uniformDeclarations: [],
+    varyings: [],
     vertex: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
+      // The intrinsic call below reads the normal.
+      surfaceReads: { ...NO_SURFACE_READS, normal: true },
     },
     // Shading lives in the graph: `albedo` already carries the intrinsic call.
     outputs: { albedo: "fxLambertShade(vec4(1.0), geometryNormal)" },
@@ -164,7 +213,7 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
 
     // geometryNormal builtin (world) at the top of main; unlit tail (shading already lives in albedo).
     expect(fragmentShader).toContain(
-      "vec3 geometryNormal  = normalize( vWorldNormal ) * fxFaceDirection;",
+      "vec3 geometryNormal = normalize( vWorldNormal ) * fxFaceDirection;",
     );
     expect(fragmentShader).toContain(
       "vec4 diffuseColor = fxLambertShade(vec4(1.0), geometryNormal);",
@@ -180,21 +229,22 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
   });
 });
 
+// The opaque and alphaTest tails, shared with the mesh material, are materialContract.test.ts.
 describe("render mode + additivity blend tail", () => {
   const artifact = (over: Partial<FXRenderArtifact>): FXRenderArtifact => ({
     lightingIntrinsics: [],
     uniformDeclarations: [],
+    varyings: [],
     vertex: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
-      varyingDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
+      surfaceReads: NO_SURFACE_READS,
     },
     outputs: { albedo: "vec4(1.0)" },
     uniforms: {},
@@ -237,28 +287,6 @@ describe("render mode + additivity blend tail", () => {
     expect(fragmentShader).not.toContain("diffuseColor.rgb *= max(");
   });
 
-  it("alphaTest mode: hard cutoff from the wired threshold, clamped; no floor, no additivity", () => {
-    const { fragmentShader } = assembledShaders(
-      artifact({
-        options: { renderMode: "alphaTest" },
-        outputs: { albedo: "vec4(1.0)", alphaThreshold: "0.5" },
-      }),
-      varyings(),
-    );
-    expect(fragmentShader).toContain("if (diffuseColor.a < clamp(0.5, 0.0, 1.0)) discard;");
-    expect(fragmentShader).not.toContain("if (diffuseColor.a < 0.0035) discard;");
-    expect(fragmentShader).not.toContain("gl_FragColor.a *=");
-  });
-
-  it("opaque mode: no discard and no additivity", () => {
-    const { fragmentShader } = assembledShaders(
-      artifact({ options: { renderMode: "opaque" } }),
-      varyings(),
-    );
-    expect(fragmentShader).not.toContain("discard");
-    expect(fragmentShader).not.toContain("clamp(");
-  });
-
   it("alphaHash mode requests the derivatives extension (dFdx/dFdy need it under WebGL1)", () => {
     const { extensions } = assembledShaders(
       artifact({ options: { renderMode: "alphaHash" } }),
@@ -272,55 +300,5 @@ describe("render mode + additivity blend tail", () => {
       const { extensions } = assembledShaders(artifact({ options: { renderMode } }), varyings());
       expect(extensions.derivatives).toBe(false);
     }
-  });
-});
-
-describe("particle material object-velocity/object-angular-velocity uniforms", () => {
-  it("declares objectVelocity/objectAngularVelocity in both stages, unlit and lit alike", () => {
-    // Unprefixed (no u_): a domain-shared builtin (behavior reads the same name off the emitter
-    // argument), same convention as modelMatrix/viewMatrix - not a particle-local u_ uniform like
-    // u_time/u_deltaTime. Mirrors FX_MESH_TARGET's own declarations (meshMaterial.test.ts).
-    const unlit = assembledShaders(unlitArtifact(), varyings());
-    expect(unlit.vertexShader).toContain("uniform vec3 objectVelocity;");
-    expect(unlit.vertexShader).toContain("uniform vec3 objectAngularVelocity;");
-    expect(unlit.fragmentShader).toContain("uniform vec3 objectVelocity;");
-    expect(unlit.fragmentShader).toContain("uniform vec3 objectAngularVelocity;");
-
-    const lit = assembledShaders(
-      { ...unlitArtifact(), lightingIntrinsics: ["fxLambertShade"] },
-      varyings(),
-    );
-    expect(lit.vertexShader).toContain("uniform vec3 objectVelocity;");
-    expect(lit.fragmentShader).toContain("uniform vec3 objectAngularVelocity;");
-  });
-
-  interface Vec3Uniform {
-    value: readonly [number, number, number];
-  }
-  interface AssembledMaterialUniforms {
-    uniforms: { objectVelocity: Vec3Uniform; objectAngularVelocity: Vec3Uniform };
-  }
-
-  it("defaults both to zero and updates live through the setters", () => {
-    const material = new FXArtifactMaterial(unlitArtifact());
-    const built = material.buildThreeMaterial(
-      layoutOf(varyings()),
-    ) as unknown as AssembledMaterialUniforms;
-    expect(built.uniforms.objectVelocity.value).toEqual([0, 0, 0]);
-    expect(built.uniforms.objectAngularVelocity.value).toEqual([0, 0, 0]);
-
-    material.setObjectVelocity([1, 2, 3]);
-    material.setObjectAngularVelocity([4, 5, 6]);
-    expect(built.uniforms.objectVelocity.value).toEqual([1, 2, 3]);
-    expect(built.uniforms.objectAngularVelocity.value).toEqual([4, 5, 6]);
-  });
-
-  it("also wires the depth material's uniforms (shadow-caster geometry pass)", () => {
-    const material = new FXArtifactMaterial(unlitArtifact());
-    const depth = material.buildThreeDepthMaterial(
-      layoutOf(varyings()),
-    ) as unknown as AssembledMaterialUniforms;
-    material.setObjectVelocity([7, 8, 9]);
-    expect(depth.uniforms.objectVelocity.value).toEqual([7, 8, 9]);
   });
 });

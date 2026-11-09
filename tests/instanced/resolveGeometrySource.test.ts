@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BoxGeometry, BufferGeometry, PlaneGeometry } from "three";
+import { BoxGeometry, BufferGeometry, PlaneGeometry, SphereGeometry } from "three";
 import { resolveGeometrySource } from "../../src/instancedParticle/primitiveGeometry";
 
 describe("resolveGeometrySource", () => {
@@ -8,9 +8,13 @@ describe("resolveGeometrySource", () => {
     expect(geometry).toBeInstanceOf(PlaneGeometry);
   });
 
-  it("builds the named built-in primitive", () => {
-    const geometry = resolveGeometrySource({ type: "primitive", primitive: "box" }, {});
-    expect(geometry).toBeInstanceOf(BoxGeometry);
+  it.each([
+    { primitive: "plane", type: PlaneGeometry },
+    { primitive: "box", type: BoxGeometry },
+    { primitive: "sphere", type: SphereGeometry },
+  ] as const)("builds the named built-in $primitive primitive", ({ primitive, type }) => {
+    const geometry = resolveGeometrySource({ type: "primitive", primitive }, {});
+    expect(geometry).toBeInstanceOf(type);
   });
 
   it("returns the app-supplied geometry for a bound custom slot", () => {

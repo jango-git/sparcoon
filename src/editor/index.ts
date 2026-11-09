@@ -14,7 +14,15 @@ export type {
   FXEmitterOptions,
   FXEmitterBurstOptions,
   FXEmitterPlayOptions,
+  FXParticleDeath,
+  FXParticleDeathListener,
+  FXSpawnOrigin,
 } from "../emitter/FXEmitter.Internal.js";
+
+// What makes an emitter spawn - the timeline's events and the death reactions - fired the same way
+// by the runtime's FXEffect and the editor's preview.
+export { connectDeathReaction, fireSpawnAction } from "../effect/FXSpawnAction.js";
+export type { FXDeathSource, FXSpawnAction, FXSpawnTarget } from "../effect/FXSpawnAction.js";
 
 // Self-contained VFX mesh (the mesh twin of FXEmitter): build one from a render artifact and let
 // FXWorld.update drive it, including the object velocity/angular velocity a mesh render graph reads.
@@ -47,9 +55,13 @@ export {
 export {
   FX_RENDER_BUDGET_MINIMUMS,
   fxEmitterRenderBudget,
+  fxGraphVaryingAllowance,
   fxMeshRenderBudget,
   fxTrailRenderBudget,
+  fxVaryingShape,
+  packedVaryingVectors,
 } from "../render/FXRenderBudget.js";
+export type { FXGLSLRenderTier } from "../artifact/FXArtifact.js";
 export type {
   FXEmitterRenderBudgetOptions,
   FXRenderBudget,

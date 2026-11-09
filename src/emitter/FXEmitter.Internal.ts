@@ -30,9 +30,24 @@ export interface FXEmitterOptions {
   sortFraction: number;
 }
 
+/**
+ * Where a burst or play spawns when not from the emitter's own pose: as if the emitter stood at
+ * `position`, keeping its own rotation and scale, and moved at `velocity` - what its spawn graph
+ * then reads through `world-matrix` and `object-velocity`. A graph that reads neither spawns where
+ * it would from the emitter's own pose. Values are copied at the call.
+ */
+export interface FXSpawnOrigin {
+  /** `[x, y, z]`, in the same numbers as particle positions. */
+  readonly position: readonly number[];
+  /** `[x, y, z]` per second. default `[0, 0, 0]` */
+  readonly velocity?: readonly number[];
+}
+
 export interface FXEmitterBurstOptions {
   /** Delay in seconds before spawning. default 0 */
   delay: number;
+  /** Spawn from this point instead of the emitter's pose. */
+  origin: FXSpawnOrigin;
 }
 
 export interface FXEmitterPlayOptions {
@@ -40,7 +55,27 @@ export interface FXEmitterPlayOptions {
   delay: number;
   /** Total emission duration in seconds. default Infinity */
   duration: number;
+  /**
+   * Emit from this point for the whole play instead of following the emitter's pose. Such a play
+   * belongs to whoever started it, not to the emitter's timeline: {@link FXEmitter.loopTimeline}
+   * leaves it running.
+   */
+  origin: FXSpawnOrigin;
 }
+
+/**
+ * One particle that just died of age, handed to {@link FXEmitter.onParticleDeath} listeners. The
+ * same object is reused for every death: read it during the call, copy what you keep.
+ */
+export interface FXParticleDeath {
+  /** `[x, y, z]`: the particle's position after its last update. */
+  readonly position: readonly number[];
+  /** `[x, y, z]` per second: how far it moved over its last tick. */
+  readonly velocity: readonly number[];
+}
+
+/** Receives the deaths of an emitter's particles; see {@link FXEmitter.onParticleDeath}. */
+export type FXParticleDeathListener = (death: FXParticleDeath) => void;
 
 export const EMITTER_DEFAULT_EXPECTED_CAPACITY = 256;
 export const EMITTER_DEFAULT_RECEIVE_SHADOW = false;

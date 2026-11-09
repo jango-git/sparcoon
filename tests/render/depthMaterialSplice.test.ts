@@ -1,3 +1,4 @@
+import type { ShaderMaterial } from "three";
 import { describe, expect, it } from "vitest";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
@@ -13,25 +14,14 @@ function varyings(): Record<string, GLTypeInfo> {
   };
 }
 
-function particleDepthShaders(render: FXRenderArtifact): {
-  vertexShader: string;
-  fragmentShader: string;
-} {
-  const material = new FXArtifactMaterial(render).buildThreeDepthMaterial(
+function particleDepthShaders(render: FXRenderArtifact): ShaderMaterial {
+  return new FXArtifactMaterial(render).buildThreeDepthMaterial(
     layoutOf(varyings()),
-  ) as unknown as { vertexShader: string; fragmentShader: string };
-  return { vertexShader: material.vertexShader, fragmentShader: material.fragmentShader };
+  ) as ShaderMaterial;
 }
 
-function meshDepthShaders(render: FXRenderArtifact): {
-  vertexShader: string;
-  fragmentShader: string;
-} {
-  const material = new FXMeshMaterial(render).buildThreeDepthMaterial() as unknown as {
-    vertexShader: string;
-    fragmentShader: string;
-  };
-  return { vertexShader: material.vertexShader, fragmentShader: material.fragmentShader };
+function meshDepthShaders(render: FXRenderArtifact): ShaderMaterial {
+  return new FXMeshMaterial(render).buildThreeDepthMaterial() as ShaderMaterial;
 }
 
 /** A lit fixture: the graph's `albedo` carries the intrinsic call, like a real lighting-node graph. */
@@ -92,16 +82,24 @@ describe.each(BUILDERS)("$kind depth material assembly", ({ build }) => {
     expect(opaque.fragmentShader).not.toContain("discard");
   });
 
-  it("compiles the fx_ shade intrinsic into the depth fragment for a lit graph", () => {
-    const { fragmentShader } = build(litArtifact());
-    // The lit branch must be exercised too: the body calls fxLambertShade, so it must be defined -
-    // only .a is used (returned unchanged), but the call has to compile.
-    expect(fragmentShader).toContain("vec4 fxLambertShade(vec4 diffuseColor, vec3 worldNormal) {");
-    expect(fragmentShader).toContain("#include <shadowmap_pars_fragment>");
+  it("resolves a lit graph's shade intrinsic without the lights, so it never samples a shadow map", () => {
+    const { fragmentShader, vertexShader, lights, uniforms } = build(litArtifact());
+    // The body calls fxLambertShade, so it must be defined; depth reads only the alpha it passes on.
+    expect(fragmentShader).toContain(
+      "vec4 fxLambertShade(vec4 diffuseColor, vec3 worldNormal) { return diffuseColor; }",
+    );
     expect(fragmentShader).toContain(
       "vec4 diffuseColor = fxLambertShade(vec4(1.0), geometryNormal);",
     );
     expect(fragmentShader).toContain("gl_FragColor = packDepthToRGBA( fragCoordZ );");
+    // In the shadow pass the light's shadow map is the target being drawn: a material with the
+    // lights bound samples it, and the driver drops the draw as a feedback loop.
+    expect(lights).toBe(false);
+    expect(Object.keys(uniforms)).not.toContain("directionalShadowMap");
+    for (const shader of [vertexShader, fragmentShader]) {
+      expect(shader).not.toContain("shadowmap");
+      expect(shader).not.toContain("lights_");
+    }
   });
 });
 

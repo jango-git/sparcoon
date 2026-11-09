@@ -4,34 +4,10 @@ import {
   FXTransformFeedbackParticle,
   slotLayout,
 } from "../../src/instancedParticle/FXTransformFeedbackParticle";
+import { callsNamed, mockWebGL, type MockGL } from "../helpers/mockWebGL";
 
-// No real WebGL2 context is available in this headless test run - a minimal mock covering only
-// the gl.* surface the constructor/buffer lifecycle actually calls, so the ping-pong bookkeeping
-// (index flipping, buffer pairing, attribute-object replacement) can be verified without one.
-// This proves the JS-side logic; it cannot prove the raw GL calls behave correctly against a real
-// driver - that limitation holds for this whole file.
-function mockGL(): WebGL2RenderingContext {
-  let nextBufferId = 1;
-  const deleted = new Set<unknown>();
-  const uploads: (number | Float32Array)[] = [];
-  const gl = {
-    FLOAT: 0x1406,
-    ARRAY_BUFFER: 0x8892,
-    DYNAMIC_DRAW: 0x88e8,
-    createBuffer: () => ({ id: nextBufferId++ }) as unknown as WebGLBuffer,
-    bindBuffer: () => undefined,
-    bufferData: (_target: number, data: number | Float32Array) => {
-      uploads.push(data);
-    },
-    deleteBuffer: (buffer: WebGLBuffer) => {
-      deleted.add(buffer);
-    },
-    // Exposed for assertions only, not part of the real WebGL2RenderingContext surface.
-    __deleted: deleted,
-    __uploads: uploads,
-  };
-  return gl as unknown as WebGL2RenderingContext;
-}
+// The mock context proves the ping-pong bookkeeping (index flipping, buffer pairing,
+// attribute-object replacement), not the raw GL calls against a real driver.
 
 function baseQuad(): BufferGeometry {
   const geometry = new BufferGeometry();
@@ -48,8 +24,14 @@ const LAYOUT = slotLayout([
   { name: "fx_glow", components: 1 },
 ]);
 
-function particle(gl: WebGL2RenderingContext, capacity = 64, layout = LAYOUT) {
-  return new FXTransformFeedbackParticle(gl, layout, capacity, new MeshBasicMaterial(), baseQuad());
+function particle(gl: MockGL, capacity = 64, layout = LAYOUT) {
+  return new FXTransformFeedbackParticle(
+    gl.context,
+    layout,
+    capacity,
+    new MeshBasicMaterial(),
+    baseQuad(),
+  );
 }
 
 interface SlotAttribute {
@@ -112,12 +94,12 @@ describe("slotLayout", () => {
 
 describe("FXTransformFeedbackParticle", () => {
   it("holds the whole state in one ping-pong pair of slot-sized buffers", () => {
-    const gl = mockGL();
+    const gl = mockWebGL();
     const mesh = particle(gl, 64);
     try {
       expect(mesh.capacity).toBe(64);
       expect(mesh.readBuffer()).not.toBe(mesh.writeBuffer());
-      const uploads = (gl as unknown as { __uploads: (number | Float32Array)[] }).__uploads;
+      const uploads = callsNamed(gl, "bufferData").map((call) => call.args[1]);
       // Two halves of 64 slots x 7 floats x 4 bytes, uninitialized - and nothing else.
       expect(uploads).toEqual([64 * 7 * 4, 64 * 7 * 4]);
     } finally {
@@ -126,7 +108,7 @@ describe("FXTransformFeedbackParticle", () => {
   });
 
   it("binds one attribute per packed view, out of the slot at its own offset", () => {
-    const gl = mockGL();
+    const gl = mockWebGL();
     const mesh = particle(gl);
     try {
       const names = Object.keys(mesh.geometry.attributes).sort();
@@ -141,7 +123,7 @@ describe("FXTransformFeedbackParticle", () => {
   });
 
   it("every particle slot is always drawn - instanceCount is always capacity, never grows", () => {
-    const gl = mockGL();
+    const gl = mockWebGL();
     const mesh = particle(gl, 128);
     try {
       expect((mesh.geometry as unknown as { instanceCount: number }).instanceCount).toBe(128);
@@ -151,7 +133,7 @@ describe("FXTransformFeedbackParticle", () => {
   });
 
   it("swapBuffers flips the halves and gives every view a fresh attribute object", () => {
-    const gl = mockGL();
+    const gl = mockWebGL();
     const mesh = particle(gl);
     try {
       const read = mesh.readBuffer();
@@ -175,14 +157,12 @@ describe("FXTransformFeedbackParticle", () => {
   });
 
   it("destroy deletes both halves of the pair", () => {
-    const gl = mockGL();
+    const gl = mockWebGL();
     const mesh = particle(gl, 32);
-    const read = mesh.readBuffer();
-    const write = mesh.writeBuffer();
+    expect(gl.liveBuffers).toEqual(new Set([mesh.readBuffer(), mesh.writeBuffer()]));
 
     mesh.destroy();
 
-    const deleted = (gl as unknown as { __deleted: Set<unknown> }).__deleted;
-    expect([read, write].every((buffer) => deleted.has(buffer))).toBe(true);
+    expect(gl.liveBuffers.size).toBe(0);
   });
 });

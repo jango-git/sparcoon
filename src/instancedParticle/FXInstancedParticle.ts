@@ -1,4 +1,4 @@
-import type { BufferGeometry, Material, Matrix4, Vector3 } from "three";
+import type { BufferGeometry, Material, Vector3 } from "three";
 import { InstancedBufferAttribute, InstancedBufferGeometry, Mesh, StreamDrawUsage } from "three";
 import {
   FX_AGE,
@@ -167,8 +167,12 @@ export class FXInstancedParticle extends Mesh {
     return ranges;
   }
 
-  /** Adds `deltaTime` to the age of every drawn slot and recounts the live ones. Age is host-owned. */
-  public advanceAges(deltaTime: number): void {
+  /**
+   * Adds `deltaTime` to the age of every drawn slot and recounts the live ones. Age is host-owned.
+   * `onDeath` is called with each slot whose particle was alive before and is dead after - the
+   * only way one dies, since no graph writes `age`, and `lifetime` is written at birth only.
+   */
+  public advanceAges(deltaTime: number, onDeath?: (slot: number) => void): void {
     const lifecycle = this.propertyBuffers[FX_CORE_LIFECYCLE] as
       InstancedBufferAttribute | undefined;
     if (lifecycle === undefined) {
@@ -178,9 +182,13 @@ export class FXInstancedParticle extends Mesh {
     let live = 0;
     for (let i = 0; i < this.highWaterMark; i++) {
       const offset = i * itemSize;
+      const lifetime = array[offset + FX_LIFETIME];
+      const wasLive = array[offset + FX_AGE] < lifetime;
       array[offset + FX_AGE] += deltaTime;
-      if (array[offset + FX_AGE] < array[offset + FX_LIFETIME]) {
+      if (array[offset + FX_AGE] < lifetime) {
         live += 1;
+      } else if (wasLive) {
+        onDeath?.(i);
       }
     }
     this.liveCountInternal = live;
@@ -189,9 +197,9 @@ export class FXInstancedParticle extends Mesh {
   }
 
   /**
-   * Reorders every per-particle buffer back-to-front for correct alpha blending. Distances are
-   * world-space (each center transformed by `meshWorldMatrix`), matching the shader's own
-   * `p_cameraDistance` - correct under any transform, including non-uniform scale and shear.
+   * Reorders every per-particle buffer back-to-front for correct alpha blending. Distances are from
+   * each center as stored: the shader projects positions as they are (it applies no `modelMatrix`,
+   * so the mesh's transform moves nothing on screen), and so does this sort.
    *
    * Dead slots sort behind every live one, so a sort also gathers the live particles into
    * `[0, liveCount)`: the drawn range shrinks to them and the cursor restarts right after them,
@@ -199,7 +207,7 @@ export class FXInstancedParticle extends Mesh {
    * around the ring. Slot stability is given up here by design - a sorted emitter keeps no
    * per-slot history (the editor rejects trails on one).
    */
-  public sortByDistance(cameraWorldPosition: Vector3, meshWorldMatrix: Matrix4): void {
+  public sortByDistance(cameraWorldPosition: Vector3): void {
     // Shrinks the drawn range below: never call this while a trail records this mesh (a slot past
     // the new range would keep its recorded live points) - `FXEmitter` skips sorting then.
     const instanceCount = this.highWaterMark;
@@ -225,8 +233,6 @@ export class FXInstancedParticle extends Mesh {
     const lifecycleItemSize = lifecycleBuffer?.itemSize ?? 0;
 
     const { array: positionArray, itemSize: positionItemSize } = positionBuffer;
-    // Column-major elements, indexed directly to avoid a per-particle Vector3.
-    const elements = meshWorldMatrix.elements;
 
     for (let particleIndex = 0; particleIndex < instanceCount; particleIndex++) {
       this.sortingIndices[particleIndex] = particleIndex;
@@ -240,28 +246,9 @@ export class FXInstancedParticle extends Mesh {
         continue;
       }
       const itemOffset = particleIndex * positionItemSize;
-      const positionX = positionArray[itemOffset + FX_POSITION_X];
-      const positionY = positionArray[itemOffset + FX_POSITION_Y];
-      const positionZ = positionArray[itemOffset + FX_POSITION_Z];
-      // meshWorldMatrix * vec4(center, 1.0) - bottom row is (0,0,0,1), so no w divide.
-      const deltaX =
-        elements[0] * positionX +
-        elements[4] * positionY +
-        elements[8] * positionZ +
-        elements[12] -
-        cameraWorldPosition.x;
-      const deltaY =
-        elements[1] * positionX +
-        elements[5] * positionY +
-        elements[9] * positionZ +
-        elements[13] -
-        cameraWorldPosition.y;
-      const deltaZ =
-        elements[2] * positionX +
-        elements[6] * positionY +
-        elements[10] * positionZ +
-        elements[14] -
-        cameraWorldPosition.z;
+      const deltaX = positionArray[itemOffset + FX_POSITION_X] - cameraWorldPosition.x;
+      const deltaY = positionArray[itemOffset + FX_POSITION_Y] - cameraWorldPosition.y;
+      const deltaZ = positionArray[itemOffset + FX_POSITION_Z] - cameraWorldPosition.z;
       this.sortingSquaredDistances[particleIndex] =
         deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
     }

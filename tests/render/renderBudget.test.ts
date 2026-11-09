@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ShaderChunk } from "three";
+import { ShaderChunk, type ShaderMaterial } from "three";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import {
   buildArtifactDepthMaterial,
@@ -9,8 +9,11 @@ import {
 import {
   FX_RENDER_BUDGET_MINIMUMS,
   fxEmitterRenderBudget,
+  fxGraphVaryingAllowance,
   fxMeshRenderBudget,
+  fxVaryingShape,
   packedVaryingVectors,
+  trailMaterialBudget,
 } from "../../src/render/FXRenderBudget";
 import { varyingsFromComponents } from "../../src/emitter/FXEmitterDriver.Internal";
 import { layoutOf, unlitArtifact } from "../helpers/artifacts";
@@ -102,24 +105,30 @@ describe("particle varying compaction", () => {
 
 describe("fxEmitterRenderBudget", () => {
   it("counts an unlit emitter: three's three attributes plus one per particle buffer", () => {
-    // Fragment varyings: p_uv (vec2), p_cameraDistance (float), vWorldNormal/vWorldTangent/
-    // vWorldPos and vNormal (vec3), vFogDepth (float) - 4 vec3 rows and a vec2 row; the floats fit
-    // in the vec3 rows' free column.
+    // Fragment varyings: p_uv (vec2), p_cameraDistance (float), vFogDepth (float) - one vec2 row,
+    // the floats in its free half. The surface frame reads nothing, so it adds no varying.
     expect(fxEmitterRenderBudget(unlitArtifact(), [])).toEqual({
       attributes: 5,
-      varyingVectors: 5,
+      varyingVectors: 1,
     });
+  });
+
+  it("charges a row for each surface builtin the fragment reads", () => {
+    const reading = (code: string): number =>
+      fxEmitterRenderBudget(unlitArtifact({ fragmentBody: [code] }), []).varyingVectors;
+    expect(reading("vec3 n = geometryNormal;")).toBe(2);
+    expect(reading("vec3 n = geometryNormal + geometryTangent + worldPosition;")).toBe(4);
   });
 
   it("charges a varying only for an attribute the fragment stage reads", () => {
     const attributes = [{ name: "tint", components: 3 }] as const;
     expect(fxEmitterRenderBudget(withTint(false), attributes)).toEqual({
       attributes: 6,
-      varyingVectors: 5,
+      varyingVectors: 1,
     });
     expect(fxEmitterRenderBudget(withTint(true), attributes)).toEqual({
       attributes: 6,
-      varyingVectors: 6,
+      varyingVectors: 2,
     });
   });
 
@@ -137,10 +146,12 @@ describe("fxEmitterRenderBudget", () => {
     ).toBe(5);
   });
 
-  it("adds a lit material's view position and the assumed directional shadow", () => {
+  it("adds a lit material's view normal and position and the assumed directional shadow", () => {
+    // Over the unlit row: vNormal and vViewPosition (vec3, three's light chain) and the shadow
+    // coordinate (vec4).
     expect(fxEmitterRenderBudget(lit(unlitArtifact()), [])).toEqual({
       attributes: 5,
-      varyingVectors: 7,
+      varyingVectors: 4,
     });
   });
 
@@ -162,19 +173,47 @@ describe("fxEmitterRenderBudget", () => {
 
   it("packs a matrix a stage bridge carries as its columns", () => {
     const base = unlitArtifact();
-    const bridged = (types: readonly string[]): FXRenderArtifact => {
-      const declarations = types.map((type, index) => `varying ${type} v_bridge${String(index)};`);
-      return {
-        ...base,
-        vertex: { ...base.vertex, varyingDeclarations: declarations },
-        fragment: { ...base.fragment, varyingDeclarations: declarations },
-      };
-    };
+    const bridged = (types: readonly string[]): FXRenderArtifact => ({
+      ...base,
+      varyings: types.map((type, index) => ({
+        name: `v_bridge${String(index)}`,
+        type,
+        interpolation: "smooth",
+      })),
+    });
     const plain = fxEmitterRenderBudget(base, []).varyingVectors;
     expect(fxEmitterRenderBudget(bridged(["mat4"]), []).varyingVectors).toBe(plain + 4);
     expect(fxEmitterRenderBudget(bridged(["mat3"]), []).varyingVectors).toBe(plain + 3);
     // Two columns of two pair into one row - alongside the existing lone vec2 (p_uv) row.
     expect(fxEmitterRenderBudget(bridged(["mat2"]), []).varyingVectors).toBe(plain + 1);
+  });
+
+  it("counts a flat varying as any other", () => {
+    const base = unlitArtifact();
+    const carrying = (interpolation: "smooth" | "flat"): number =>
+      fxEmitterRenderBudget(
+        { ...base, varyings: [{ name: "v_bridge0", type: "vec4", interpolation }] },
+        [],
+      ).varyingVectors;
+    expect(carrying("flat")).toBe(carrying("smooth"));
+    expect(carrying("flat")).toBe(fxEmitterRenderBudget(base, []).varyingVectors + 1);
+  });
+
+  it("leaves a graph what the heaviest particle material does not take", () => {
+    const none = { normal: false, tangent: false, position: false };
+    // Lit, alpha-hashed and shadowed: p_uv (vec2) and two floats, vNormal, vViewPosition and
+    // vPosition (vec3), the shadow coordinate (vec4) - five rows.
+    expect(fxGraphVaryingAllowance("standard", none)).toBe(15 - 5);
+    expect(fxGraphVaryingAllowance("baseline", none)).toBe(8 - 5);
+    // Each surface builtin read is one more vec3 row.
+    expect(fxGraphVaryingAllowance("standard", { ...none, normal: true, position: true })).toBe(8);
+  });
+
+  it("shapes a varying by the packing rule it is counted with", () => {
+    expect(fxVaryingShape("vec3")).toEqual({ components: 3, count: 1 });
+    expect(fxVaryingShape("mat3")).toEqual({ components: 3, count: 3 });
+    expect(fxVaryingShape("ivec2")).toEqual({ components: 2, count: 1 });
+    expect(() => fxVaryingShape("sampler2D")).toThrow(/no packing rule/);
   });
 
   it("counts a VFX mesh, which carries no particle state", () => {
@@ -183,7 +222,7 @@ describe("fxEmitterRenderBudget", () => {
 });
 
 describe("render budget chunk table", () => {
-  it("knows every three chunk that declares a varying in our fragment shaders", () => {
+  it("counts the varyings of every three chunk that declares one in our fragment shaders", () => {
     // If three starts declaring varyings in another chunk, the budget would undercount it.
     const varyings = varyingsFromComponents(new Map());
     const shaders = [
@@ -198,12 +237,14 @@ describe("render budget chunk table", () => {
     const declaring = [...chunks].filter((chunk) =>
       /\bvarying\b/.test((ShaderChunk as Record<string, string>)[chunk] ?? ""),
     );
-    expect(declaring.sort()).toEqual([
-      "common",
-      "fog_pars_fragment",
-      "lights_lambert_pars_fragment",
-      "normal_pars_fragment",
-      "shadowmap_pars_fragment",
-    ]);
+    expect(declaring.length).toBeGreaterThan(0);
+    // A fragment shader of that chunk alone, counted as the budget counts one (alphaHash on: a
+    // chunk may declare its varying under that define only).
+    const countedVectors = (chunk: string): number =>
+      trailMaterialBudget(
+        { vertexShader: "", fragmentShader: `#include <${chunk}>` } as ShaderMaterial,
+        true,
+      ).varyingVectors;
+    expect(declaring.filter((chunk) => countedVectors(chunk) === 0)).toEqual([]);
   });
 });

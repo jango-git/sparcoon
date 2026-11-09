@@ -3,11 +3,7 @@ import type { FXBehaviorArtifact, FXEmitterTransform } from "../../src/artifact/
 import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_LIFETIME } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { unlitArtifact } from "../helpers/artifacts";
-
-/** Drives one private tick on `emitter` with the given dt. */
-function tickEmitter(emitter: FXEmitter, dt: number): void {
-  (emitter as unknown as { tick(deltaTime: number): void }).tick(dt);
-}
+import { landBirths, tickEmitter } from "../helpers/internals";
 
 interface Captured {
   readonly velocity: readonly number[];
@@ -67,8 +63,9 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
     );
     try {
       emitter.burst(1);
-      tickEmitter(emitter, 1);
+      tickEmitter(emitter, 1); // born: seeded after the (empty) update
       expect(spawnCaptures[0]).toEqual({ velocity: [0, 0, 0], angularVelocity: [0, 0, 0] });
+      tickEmitter(emitter, 1);
       expect(updateCaptures[0]).toEqual({ velocity: [0, 0, 0], angularVelocity: [0, 0, 0] });
     } finally {
       emitter.destroy();
@@ -98,7 +95,7 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
   });
 
   it("gives every spawn/update call within one tick the same value, even across multiple bursts", () => {
-    // Regression guard for the multi-invocation pitfall: worldTransform() (and thus the
+    // Guards the multi-invocation pitfall: worldTransform() (and thus the
     // emitter argument) is fetched once per pending burst plus once for the update phase -
     // computing velocity/angular velocity per-call instead of once per tick would corrupt it
     // the moment more than one of those fires in the same tick.
@@ -113,6 +110,7 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
       // One particle alive before the measured tick, so its update phase has a slot to run on
       // (the update runs before the tick's own births, which it never sees).
       emitter.burst(1);
+      landBirths(emitter);
       spawnCaptures.length = 0;
 
       emitter.position.set(3, 0, 0);
@@ -150,9 +148,9 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
       emitter.reset();
       emitter.position.set(-50, 0, 0); // an unrelated jump, as if the effect restarted elsewhere
       emitter.burst(1);
-      tickEmitter(emitter, 1);
+      tickEmitter(emitter, 1); // the restart tick: its births see no spike
 
-      expect(lastOf(updateCaptures)).toEqual({ velocity: [0, 0, 0], angularVelocity: [0, 0, 0] });
+      expect(lastOf(spawnCaptures)).toEqual({ velocity: [0, 0, 0], angularVelocity: [0, 0, 0] });
     } finally {
       emitter.destroy();
     }

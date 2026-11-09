@@ -8,30 +8,18 @@ import type {
 } from "../../src/artifact/FXArtifact";
 import { FX_CORE_LIFECYCLE, FX_CORE_POSITION } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
-import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
-import type { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
-import type { FXTrailLayout } from "../../src/render/FXArtifactMaterial.Internal";
 import { packingOrder } from "../../src/render/FXAttributePacking";
 import { fxEmitterRenderBudget, fxTrailRenderBudget } from "../../src/render/FXRenderBudget";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
-
-function tick(emitter: FXEmitter, dt: number): void {
-  (emitter as unknown as { tick(deltaTime: number): void }).tick(dt);
-}
-
-interface TrailInternals {
-  mesh: Mesh;
-  history: { array: Float32Array; stride: number; capacity: number; layout: FXTrailLayout };
-}
-
-function trailOf(emitter: FXEmitter): TrailInternals {
-  return (emitter as unknown as { trail: TrailInternals }).trail;
-}
-
-function particleMeshOf(emitter: FXEmitter): Mesh {
-  return (emitter as unknown as { mesh: Mesh }).mesh;
-}
+import {
+  gpuParticlesOf,
+  isGPUDriven,
+  particlesOf,
+  tickEmitter,
+  trailOf,
+} from "../helpers/internals";
+import { mockRenderer } from "../helpers/mockWebGL";
 
 function vertexShaderOf(mesh: Mesh): string {
   return (mesh.material as ShaderMaterial).vertexShader;
@@ -86,59 +74,6 @@ function kernelOf(buffers: readonly FXBufferLayout[]): FXParticleKernelArtifact 
   };
 }
 
-function mockRenderer(): unknown {
-  let id = 1;
-  const nothing = (): undefined => undefined;
-  const gl = {
-    FLOAT: 8,
-    ARRAY_BUFFER: 6,
-    COPY_READ_BUFFER: 12,
-    COPY_WRITE_BUFFER: 13,
-    DYNAMIC_DRAW: 11,
-    MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS: 14,
-    MAX_VERTEX_ATTRIBS: 15,
-    getParameter: (name: number) => (name === 14 ? 64 : 16),
-    createBuffer: () => ({ id: id++ }),
-    createShader: () => ({ id: id++ }),
-    shaderSource: nothing,
-    compileShader: nothing,
-    getShaderParameter: () => true,
-    deleteShader: nothing,
-    createProgram: () => ({ id: id++ }),
-    attachShader: nothing,
-    transformFeedbackVaryings: nothing,
-    linkProgram: nothing,
-    getProgramParameter: () => true,
-    deleteProgram: nothing,
-    createVertexArray: () => ({ id: id++ }),
-    deleteVertexArray: nothing,
-    getUniformLocation: () => ({ id: id++ }),
-    bindVertexArray: nothing,
-    bindBuffer: nothing,
-    bufferData: nothing,
-    deleteBuffer: nothing,
-    vertexAttribPointer: nothing,
-    enableVertexAttribArray: nothing,
-    bindBufferBase: nothing,
-    bindBufferRange: nothing,
-    copyBufferSubData: nothing,
-    uniform1i: nothing,
-    uniform1f: nothing,
-    uniformMatrix4fv: nothing,
-    uniform3fv: nothing,
-    enable: nothing,
-    disable: nothing,
-    beginTransformFeedback: nothing,
-    endTransformFeedback: nothing,
-    drawArrays: nothing,
-  };
-  return {
-    getContext: () => gl,
-    state: { useProgram: nothing },
-    resetState: nothing,
-  };
-}
-
 function cpuEmitter(render: FXRenderArtifact, trail?: FXRenderArtifact): FXEmitter {
   return FXEmitter.fromArtifacts(
     render,
@@ -160,13 +95,11 @@ function gpuEmitter(
 ): FXEmitter {
   const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact(), {
     gpuKernel: kernelOf(buffers),
-    renderer: mockRenderer() as never,
+    renderer: mockRenderer().renderer,
     expectedCapacity: 4,
     ...(trail === undefined ? {} : { trail: trailOptions(trail) }),
   });
-  expect(typeof (particleMeshOf(emitter) as FXTransformFeedbackParticle).readBuffer).toBe(
-    "function",
-  );
+  expect(isGPUDriven(emitter)).toBe(true);
   return emitter;
 }
 
@@ -183,7 +116,7 @@ describe("CPU trail history packing", () => {
       ]);
 
       emitter.burst(1);
-      tick(emitter, 0.01);
+      tickEmitter(emitter, 0.01);
       const point = Array.from(history.array.subarray(0, history.stride));
       expect(point.slice(8, 11).map((value) => Number(value.toFixed(6)))).toEqual([0.1, 0.2, 0.3]);
       expect(point[11]).toBeCloseTo(0.4, 6);
@@ -238,7 +171,7 @@ describe("GPU packing", () => {
     ]);
     const emitter = gpuEmitter(render, buffers);
     try {
-      const mesh = particleMeshOf(emitter);
+      const mesh = gpuParticlesOf(emitter);
       expect(instancedAttributes(mesh)).toEqual(["a_pack0", "a_pack1", "a_pack2"]);
       const shader = vertexShaderOf(mesh);
       expect(shader).toContain("p_fx_color = a_pack0.xyz;");
@@ -265,12 +198,12 @@ describe("GPU packing", () => {
     const render = colorAlphaSizeRender();
     const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact(), {
       gpuKernel: kernelOf(packedKernelBuffers()),
-      renderer: mockRenderer() as never,
+      renderer: mockRenderer().renderer,
       expectedCapacity: 4,
       castShadow: true,
     });
     try {
-      const depth = particleMeshOf(emitter).customDepthMaterial as ShaderMaterial;
+      const depth = gpuParticlesOf(emitter).customDepthMaterial as ShaderMaterial;
       expect(depth.vertexShader).toContain("attribute vec4 a_pack0;");
       expect(depth.vertexShader).toContain("p_fx_alpha = a_pack0.w;");
     } finally {
@@ -342,7 +275,7 @@ describe("unwritten reads", () => {
       castShadow: true,
     });
     try {
-      const mesh = particleMeshOf(emitter) as FXInstancedParticle;
+      const mesh = particlesOf(emitter);
       expect("fx_glow" in mesh.propertyBuffers).toBe(false);
       expect(instancedAttributes(mesh)).toEqual(["a_lifecycle", "a_position"]);
       for (const material of [mesh.material, mesh.customDepthMaterial] as ShaderMaterial[]) {
@@ -364,7 +297,7 @@ describe("unwritten reads", () => {
     ];
     const emitter = gpuEmitter(glowRender(), buffers);
     try {
-      const mesh = particleMeshOf(emitter);
+      const mesh = gpuParticlesOf(emitter);
       expect(instancedAttributes(mesh)).toEqual(["a_pack0", "a_pack1"]);
       expect(vertexShaderOf(mesh)).toContain("p_fx_glow = vec3(0.0);");
       expect(fxEmitterRenderBudget(glowRender(), [], { kernelBuffers: buffers }).attributes).toBe(

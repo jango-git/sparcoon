@@ -1,11 +1,24 @@
 import type { BufferGeometry, InstancedBufferAttribute, Vector3 } from "three";
 import type { FXBehaviorArtifact, FXEmitterTransform } from "../artifact/FXArtifact.js";
-import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_ID, meshPropertyKeyFor } from "../coreLayout.js";
+import {
+  FX_CORE_LIFECYCLE,
+  FX_CORE_POSITION,
+  FX_CORE_POSITION_STRIDE,
+  FX_ID,
+  FX_POSITION_X,
+  FX_POSITION_Y,
+  FX_POSITION_Z,
+  meshPropertyKeyFor,
+} from "../coreLayout.js";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
-import type { FXEmitterDriver, FXHeldParticleFields } from "./FXEmitterDriver.Internal.js";
+import type {
+  FXEmitterDriver,
+  FXHeldParticleFields,
+  FXParticleDeathSink,
+} from "./FXEmitterDriver.Internal.js";
 import { jsHeldFields, particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
 import { warnInDevelopment } from "../miscellaneous/asserts.js";
@@ -49,6 +62,13 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
   // The first overflow of this emitter's ring is reported once, in development builds.
   private warnedAboutOverflow = false;
 
+  // Death reporting (watchDeaths): where deaths go, every slot's position before this tick's update
+  // (a death's velocity is how far it moved since), and the tick's delta it is divided by. The
+  // snapshot is allocated on the first watch and only taken while one is set.
+  private deathSink: FXParticleDeathSink | undefined;
+  private positionsBeforeUpdate = new Float32Array(0);
+  private tickDeltaTime = 0;
+
   constructor(
     behavior: FXBehaviorArtifact,
     material: FXArtifactMaterial,
@@ -86,6 +106,18 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
 
   public get canSpawn(): boolean {
     return this.simulation.canSpawn;
+  }
+
+  public get reportsDeaths(): boolean {
+    return true;
+  }
+
+  public watchDeaths(sink: FXParticleDeathSink | undefined): void {
+    this.deathSink = sink;
+    const size = this.mesh.instanceCapacity * FX_CORE_POSITION_STRIDE;
+    if (sink !== undefined && this.positionsBeforeUpdate.length !== size) {
+      this.positionsBeforeUpdate = new Float32Array(size);
+    }
   }
 
   public spawn(count: number, transform: FXEmitterTransform): void {
@@ -127,6 +159,11 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     if (slotCount === 0 || this.mesh.liveCount === 0) {
       return;
     }
+    const positions = this.kernelBuffers[FX_CORE_POSITION];
+    if (this.deathSink !== undefined) {
+      this.positionsBeforeUpdate.set(positions.subarray(0, slotCount * FX_CORE_POSITION_STRIDE));
+      this.tickDeltaTime = deltaTime;
+    }
     // Motion integration lives in the graph (an `integrate-motion` node writes
     // `position += velocity * dt`), not in this host loop. Every drawn slot is passed, dead ones
     // too, exactly as the GPU pass covers every slot - a dead slot's state is never shown.
@@ -135,7 +172,7 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
 
     // After the update, as the GPU pass does: the update reads last tick's age. Age is owned by
     // this fixed loop, not the graph - same for every effect.
-    this.mesh.advanceAges(deltaTime);
+    this.mesh.advanceAges(deltaTime, this.deathSink === undefined ? undefined : this.reportDeath);
   }
 
   public endTick(): void {
@@ -147,9 +184,7 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     if (this.mesh.instanceCount === 0) {
       return;
     }
-    // Sort in world space to match the shader's `p_cameraDistance`, correct under any transform.
-    this.mesh.updateWorldMatrix(true, false);
-    this.mesh.sortByDistance(cameraWorldPosition, this.mesh.matrixWorld);
+    this.mesh.sortByDistance(cameraWorldPosition);
   }
 
   public applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void {
@@ -187,6 +222,25 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
   public destroy(): void {
     this.mesh.destroy();
   }
+
+  // One death found by advanceAges: its position after this tick's update, and its velocity over it.
+  private readonly reportDeath = (slot: number): void => {
+    const positions = this.kernelBuffers[FX_CORE_POSITION];
+    const before = this.positionsBeforeUpdate;
+    const offset = slot * FX_CORE_POSITION_STRIDE;
+    const x = positions[offset + FX_POSITION_X];
+    const y = positions[offset + FX_POSITION_Y];
+    const z = positions[offset + FX_POSITION_Z];
+    const inverseDelta = 1 / this.tickDeltaTime;
+    this.deathSink?.(
+      x,
+      y,
+      z,
+      (x - before[offset + FX_POSITION_X]) * inverseDelta,
+      (y - before[offset + FX_POSITION_Y]) * inverseDelta,
+      (z - before[offset + FX_POSITION_Z]) * inverseDelta,
+    );
+  };
 
   // Maps each kernel state-buffer name to its backing Float32Array.
   private buildKernelBuffers(): Record<string, Float32Array> {
