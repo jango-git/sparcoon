@@ -1,4 +1,4 @@
-import type { IUniform, Texture } from "three";
+import type { IUniform } from "three";
 import { DoubleSide, NormalBlending, ShaderMaterial, UniformsLib, UniformsUtils } from "three";
 import type {
   FXParticleReads,
@@ -14,7 +14,27 @@ import {
 } from "../coreLayout.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXPackedAttribute, FXPackedMember } from "./FXAttributePacking.js";
+import {
+  assertCameraDepthMode,
+  bindCameraDepth,
+  cameraDepthFunctions,
+  cameraDepthStub,
+} from "./FXCameraDepth.Internal.js";
+import {
+  isLitArtifact,
+  lightingFunctions,
+  lightingStubs,
+} from "./FXLightingIntrinsics.Internal.js";
 import { floatGLSLType } from "./FXAttributePacking.js";
+import {
+  assertExternalTexture,
+  bindExternalTextures,
+  externalSamplingFunctions,
+  externalSamplingKey,
+  writeExternalTexture,
+} from "./FXExternalTexture.Internal.js";
+import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
+import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";
 
 // Three declares `modelMatrix` in the vertex prefix only, yet sets it on every program it draws: a
@@ -342,18 +362,53 @@ function bindUniforms(
   render: FXRenderArtifact,
   timeUniform: FXFrameTimeUniform,
   deltaUniform: FXFrameTimeUniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>>,
+  externalSlots: FXExternalTextureBindings,
 ): void {
   shader.uniforms["u_time"] = timeUniform;
   shader.uniforms["u_deltaTime"] = deltaUniform;
   for (const name in render.uniforms) {
     const uniform = render.uniforms[name];
-    if ("external" in uniform) {
-      // External texture resolves per emitter: bind the material's durable slot, not the shared module slot.
-      shader.uniforms[name] = externalSlots[name];
-    } else {
+    if (!("external" in uniform)) {
       // Share the artifact's slot object so a scrub of `render.uniforms[name].value` is picked up next frame.
       shader.uniforms[name] = uniform;
+    }
+  }
+  // External textures resolve per emitter: bind the material's durable slots (the sampler and, for a
+  // region, its window), not the shared module slot.
+  bindExternalTextures(shader.uniforms, externalSlots);
+}
+
+/** Throws when any external texture in `values` cannot be a value edit of its slot (see
+ *  {@link assertExternalTexture}); writes nothing. */
+export function assertArtifactUniformValues(
+  externalSlots: FXExternalTextureBindings,
+  values: Readonly<Record<string, FXUniformValue>>,
+): void {
+  for (const name in values) {
+    if (name in externalSlots) {
+      assertExternalTexture(externalSlots[name], values[name] as FXExternalTexture, name);
+    }
+  }
+}
+
+/**
+ * A value edit of a material's uniforms, the counterpart of {@link bindUniforms}: an external
+ * uniform writes the material's own slot, any other the shared artifact slot (module-scoped).
+ * Unknown name = no-op (an editor<->runtime name drift never corrupts values). All or nothing: every
+ * value is checked before the first write.
+ */
+export function applyArtifactUniformValues(
+  render: FXRenderArtifact,
+  externalSlots: FXExternalTextureBindings,
+  values: Readonly<Record<string, FXUniformValue>>,
+): void {
+  assertArtifactUniformValues(externalSlots, values);
+  for (const name in values) {
+    const value = values[name];
+    if (name in externalSlots) {
+      writeExternalTexture(externalSlots[name], value as FXExternalTexture);
+    } else if (name in render.uniforms) {
+      (render.uniforms[name] as FXValueSlot<FXUniformValue>).value = value;
     }
   }
 }
@@ -377,10 +432,15 @@ function hashString(input: string): string {
   return (hash >>> 0).toString(36);
 }
 
-// Stable program-cache key from the artifact's GLSL: identical artifacts share one compiled program.
-export function fxRenderArtifactCacheKey(render: FXRenderArtifact): string {
+// Stable program-cache key from the artifact's GLSL and how its external textures are bound (a region
+// slot is its own program variant): identical artifacts bound alike share one compiled program.
+export function fxRenderArtifactCacheKey(
+  render: FXRenderArtifact,
+  externalSlots: FXExternalTextureBindings = {},
+): string {
   return hashString(
     [
+      externalSamplingKey(externalSlots),
       render.lightingIntrinsics.join(","),
       render.uniformDeclarations.join("|"),
       graphVaryings(render),
@@ -457,10 +517,11 @@ function colorFragmentTail(render: FXRenderArtifact, renderMode: FXRenderMode): 
 
 /**
  * The `ShaderMaterial` every color material is: fogged, double-sided, premultiplied normal
- * blending (additive is in-shader), the render mode's transparency/depth flags, and a program
- * cache key from the artifact's GLSL.
+ * blending (additive is in-shader), the render mode's transparency/depth flags, a program
+ * cache key from the artifact's GLSL, and - when the artifact reads it - the camera depth.
  */
 function colorMaterial(options: {
+  readonly render: FXRenderArtifact;
   readonly name: string;
   readonly uniforms: Record<string, IUniform>;
   readonly vertexShader: string;
@@ -469,6 +530,7 @@ function colorMaterial(options: {
   readonly lit: boolean;
   readonly cacheKey: string;
 }): ShaderMaterial {
+  assertCameraDepthMode(options.render, options.renderMode);
   const flags = materialFlags(options.renderMode);
   const material = new ShaderMaterial({
     name: options.name,
@@ -490,6 +552,9 @@ function colorMaterial(options: {
   // and three skips extension generation entirely for a WebGL2 context either way).
   material.extensions.derivatives = flags.alphaHash;
   material.customProgramCacheKey = (): string => options.cacheKey;
+  if (options.render.sceneDepth) {
+    bindCameraDepth(material);
+  }
   return material;
 }
 
@@ -507,7 +572,7 @@ export function buildUnlitArtifactMaterial(
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -521,7 +586,7 @@ export function buildUnlitArtifactMaterial(
     fragmentVaryingDeclarations,
     vertexAssignments,
   } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render);
+  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -568,6 +633,8 @@ export function buildUnlitArtifactMaterial(
     fragmentVaryingDeclarations,
     graphVaryings(render),
     render.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(externalSlots),
+    cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
@@ -587,6 +654,7 @@ export function buildUnlitArtifactMaterial(
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
   return colorMaterial({
+    render,
     name: "FXUnlitArtifactMaterial",
     uniforms,
     vertexShader,
@@ -597,60 +665,9 @@ export function buildUnlitArtifactMaterial(
   });
 }
 
-// The lighting-node intrinsics the graph calls by name (`fn.raw(... "fxLambertShade" ...)`) but never
-// defines - the frozen `fx_` cross-repo ABI. Each wraps the exact stock Lambert light sequence in a
-// function of (color, WORLD-space normal) -> shaded color: the graph authors normals in world
-// space, and each intrinsic converts world->view on its first line before Three's
-// view-space light chain runs, so view space stays a private detail behind this ABI. A node emits a
-// plain expression that can sit anywhere in the graph (mid-graph mix included). Placed AFTER the pars chunks (which supply the
-// `ReflectedLight`/`LambertMaterial` types, the `RE_*` macros, `vViewPosition`, the light uniforms) and
-// BEFORE `main`. `#pragma unroll_loop_start` inside a function is expanded by the renderer's shader-wide
-// loop-unroll pass, so the per-light loops resolve here too.
-const FX_LIGHTING_NODE_INTRINSICS = [
-  "vec4 fxLambertShade(vec4 diffuseColor, vec3 worldNormal) {",
-  "  vec3 normal = normalize( mat3( viewMatrix ) * worldNormal );",
-  "  float specularStrength = 1.0;",
-  "  ReflectedLight reflectedLight = ReflectedLight( vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ) );",
-  "  #include <lights_lambert_fragment>",
-  "  #include <lights_fragment_begin>",
-  "  #include <lights_fragment_end>",
-  "  return vec4( reflectedLight.directDiffuse + reflectedLight.indirectDiffuse, diffuseColor.a );",
-  "}",
-  // Indirect-only diffuse (ambient + light probe / SH + hemisphere), no direct-light loop or shadows -
-  // the exact indirect block the old ambient builder inlined, wrapped in a function.
-  "vec4 fxAmbientShade(vec4 diffuseColor, vec3 worldNormal) {",
-  "  vec3 normal = normalize( mat3( viewMatrix ) * worldNormal );",
-  "  float specularStrength = 1.0;",
-  "  ReflectedLight reflectedLight = ReflectedLight( vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ) );",
-  "  #include <lights_lambert_fragment>",
-  "  vec3 irradiance = getAmbientLightIrradiance( ambientLightColor );",
-  "  #if defined( USE_LIGHT_PROBES )",
-  "    irradiance += getLightProbeIrradiance( lightProbe, normal );",
-  "  #endif",
-  "  #if ( NUM_HEMI_LIGHTS > 0 )",
-  "    #pragma unroll_loop_start",
-  "    for ( int i = 0; i < NUM_HEMI_LIGHTS; i ++ ) {",
-  "      irradiance += getHemisphereLightIrradiance( hemisphereLights[ i ], normal );",
-  "    }",
-  "    #pragma unroll_loop_end",
-  "  #endif",
-  "  RE_IndirectDiffuse( irradiance, vec3( 0.0 ), normal, vec3( 0.0 ), vec3( 0.0 ), material, reflectedLight );",
-  "  return vec4( reflectedLight.indirectDiffuse, diffuseColor.a );",
-  "}",
-].join("\n");
-
-/**
- * The lighting-node intrinsics as the depth builders define them: the same signatures, the input
- * colour back unshaded. Depth reads only its alpha, which the real intrinsics pass through too.
- */
-const FX_LIGHTING_NODE_DEPTH_STUBS = [
-  "vec4 fxLambertShade(vec4 diffuseColor, vec3 worldNormal) { return diffuseColor; }",
-  "vec4 fxAmbientShade(vec4 diffuseColor, vec3 worldNormal) { return diffuseColor; }",
-].join("\n");
-
 // The lit material variant ({@link buildArtifactMaterial} picks it when the capability is non-empty):
-// the graph's `albedo` already carries the shaded color (a lighting node emitted `fxLambertShade(...)` /
-// `fxAmbientShade(...)`), so `main` uses the flat unlit tail (`outgoingLight = diffuseColor.rgb`) - no
+// the graph's `albedo` already carries the shaded color (a lighting node emitted an intrinsic call -
+// FXLightingIntrinsics.Internal defines the ones the artifact lists), so `main` uses the flat unlit tail (`outgoingLight = diffuseColor.rgb`) - no
 // stock light chain runs in `main`. The material supplies Three's full Lambert light infrastructure
 // (light + fog uniforms, pars chunks, view-space `vNormal`/`vViewPosition` + per-particle shadow
 // plumbing) so the intrinsics resolve. The `geometryNormal` builtin (the surface normal every fragment
@@ -663,7 +680,7 @@ function buildLitArtifactMaterial(
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -677,7 +694,7 @@ function buildLitArtifactMaterial(
     fragmentVaryingDeclarations,
     vertexAssignments,
   } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render);
+  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
   const frame = surfaceFrame(render.fragment.surfaceReads, true);
 
   const vertexShader = [
@@ -731,6 +748,8 @@ function buildLitArtifactMaterial(
     fragmentVaryingDeclarations,
     graphVaryings(render),
     render.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(externalSlots),
+    cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
@@ -741,7 +760,7 @@ function buildLitArtifactMaterial(
     frame.fragmentPars,
     "#include <lights_lambert_pars_fragment>",
     "#include <shadowmap_pars_fragment>",
-    FX_LIGHTING_NODE_INTRINSICS,
+    lightingFunctions(render),
     "void main() {",
     // The lighting intrinsics convert the world-space frame to view space at their own boundary.
     frame.fragment,
@@ -758,6 +777,7 @@ function buildLitArtifactMaterial(
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
   return colorMaterial({
+    render,
     name: "FXLightingNodesArtifactMaterial",
     uniforms,
     vertexShader,
@@ -770,7 +790,7 @@ function buildLitArtifactMaterial(
 
 // Single entry point the material driver calls: the render artifact's lighting capability
 // ({@link FXRenderArtifact.lightingIntrinsics}) picks the variant. Empty => unlit (flat albedo, no
-// light infrastructure); non-empty => the lit variant, which defines the intrinsics and lights up
+// light infrastructure); non-empty => the lit variant, which defines the listed intrinsics and lights up
 // Three's infrastructure. There is no per-model dispatch - the shading lives in the graph.
 export function buildArtifactMaterial(
   render: FXRenderArtifact,
@@ -779,10 +799,9 @@ export function buildArtifactMaterial(
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
-  const build =
-    render.lightingIntrinsics.length > 0 ? buildLitArtifactMaterial : buildUnlitArtifactMaterial;
+  const build = isLitArtifact(render) ? buildLitArtifactMaterial : buildUnlitArtifactMaterial;
   return build(
     render,
     layout,
@@ -842,7 +861,7 @@ function buildMeshUnlitArtifactMaterial(
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -850,7 +869,7 @@ function buildMeshUnlitArtifactMaterial(
   if (!("albedo" in render.outputs)) {
     throw new Error("buildMeshUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const cacheKey = fxRenderArtifactCacheKey(render);
+  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -886,6 +905,8 @@ function buildMeshUnlitArtifactMaterial(
     frame.varyings,
     graphVaryings(render),
     render.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(externalSlots),
+    cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
@@ -903,6 +924,7 @@ function buildMeshUnlitArtifactMaterial(
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
   return colorMaterial({
+    render,
     name: "FXMeshUnlitArtifactMaterial",
     uniforms,
     vertexShader,
@@ -922,7 +944,7 @@ function buildMeshLitArtifactMaterial(
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -930,7 +952,7 @@ function buildMeshLitArtifactMaterial(
   if (!("albedo" in render.outputs)) {
     throw new Error("buildMeshLitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const cacheKey = fxRenderArtifactCacheKey(render);
+  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
   const frame = surfaceFrame(render.fragment.surfaceReads, true);
 
   const vertexShader = [
@@ -976,6 +998,8 @@ function buildMeshLitArtifactMaterial(
     frame.varyings,
     graphVaryings(render),
     render.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(externalSlots),
+    cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
@@ -986,7 +1010,7 @@ function buildMeshLitArtifactMaterial(
     frame.fragmentPars,
     "#include <lights_lambert_pars_fragment>",
     "#include <shadowmap_pars_fragment>",
-    FX_LIGHTING_NODE_INTRINSICS,
+    lightingFunctions(render),
     "void main() {",
     frame.fragment,
     render.fragment.body.join("\n"),
@@ -1002,6 +1026,7 @@ function buildMeshLitArtifactMaterial(
   bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
 
   return colorMaterial({
+    render,
     name: "FXMeshLightingNodesArtifactMaterial",
     uniforms,
     vertexShader,
@@ -1020,12 +1045,11 @@ export function buildMeshArtifactMaterial(
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
-  const build =
-    render.lightingIntrinsics.length > 0
-      ? buildMeshLitArtifactMaterial
-      : buildMeshUnlitArtifactMaterial;
+  const build = isLitArtifact(render)
+    ? buildMeshLitArtifactMaterial
+    : buildMeshUnlitArtifactMaterial;
   return build(
     render,
     timeUniform,
@@ -1051,7 +1075,7 @@ const DEPTH_FRAGMENT_TAIL = [
 // instanced particle onto one un-instanced vertex. It mirrors buildUnlit/LitArtifactMaterial's whole
 // vertex+fragment scope (every builtin the IR body reads must be declared, since the body is the same
 // IR) and only swaps the color tail for the RGBA depth pack. A lit graph's shade intrinsics resolve to
-// FX_LIGHTING_NODE_DEPTH_STUBS: only the discarded RGB depends on shading, and every intrinsic returns
+// their stubs (`lightingStubs`): only the discarded RGB depends on shading, and every intrinsic returns
 // its input alpha unchanged, so the depth cutout stays correct. No light uniforms (`lights: true`): in
 // the shadow pass Three would bind the light's shadow map - the very target being drawn - to a sampler
 // the shade intrinsics read, a feedback loop the driver answers by dropping the draw (no shadow).
@@ -1063,7 +1087,7 @@ export function buildArtifactDepthMaterial(
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -1073,14 +1097,13 @@ export function buildArtifactDepthMaterial(
     throw new Error("buildArtifactDepthMaterial: render artifact has no 'albedo' output");
   }
   const albedo = render.outputs["albedo"];
-  const lit = render.lightingIntrinsics.length > 0;
   const {
     attributeDeclarations,
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
   } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render);
+  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -1126,12 +1149,14 @@ export function buildArtifactDepthMaterial(
     fragmentVaryingDeclarations,
     graphVaryings(render),
     render.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(externalSlots),
+    cameraDepthStub(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
     "#include <alphahash_pars_fragment>",
     frame.fragmentPars,
-    ...(lit ? [FX_LIGHTING_NODE_DEPTH_STUBS] : []),
+    lightingStubs(render),
     "void main() {",
     frame.fragment,
     render.fragment.body.join("\n"),
@@ -1165,14 +1190,14 @@ export function buildArtifactDepthMaterial(
 
 // Mesh twin of buildArtifactDepthMaterial (the mesh-path depth builder): mirrors buildMeshUnlit/
 // LitArtifactMaterial's scope with the particle plumbing removed, swapping the color tail for the
-// depth pack. Same lit/unlit internal branch. No `varyings` - a VFX mesh has no instanced attributes.
+// depth pack. The same lighting stubs. No `varyings` - a VFX mesh has no instanced attributes.
 export function buildMeshArtifactDepthMaterial(
   render: FXRenderArtifact,
   timeUniform: FXFrameTimeUniform,
   deltaUniform: FXFrameTimeUniform,
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -1182,8 +1207,7 @@ export function buildMeshArtifactDepthMaterial(
     throw new Error("buildMeshArtifactDepthMaterial: render artifact has no 'albedo' output");
   }
   const albedo = render.outputs["albedo"];
-  const lit = render.lightingIntrinsics.length > 0;
-  const cacheKey = fxRenderArtifactCacheKey(render);
+  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -1220,12 +1244,14 @@ export function buildMeshArtifactDepthMaterial(
     "varying vec2 vHighPrecisionZW;",
     graphVaryings(render),
     render.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(externalSlots),
+    cameraDepthStub(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
     "#include <alphahash_pars_fragment>",
     frame.fragmentPars,
-    ...(lit ? [FX_LIGHTING_NODE_DEPTH_STUBS] : []),
+    lightingStubs(render),
     "void main() {",
     frame.fragment,
     render.fragment.body.join("\n"),
@@ -1513,13 +1539,13 @@ export function buildTrailArtifactMaterial(
   velocityUniform: FXFrameVec3Uniform,
   angularVelocityUniform: FXFrameVec3Uniform,
   trailUniforms: FXTrailUniforms,
-  externalSlots: Readonly<Record<string, FXValueSlot<Texture>>> = {},
+  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const renderMode = render.options?.renderMode ?? "blending";
   if (!("albedo" in render.outputs)) {
     throw new Error("buildTrailArtifactMaterial: render artifact has no 'albedo' output");
   }
-  if (render.lightingIntrinsics.length > 0) {
+  if (isLitArtifact(render)) {
     throw new Error("buildTrailArtifactMaterial: a trail is unlit - its graph calls lighting");
   }
   if (
@@ -1606,6 +1632,8 @@ export function buildTrailArtifactMaterial(
     properties.fragmentDeclarations,
     graphVaryings(render),
     render.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(externalSlots),
+    cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
@@ -1628,12 +1656,13 @@ export function buildTrailArtifactMaterial(
   uniforms["u_trailAges"] = trailUniforms.ages;
 
   return colorMaterial({
+    render,
     name: "FXTrailArtifactMaterial",
     uniforms,
     vertexShader,
     fragmentShader,
     renderMode,
     lit: false,
-    cacheKey: `fx-trail-${layout.kind}_${fxRenderArtifactCacheKey(render)}`,
+    cacheKey: `fx-trail-${layout.kind}_${fxRenderArtifactCacheKey(render, externalSlots)}`,
   });
 }

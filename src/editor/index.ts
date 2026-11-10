@@ -11,6 +11,7 @@ export type { FXFromArtifactsOptions } from "../emitter/FXFromArtifactsOptions.j
 export type { FXApplyRenderArtifactOptions } from "../emitter/FXApplyRenderArtifactOptions.js";
 export type {
   FXApplyValues,
+  FXEmissionBasis,
   FXEmitterOptions,
   FXEmitterBurstOptions,
   FXEmitterPlayOptions,
@@ -32,6 +33,9 @@ export type { FXFromMeshArtifactOptions } from "../render/FXMesh.js";
 // Lower-level pieces FXMesh is built from - kept for tooling that assembles a mesh by hand.
 export { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 export { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
+
+// What a play's rate counts per, for the editor's inspector, loader and agent to offer and read.
+export { asEmissionBasis, FX_EMISSION_BASES } from "../emitter/FXEmitter.Internal.js";
 
 // Shared keyframe/transform sampling: the editor bakes keyframes and the runtime samples them, so
 // both sides must sample identically - a frozen contract, never a one-sided edit.
@@ -90,3 +94,14 @@ export type {
 // may keep.
 export { FX_TRAIL_MAX_FRAMES } from "../trail/FXTrail.js";
 export type { FXTrailOptions } from "../trail/FXTrail.js";
+
+// External texture sampling: the function a graph calls to sample an external texture uniform -
+// the runtime defines it per slot from how the host bound it (a whole texture or a region).
+export { fxExternalSampleFunction } from "../render/FXExternalTexture.Internal.js";
+
+// The lighting intrinsics a lighting node calls; the runtime defines those an artifact lists.
+export { FX_LIGHTING_INTRINSIC } from "../render/FXLightingIntrinsics.Internal.js";
+export type { FXLightingIntrinsicName } from "../render/FXLightingIntrinsics.Internal.js";
+
+// The runtime version the editor stamps into every exported module (`FXEffectSpec.runtime`).
+export { FX_RUNTIME_VERSION } from "../version.js";

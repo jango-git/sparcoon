@@ -131,10 +131,19 @@ export interface FXRenderArtifact {
    * Lighting capability: the sorted, deduplicated set of `fx_`-ABI shade intrinsics the graph's
    * lighting nodes call (e.g. `["fxLambertShade"]`), derived from the graph (not authored). Empty =>
    * unlit: the runtime builds the flat material. Non-empty => the runtime lights up Three's light
-   * infrastructure and defines exactly these functions. The shaded color is produced inside the graph
-   * (the `albedo` output already carries it), so there is no per-model material dispatch.
+   * infrastructure and defines exactly these functions, throwing on one it does not define. The
+   * shaded color is produced inside the graph (the `albedo` output already carries it), so there is
+   * no per-model material dispatch.
    */
   readonly lightingIntrinsics: readonly string[];
+  /**
+   * Depth capability: whether the graph calls the `fx_`-ABI `fxDepthFade(distance)` - the fade, 0
+   * to 1, over `distance` world units in front of the opaque scene - derived from the graph like
+   * {@link lightingIntrinsics}. The runtime then defines it from the depth of whichever camera
+   * draws (see `fxSetCameraDepth`), and 1 where that camera has none. Only a `blending` graph may
+   * read it: a depth-writing one would read its own depth.
+   */
+  readonly sceneDepth: boolean;
   /** Absent => `"plane"`. */
   readonly geometry?: FXGeometrySource;
   readonly options?: FXGraphUnlitMaterialOptions | FXGraphLambertMaterialOptions;

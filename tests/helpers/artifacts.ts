@@ -130,6 +130,7 @@ export function unlitArtifact(
   });
   return {
     lightingIntrinsics: [],
+    sceneDepth: false,
     geometry: over.geometry,
     uniformDeclarations: over.uniformDeclarations ?? [],
     varyings: [],

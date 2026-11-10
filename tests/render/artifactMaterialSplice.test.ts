@@ -171,6 +171,7 @@ describe("unlit ShaderMaterial assembly", () => {
 describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
   const lit = (intrinsics: readonly string[]): FXRenderArtifact => ({
     lightingIntrinsics: intrinsics,
+    sceneDepth: false,
     uniformDeclarations: [],
     varyings: [],
     vertex: {
@@ -202,14 +203,13 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
     expect(vertexShader).toContain("vec4 worldPosition = vec4(particleCenter, 1.0);");
     expect(vertexShader).toContain("#include <shadowmap_vertex>");
 
-    // Both fx_ intrinsics are defined whenever lit (the GPU strips the unused one). They take a WORLD
-    // normal and convert to view on their first line, so view space stays behind the ABI.
+    // Only the listed intrinsic is defined. It takes a WORLD normal and converts to view on its first
+    // line, so view space stays behind the ABI.
     expect(fragmentShader).toContain("vec4 fxLambertShade(vec4 diffuseColor, vec3 worldNormal) {");
-    expect(fragmentShader).toContain("vec4 fxAmbientShade(vec4 diffuseColor, vec3 worldNormal) {");
+    expect(fragmentShader).not.toContain("fxAmbientShade");
     expect(fragmentShader).toContain(
       "vec3 normal = normalize( mat3( viewMatrix ) * worldNormal );",
     );
-    expect(fragmentShader).toContain("getAmbientLightIrradiance( ambientLightColor )");
 
     // geometryNormal builtin (world) at the top of main; unlit tail (shading already lives in albedo).
     expect(fragmentShader).toContain(
@@ -233,6 +233,7 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
 describe("render mode + additivity blend tail", () => {
   const artifact = (over: Partial<FXRenderArtifact>): FXRenderArtifact => ({
     lightingIntrinsics: [],
+    sceneDepth: false,
     uniformDeclarations: [],
     varyings: [],
     vertex: {

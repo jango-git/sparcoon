@@ -75,6 +75,7 @@ export type { FXSpawnAction } from "./effect/FXSpawnAction.js";
 // factory lives in the `sparcoon/editor` entry).
 export type { FXEmitter } from "./emitter/FXEmitter.js";
 export type {
+  FXEmissionBasis,
   FXEmitterBurstOptions,
   FXEmitterPlayOptions,
   FXParticleDeath,
@@ -100,3 +101,24 @@ export {
 } from "./miscellaneous/fxMath.js";
 export { fxDataTexture } from "./miscellaneous/texture/fxDataTexture.js";
 export type { FXDataTextureOptions } from "./miscellaneous/texture/fxDataTexture.js";
+
+// External textures: a slot binds a whole Texture or a region (a window) of one; fxAtlasRegion builds
+// the region of a packed atlas sprite from its frame values (parsing the atlas file is the app's job).
+export type {
+  FXExternalTexture,
+  FXTextureRegion,
+  FXUniformValue,
+} from "./render/FXExternalTexture.js";
+export { fxAtlasRegion } from "./miscellaneous/texture/fxAtlasRegion.js";
+export type {
+  FXAtlasRect,
+  FXAtlasSize,
+  FXAtlasSprite,
+} from "./miscellaneous/texture/fxAtlasRegion.js";
+
+// Scene depth is the camera's, not the world's or the effect's: give each camera the depth of what
+// it sees, and every graph with Depth Fade it draws fades against it (hard without one).
+export { fxSetCameraDepth } from "./render/FXCameraDepth.js";
+
+// This runtime's version - the one an exported effect module is checked against.
+export { FX_RUNTIME_VERSION } from "./version.js";

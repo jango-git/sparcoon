@@ -6,8 +6,9 @@ import {
   type BufferGeometry,
   type Material,
   type Object3D,
-  type Texture,
 } from "three";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
+import { checkRuntimeVersion } from "./FXRuntimeVersion.Internal.js";
 import type {
   FXBehaviorArtifact,
   FXRenderArtifact,
@@ -79,17 +80,14 @@ function resolveRenderArtifact(
   return render[isWebGL2 ? "standard" : "baseline"];
 }
 
-/** One asset slot: an external texture OR (per {@link FXGeometrySource}) an external geometry, keyed by the same flat `assets` namespace. */
-type FXEffectAsset = Texture | BufferGeometry;
+/** One asset slot: an external texture (whole, or a region of one) OR (per
+ *  {@link FXGeometrySource}) an external geometry, keyed by the same flat `assets` namespace. */
+type FXEffectAsset = FXExternalTexture | BufferGeometry;
 
 // Duck-typed, not `instanceof`: the app's `three` and this package's peer-dep `three` can be two
 // separate module instances (e.g. hoisted differently across a workspace), which would make
 // `instanceof Texture`/`instanceof BufferGeometry` false for a perfectly good asset. Every `three`
 // object of these kinds carries this own-property flag regardless of which module instance built it.
-function isTexture(asset: FXEffectAsset): asset is Texture {
-  return (asset as { isTexture?: boolean }).isTexture === true;
-}
-
 function isBufferGeometry(asset: FXEffectAsset): asset is BufferGeometry {
   return (asset as { isBufferGeometry?: boolean }).isBufferGeometry === true;
 }
@@ -97,11 +95,12 @@ function isBufferGeometry(asset: FXEffectAsset): asset is BufferGeometry {
 function texturesForSlots(
   slots: readonly string[],
   assets: Record<string, FXEffectAsset>,
-): Record<string, Texture> {
-  const textures: Record<string, Texture> = {};
+): Record<string, FXExternalTexture> {
+  const textures: Record<string, FXExternalTexture> = {};
   for (const name of slots) {
     const asset = assets[name];
-    if (isTexture(asset)) {
+    // Anything but a geometry: a whole texture or a region of one.
+    if (!isBufferGeometry(asset)) {
       textures[PARAMETER_UNIFORM_PREFIX + name] = asset;
     }
   }
@@ -287,6 +286,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     options: FXEffectOptions = {},
   ) {
     super();
+    checkRuntimeVersion(specification);
     this.specification = specification;
     this.world = options.world ?? FXWorld.getDefault();
     applyTransform(this, specification.transform);

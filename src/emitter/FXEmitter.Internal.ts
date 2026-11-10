@@ -1,4 +1,5 @@
-import type { Camera, Texture } from "three";
+import type { Camera } from "three";
+import type { FXUniformValue } from "../render/FXExternalTexture.js";
 
 /**
  * Argument to {@link FXEmitter.applyValues}: values to scrub into uniform/binding slots by name.
@@ -6,8 +7,12 @@ import type { Camera, Texture } from "three";
  * GLSL/kernel already declared - a structural edit is a fresh {@link FXEmitter.fromArtifacts}.
  */
 export interface FXApplyValues {
-  /** Scalar/vector, or a `Texture` for a `sampler2D`. Mutates the shared artifact slot, or this emitter's own slot for an `external` texture. */
-  readonly uniforms?: Readonly<Record<string, number | readonly number[] | Texture>>;
+  /**
+   * Scalar/vector, or a `Texture` for a `sampler2D`. Mutates the shared artifact slot, or this
+   * emitter's own slot for an `external` texture - which also takes a region when it was bound to
+   * one (see {@link FXExternalTexture}).
+   */
+  readonly uniforms?: Readonly<Record<string, FXUniformValue>>;
   /** A `number`, or a `Float32Array` curve LUT. */
   readonly bindings?: Readonly<Record<string, number | Float32Array>>;
 }
@@ -50,15 +55,38 @@ export interface FXEmitterBurstOptions {
   origin: FXSpawnOrigin;
 }
 
+/**
+ * What a play's `rate` counts particles per: a second of its time (`"time"`), or a world unit of the
+ * distance the emitter's world position travels (`"distance"`).
+ */
+export type FXEmissionBasis = "time" | "distance";
+
+// Keyed by the type itself, so a basis added to FXEmissionBasis cannot be left out of the list.
+const EMISSION_BASIS_SET: Readonly<Record<FXEmissionBasis, true>> = { time: true, distance: true };
+
+/** Every basis a play's rate can count per, for tools that offer them. */
+export const FX_EMISSION_BASES = Object.keys(EMISSION_BASIS_SET) as readonly FXEmissionBasis[];
+
+/** `value` as an emission basis, or `undefined` when it names none (a tool's or a file's raw input). */
+export function asEmissionBasis(value: unknown): FXEmissionBasis | undefined {
+  return FX_EMISSION_BASES.find((basis) => basis === value);
+}
+
 export interface FXEmitterPlayOptions {
   /** Delay in seconds before emission starts. default 0 */
   delay: number;
-  /** Total emission duration in seconds. default Infinity */
+  /** Total emission duration in seconds, whatever `over` is. default Infinity */
   duration: number;
+  /**
+   * What `rate` counts per (see {@link FXEmissionBasis}). Over distance, a play spawns nothing
+   * while the emitter stands still, and takes no `origin`: an origin does not move. Distance is
+   * measured in world units, so a parent's scale does not change the count. default "time"
+   */
+  over: FXEmissionBasis;
   /**
    * Emit from this point for the whole play instead of following the emitter's pose. Such a play
    * belongs to whoever started it, not to the emitter's timeline: {@link FXEmitter.loopTimeline}
-   * leaves it running.
+   * leaves it running. Not with `over: "distance"`.
    */
   origin: FXSpawnOrigin;
 }

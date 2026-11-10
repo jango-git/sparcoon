@@ -1,4 +1,5 @@
 import type {
+  FXEmissionBasis,
   FXEmitterBurstOptions,
   FXEmitterPlayOptions,
   FXParticleDeathListener,
@@ -8,11 +9,18 @@ import type {
 /**
  * What makes an emitter spawn, whatever triggers it - a timeline event at a time, or a death
  * reaction to another emitter's particles: `count` particles at once, or `rate` particles per second
- * for `duration` seconds (`0` = without end, a timeline event only).
+ * - or per world unit the emitter travels, `over: "distance"` (a timeline event only) - for
+ * `duration` seconds (`0` = without end, a timeline event only).
  */
 export type FXSpawnAction =
   | { readonly kind: "burst"; readonly count: number }
-  | { readonly kind: "play"; readonly rate: number; readonly duration: number };
+  | {
+      readonly kind: "play";
+      readonly rate: number;
+      readonly duration: number;
+      /** default "time" */
+      readonly over?: FXEmissionBasis;
+    };
 
 /** What a {@link FXSpawnAction} is fired on - an emitter, or anything spawning through one. */
 export interface FXSpawnTarget {
@@ -40,14 +48,28 @@ export function fireSpawnAction(
       target.burst(action.count, at);
     }
   } else if (action.rate > 0) {
-    target.play(action.rate, action.duration > 0 ? { ...at, duration: action.duration } : at);
+    target.play(action.rate, {
+      ...at,
+      ...(action.duration > 0 ? { duration: action.duration } : {}),
+      ...(action.over === undefined ? {} : { over: action.over }),
+    });
   }
 }
 
-/** Throws when `action` cannot be fired by a death: a play without end would pile up, one per death. */
+/**
+ * Throws when `action` cannot be fired by a death: a play without end would pile up, one per death,
+ * and a play over distance would never spawn - it spawns from where the particle died, which does
+ * not move.
+ */
 export function assertDeathReactionAction(action: FXSpawnAction, subject: string): void {
-  if (action.kind === "play" && !(action.duration > 0)) {
+  if (action.kind !== "play") {
+    return;
+  }
+  if (!(action.duration > 0)) {
     throw new Error(`${subject}: a play fired by a death needs a finite duration`);
+  }
+  if (action.over === "distance") {
+    throw new Error(`${subject}: a play fired by a death cannot count over distance`);
   }
 }
 

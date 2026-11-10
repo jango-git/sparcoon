@@ -194,6 +194,20 @@ describe("death reactions", () => {
     ).toThrow(/finite duration/);
   });
 
+  it("refuses a play over distance: it spawns from where the particle died, which does not move", () => {
+    const world = newWorld();
+    const source = emitterIn(world, placingBehavior(1));
+    const target = emitterIn(world, placingBehavior(1));
+    expect(() =>
+      connectDeathReaction(source, target, {
+        kind: "play",
+        rate: 10,
+        duration: 1,
+        over: "distance",
+      }),
+    ).toThrow(/over distance/);
+  });
+
   it("fires a zero count or rate as a no-op rather than throwing", () => {
     const world = newWorld();
     const target = emitterIn(world, placingBehavior(1));

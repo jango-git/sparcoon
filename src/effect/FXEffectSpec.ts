@@ -151,6 +151,9 @@ export interface FXEffectMeshSpec {
 
 /** A whole exported project: duration/fps, root transform, and every emitter + mesh. */
 export interface FXEffectSpec {
+  /** The sparcoon version the editor compiled this module against; `FXEffect` warns in
+   *  development when this runtime is of another minor (below 1.0) - patches never warn. */
+  readonly runtime: string;
   readonly duration: number;
   readonly fps: number;
   /**

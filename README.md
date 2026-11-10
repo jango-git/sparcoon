@@ -8,7 +8,33 @@ build.
 
 **[Open the editor](https://jango-git.github.io/sparcoon-editor/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
-[npm](https://www.npmjs.com/package/sparcoon/v/0.12.0)
+[npm](https://www.npmjs.com/package/sparcoon)
+
+<table>
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/campfire.webp" width="400" alt="Campfire" /><br /><b>Campfire</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/lightning-crack.webp" width="400" alt="Lightning Crack" /><br /><b>Lightning Crack</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/portal.webp" width="400" alt="Portal" /><br /><b>Portal</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/shield.webp" width="400" alt="Energy Shield" /><br /><b>Energy Shield</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/fireworks.webp" width="400" alt="Fireworks" /><br /><b>Fireworks</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/destruction.webp" width="400" alt="Destruction" /><br /><b>Destruction</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/fireflies.webp" width="400" alt="Fireflies" /><br /><b>Fireflies</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/sparks.webp" width="400" alt="Sparks" /><br /><b>Sparks</b></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/editor.webp" width="100%" alt="The Portal preset being built in the editor" /><br /><b>Portal, built node by node in the editor</b></td>
+  </tr>
+</table>
+
+Every effect above is a bundled preset of the
+[editor](https://jango-git.github.io/sparcoon-editor/), built from its own nodes: press
+`Ctrl+Space`, pick it on the **Content** screen and hit **Load**.
 
 > **0.x.** The artifact format is not frozen yet - a minor release may still break it, so play an
 > effect with the runtime version the editor that exported it names.
@@ -24,7 +50,8 @@ What is worth knowing before you install:
   your bundler compiles like any other source. Neither `eval` nor `new Function` is called anywhere,
   so the effect passes where runtime code generation is forbidden by policy.
 - **No dependencies.** The only peer dependency is `three`.
-- **One draw call per emitter.** Billboards and mesh particles are drawn instanced.
+- **One draw call per emitter**, plus one for its trail. Billboards and mesh particles are drawn
+  instanced.
 - **Two GLSL tiers in every artifact.** Standard (WebGL2) and Baseline (WebGL1-compatible); the
   runtime picks by the capabilities of the renderer you pass in.
 - **Optional GPU simulation** through transform feedback, with an automatic fallback to the
@@ -38,13 +65,10 @@ What is worth knowing before you install:
 npm install sparcoon three
 ```
 
-`three` is a peer dependency; the supported range is `>=0.157 <0.180`.
-
 ## Quick start
 
 A module from the editor exports a named `FXEffect` subclass and a typed interface for its assets.
-The runtime does not load assets: you prepare the textures and geometries and pass them to the
-constructor.
+You prepare the textures and geometries yourself and pass them to the constructor.
 
 ```ts
 import { TextureLoader } from "three";
@@ -89,6 +113,76 @@ kernel. That is a working mode if you have no renderer at the point of construct
 `effect.dispose()` unsubscribes the effect from its world, destroys its emitters and frees mesh
 resources. The textures and geometries you passed in are left alone: you own their lifecycle.
 
+### Sprites from an atlas
+
+A texture asset can also be one sprite of a packed atlas. `fxAtlasRegion` turns a frame entry, as
+TexturePacker or free-tex-packer write it (rotation and trim included), into a region of the atlas
+texture. Parsing the atlas file stays with you:
+
+```ts
+import { fxAtlasRegion } from "sparcoon";
+
+const atlas = loader.load("atlas.png");
+const { frames, meta } = atlasJson; // the packer's JSON, loaded by you
+
+const assets: MyEffectAssets = {
+  // meta.size lets the region be built before the image has loaded
+  spark: fxAtlasRegion(atlas, frames["spark.png"], meta.size),
+};
+```
+
+The slot's UV square maps onto the sprite's untrimmed source. Trimmed margins come out transparent,
+and the graph's wrap mode tiles the sprite, not the whole atlas. A plain `Texture` costs nothing
+extra. A region adds a few ALU ops and gets its own shader program. That program is chosen when the
+emitter is built, so a later `applyValues` can switch between regions only if the slot was built
+with a region. Pack with some extrusion (TexturePacker's `extrude`) so that bilinear filtering at a
+sprite's edge does not pick up its neighbours.
+
+### Soft particles: camera depth
+
+A graph with a Depth Fade node (soft particles, or a glow where a shield meets the ground) fades
+against the depth of the opaque scene. That depth belongs to the camera, not to the effect: the same
+effect is drawn by every camera that sees it. So you give it to the camera, once and for all:
+
+```ts
+import { DepthTexture, Group, WebGLRenderTarget } from "three";
+import { fxSetCameraDepth } from "sparcoon";
+
+const depthPass = new WebGLRenderTarget(width, height, {
+  depthTexture: new DepthTexture(width, height),
+});
+fxSetCameraDepth(camera, depthPass.depthTexture);
+
+const effects = new Group(); // holds your effects; they fade against the rest of the scene
+scene.add(effects);
+effects.add(effect);
+
+// each frame
+effects.visible = false;
+renderer.setRenderTarget(depthPass);
+renderer.render(scene, camera);
+effects.visible = true;
+renderer.setRenderTarget(null);
+renderer.render(scene, camera);
+```
+
+The depth is the window depth in a texture's red channel, rendered through the same viewport as the
+frame the camera draws into (at any resolution): a depth pre-pass like this one, a resolved copy of
+the depth buffer after your opaque pass, or the depth your post-processing already has. Keep it
+current yourself, across a resize too; effects never need rebinding.
+
+A camera without depth draws these graphs hard - the fade is 1 - so leave it unset where depth is
+unsupported (WebGL1 without `WEBGL_depth_texture`) or not wanted. Beyond that:
+
+- While a camera draws into the target that owns its depth, it draws hard too, so leaving the
+  effects in the pre-pass is safe, only wasted work.
+- The runtime checks only the drawing camera's own depth: never give one camera the depth texture of
+  a target another camera draws the effects into - that feedback loop it cannot see.
+- Depth Fade renders only in `blending` mode, since a depth-writing particle would read its own
+  depth.
+- Not supported: a logarithmic or reversed depth buffer, and one camera drawing two different views
+  in a frame - give each view its own camera.
+
 ## Where the module comes from
 
 Effects are built in the [Sparcoon Editor](https://jango-git.github.io/sparcoon-editor/): a
@@ -123,10 +217,11 @@ if (sparks) {
   sparks.burst(64); // one-off release, optionally delayed; returns a handle for stop()
   sparks.burst(16, { origin: { position: [2, 1, 0] } }); // as if the emitter stood there
   sparks.play(120); // continuous emission in particles per second; also returns a handle
+  sparks.play(8, { over: "distance" }); // per world unit the emitter travels: a trail of particles
   sparks.stop(); // with no argument, cancels everything scheduled on this emitter
   sparks.prewarm(2); // simulate 2 seconds forward so playback does not start from an empty screen
 
-  sparks.sortCamera = camera; // depth sorting; undefined turns it off
+  sparks.sortCamera = camera; // depth sorting, CPU-simulated emitters only; undefined turns it off
   sparks.sortFraction = 0.1; // fraction of frames that re-sort (the default)
 }
 ```
@@ -136,7 +231,9 @@ in the frame it is born in and moves from the next one. An undelayed `burst()` k
 pose at the moment of the call - so moving the emitter between two bursts of one frame still spawns
 them in two places - and takes the parameter values of that tick. With `origin`, a burst or a play
 spawns as if the emitter stood at that point, keeping its own rotation and scale, and moving at the
-given velocity - what its spawn graph reads through `world-matrix` and `object-velocity`.
+given velocity - what its spawn graph reads through `world-matrix` and `object-velocity`. A play
+`over: "distance"` counts its rate per world unit the emitter's position travels, so it spawns
+nothing while the emitter stands still; it takes no `origin`, which does not move.
 
 An emitter simulated on the CPU reports its particles' deaths. The editor wires them up as death
 reactions (a burst or a play on another emitter where each particle died, one frame later, built in
@@ -161,7 +258,8 @@ lifetime, bursts included - otherwise particles die early, replaced by newer one
 An emitter authored with a trail draws a ribbon behind every particle, from a recorded history of
 each particle's path - on the GPU path too, where the history is copied inside video memory. A
 parameter name drives the particle and trail materials alike. Depth sorting would scramble that
-history, so `sortCamera` has no effect on an emitter with a trail (it warns once). Given a `renderer`, a
+history, so `sortCamera` has no effect on an emitter with a trail (it warns once) - nor on a
+GPU-driven one, whose particles have no CPU-visible positions to sort. Given a `renderer`, a
 trail that needs more vertex attributes or varying vectors than its GPU offers - a heavy trail on
 a WebGL1 device - is skipped with a warning, and the particles draw without it.
 
@@ -173,15 +271,12 @@ no exact live count, so `particleCount` reports an honest upper bound - its capa
 
 ## Migrating from 0.10
 
-- **Capacity is a fixed ring now, on the JavaScript path too.** In 0.10 a JavaScript-driven emitter
-  started at `expectedCapacity` and grew by `capacityStep` whenever it filled up; now it never grows,
-  and a birth into a full emitter overwrites a live particle. `capacityStep` is gone from the options
-  (a stale value is ignored).
+- **A JavaScript-driven emitter no longer grows.** In 0.10 it started at `expectedCapacity` and grew
+  by `capacityStep`; now its capacity is the fixed ring described above. `capacityStep` is gone from
+  the options (a stale value is ignored).
 - **The default capacity is 256** (it was 32, growing by 32).
-- **Re-check the capacity of effects exported for 0.10.** One authored with a small capacity that
-  only worked because the emitter grew now loses particles: raise the capacity in the editor to
-  cover the spawn rate times the longest lifetime, and watch `particleOverflowCount` (or the
-  development-build warning) while testing.
+- **Re-check the capacity of effects exported for 0.10.** One that only worked because the emitter
+  grew now loses particles: raise its capacity in the editor and watch `particleOverflowCount`.
 
 ## Multiple effects and worlds
 
@@ -208,8 +303,8 @@ effect rather than freezing it. To freeze one effect on its own, give it its own
 
 ## How it works
 
-The editor compiles a graph into artifacts and bakes them into a module together with the project's
-timeline:
+An exported module carries the project's timeline and, per emitter or mesh, the artifacts
+below:
 
 - **Render artifact** - GLSL, uniforms, texture references.
 - **Trail artifact** - an emitter's trail: GLSL of the same shape, plus how many points of each
@@ -218,7 +313,7 @@ timeline:
 - **GPU kernel** - a fused transform-feedback program, present only when the graph opted into GPU
   simulation and compiled.
 
-The runtime executes those artifacts and compiles nothing. The editor/runtime boundary is frozen:
+The editor/runtime boundary is frozen:
 each particle carries two core buffers, `position` (vec3) and `lifecycle` (vec3 `[age, lifetime,
 id]`), a particle counts as dead once `age >= lifetime`, and everything else lives in ordinary
 `a_fx_<name>` attributes. The package exports the constants of that layout (`FX_AGE`, `FX_LIFETIME`,
@@ -246,6 +341,13 @@ counts) and throw with the parameter's name when violated. The checks live behin
 to `process` is guarded by a `typeof` check, which keeps the package safe without a bundler - under
 import maps or from a CDN.
 
+The same goes for the version check. Every exported module records the sparcoon version the editor
+compiled it against (`runtime` in its spec, and in the file header). When this runtime is of another
+minor version (below 1.0; from 1.0 on, another major or an older minor), the first effect built from
+the module logs a warning naming both versions. Patch versions never warn: a patch is a fix, so a
+module built on 0.12.3 plays on 0.12.1 and the other way round. `FX_RUNTIME_VERSION` is this runtime's
+version.
+
 A few values that are read once, when an emitter is built, are checked in every build instead,
 since a bad one would break the emitter outright rather than draw it wrong: the capacity (an integer
 of at least 1) and a trail's number of points and sampling interval. They throw a `RangeError`.
@@ -265,12 +367,10 @@ Babel or SWC as far as you need, down to first-generation iPad Pro hardware.
 
 ## What the runtime does not do
 
-- **It does not load assets.** You prepare the textures and geometries and pass them to the effect's
-  constructor. Freeing them is yours as well: the runtime never disposes resources it does not own.
-- **It contains no compiler, graph or validator.** All of that stays in the
-  [editor](https://github.com/jango-git/sparcoon-editor); only the result arrives here.
-- **It brings no lighting.** A lit graph reads the lights of your scene, so a lit effect needs a
-  light probe and a directional light nearby. The preview's own lighting rig is not exported.
+- **It does not load or free assets.** The runtime never disposes resources it does not own.
+- **It brings no lighting.** A lit graph shades with the lights of your scene - Lambert and Half-Lit
+  with all of three's lights, ambient shading with the ambient, hemisphere and light-probe ones - so
+  in a scene without them it comes out dark. The preview's own lighting rig is not exported.
 - **It does not decide your scene's draw order.** Depth sorting of particles is enabled per emitter
   and costs frame time.
 
@@ -293,10 +393,9 @@ npm test        # vitest run
 npm run lint
 ```
 
-## Status
+## Reporting bugs
 
-Pre-release, under active development. If you hit a bug, the most useful thing is a minimal
-reproduction plus the editor project `.json` it shows up on.
+The most useful thing is a minimal reproduction plus the editor project `.json` it shows up on.
 
 ## License
 

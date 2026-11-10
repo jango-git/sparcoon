@@ -1,5 +1,6 @@
 import type { Material } from "three";
-import { BufferAttribute, InstancedBufferGeometry, Mesh, type Texture } from "three";
+import { BufferAttribute, InstancedBufferGeometry, Mesh } from "three";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import {
@@ -95,7 +96,7 @@ export class FXTrail {
   constructor(
     private readonly history: FXTrailHistory,
     options: FXTrailOptions,
-    textures: Readonly<Record<string, Texture>> = {},
+    textures: Readonly<Record<string, FXExternalTexture>> = {},
   ) {
     assertValidTrailOptions(options, "FXTrail.constructor.options");
     this.frames = options.frames;

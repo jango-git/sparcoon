@@ -1,5 +1,6 @@
 import type { BufferGeometry, Texture } from "three";
 import { FXEffect } from "../../src/effect/FXEffect";
+import { FX_RUNTIME_VERSION } from "../../src/version";
 import type {
   FXEffectEmitterSpec,
   FXEffectMeshSpec,
@@ -58,6 +59,7 @@ export function meshSpec(name: string, over: Partial<FXEffectMeshSpec> = {}): FX
 /** A zero-length effect at the origin, with no emitters or meshes. Override any field. */
 export function effectSpec(over: Partial<FXEffectSpec> = {}): FXEffectSpec {
   return {
+    runtime: FX_RUNTIME_VERSION,
     duration: 0,
     fps: 30,
     transform: IDENTITY_TRANSFORM,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InterleavedBufferAttribute, ShaderMaterial, WebGLRenderer } from "three";
-import { PerspectiveCamera } from "three";
+import { PerspectiveCamera, Texture } from "three";
 import type {
   FXAttributeDecl,
   FXParticleKernelArtifact,
@@ -351,6 +351,41 @@ describe("trail history - JS backend", () => {
       expect(material.uniforms["u_param_glow"].value).toBe(0.75);
       // A name the new trail does not declare is not added to it.
       expect(material.uniforms["u_param_other"]).toBeUndefined();
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("rejects an external texture edit one material cannot take, changing neither", () => {
+    const sampled = (): FXRenderArtifact =>
+      unlitArtifact({
+        uniformDeclarations: ["uniform sampler2D u_param_sheet;"],
+        uniforms: { u_param_sheet: { type: "sampler2D", external: "u_param_sheet" } },
+        outputs: { albedo: "fxSample_u_param_sheet(vec2(0.5))" },
+      });
+    const sheet = new Texture();
+    const region = { texture: new Texture(), uvTransform: [1, 0, 0, 0, 1, 0] as const };
+    // The particles bind a region, the trail a whole texture: a region fits only the particles.
+    const emitter = FXEmitter.fromArtifacts(sampled(), movingBehavior(), {
+      textures: { u_param_sheet: region },
+      trail: trailOptions({ render: sampled() }),
+    });
+    try {
+      expect(() => emitter.applyTrailArtifact(trailOptions({ render: sampled() }), {})).toThrow(
+        /no texture supplied/,
+      );
+      emitter.applyTrailArtifact(trailOptions({ render: sampled() }), { u_param_sheet: sheet });
+      const particles = particlesOf(emitter).material as ShaderMaterial;
+      const next = { texture: new Texture(), uvTransform: [0.5, 0, 0, 0, 0.5, 0] as const };
+      expect(() => emitter.applyValues({ uniforms: { u_param_sheet: next } })).toThrow(
+        /bound to a whole texture/,
+      );
+      expect(particles.uniforms["u_param_sheet"].value).toBe(region.texture);
+      // Not kept for a later trail either: swapping one in still works.
+      emitter.applyTrailArtifact(trailOptions({ render: sampled() }), { u_param_sheet: sheet });
+      expect(
+        (trailOf(emitter).mesh.material as ShaderMaterial).uniforms["u_param_sheet"].value,
+      ).toBe(sheet);
     } finally {
       emitter.destroy();
     }

@@ -29,6 +29,7 @@ function litArtifact(): FXRenderArtifact {
   return {
     ...unlitArtifact(),
     lightingIntrinsics: ["fxLambertShade"],
+    sceneDepth: false,
     outputs: { albedo: "fxLambertShade(vec4(1.0), geometryNormal)" },
   };
 }

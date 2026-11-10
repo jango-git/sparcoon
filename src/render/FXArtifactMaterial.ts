@@ -1,10 +1,15 @@
-import type { Material, ShaderMaterial, Texture } from "three";
-import type { FXAttributeDecl, FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
+import type { Material, ShaderMaterial } from "three";
+import type { FXAttributeDecl, FXRenderArtifact } from "../artifact/FXArtifact.js";
 import {
+  applyArtifactUniformValues,
+  assertArtifactUniformValues,
   buildArtifactDepthMaterial,
   buildArtifactMaterial,
   buildTrailArtifactMaterial,
 } from "./FXArtifactMaterial.Internal.js";
+import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
+import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
+import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import type {
   FXFrameTimeUniform,
   FXFrameVec3Uniform,
@@ -28,7 +33,7 @@ export class FXArtifactMaterial {
   // Durable per-emitter slots for `external` texture uniforms. Unlike non-external uniforms (which
   // bind the shared artifact slot directly), an external uniform resolves per emitter, so it gets
   // its own slot here - and that slot is what gets bound, keeping it live-scrubbable.
-  private readonly externalSlots: Record<string, FXValueSlot<Texture>> = {};
+  private readonly externalSlots: FXExternalTextureBindings;
 
   /**
    * @param textures - App-supplied external textures by slot name. A missing one fails fast here
@@ -36,20 +41,14 @@ export class FXArtifactMaterial {
    */
   constructor(
     private readonly artifact: FXRenderArtifact,
-    textures: Readonly<Record<string, Texture>> = {},
+    textures: Readonly<Record<string, FXExternalTexture>> = {},
   ) {
-    for (const name in artifact.uniforms) {
-      const uniform = artifact.uniforms[name];
-      if ("external" in uniform) {
-        if (!(uniform.external in textures)) {
-          throw new Error(
-            `FXArtifactMaterial: no texture supplied for external slot "${uniform.external}" ` +
-              `(uniform "${name}"); pass it via FXEmitter.fromArtifacts({ textures })`,
-          );
-        }
-        this.externalSlots[name] = { value: textures[uniform.external] };
-      }
-    }
+    this.externalSlots = createExternalTextureBindings(
+      artifact,
+      textures,
+      "FXArtifactMaterial",
+      "pass it via FXEmitter.fromArtifacts({ textures })",
+    );
   }
 
   public get attributeReads(): readonly FXAttributeDecl[] {
@@ -120,21 +119,21 @@ export class FXArtifactMaterial {
   }
 
   /**
+   * Throws when {@link applyUniformValues} would reject `values` (an external texture of a variant
+   * its slot was not built with); writes nothing. Lets the emitter check its particle and trail
+   * materials both before either changes.
+   */
+  public assertUniformValues(values: Readonly<Record<string, FXUniformValue>>): void {
+    assertArtifactUniformValues(this.externalSlots, values);
+  }
+
+  /**
    * Render half of {@link FXEmitter.applyValues}. A non-external uniform mutates its shared artifact
    * slot (module-scoped); an external uniform mutates this emitter's own slot. Unknown name = no-op.
+   * @throws See {@link assertUniformValues}; nothing is written then.
    */
-  public applyUniformValues(
-    values: Readonly<Record<string, number | readonly number[] | Texture>>,
-  ): void {
-    for (const name in values) {
-      const value = values[name];
-      if (name in this.externalSlots) {
-        this.externalSlots[name].value = value as Texture;
-      } else if (name in this.artifact.uniforms) {
-        (this.artifact.uniforms[name] as FXValueSlot<number | readonly number[] | Texture>).value =
-          value;
-      }
-    }
+  public applyUniformValues(values: Readonly<Record<string, FXUniformValue>>): void {
+    applyArtifactUniformValues(this.artifact, this.externalSlots, values);
   }
 
   // No-op: the artifact owns no per-emitter resources. Generated textures are module-scoped and

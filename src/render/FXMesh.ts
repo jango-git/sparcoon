@@ -1,4 +1,5 @@
-import { Mesh, Quaternion, Vector3, type BufferGeometry, type Material, type Texture } from "three";
+import { Mesh, Quaternion, Vector3, type BufferGeometry, type Material } from "three";
+import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
@@ -8,7 +9,7 @@ import { FXMeshMaterial } from "./FXMeshMaterial.js";
 /** Options for {@link FXMesh.fromArtifact}. */
 export interface FXFromMeshArtifactOptions {
   /** External textures by slot name (a `{ type: "sampler2D", external }` uniform binds from here). */
-  readonly textures?: Readonly<Record<string, Texture>>;
+  readonly textures?: Readonly<Record<string, FXExternalTexture>>;
   /** Custom geometries by name, resolving a `{ type: "custom", external }` geometry source. */
   readonly geometries?: Readonly<Record<string, BufferGeometry>>;
   /** Cast a shape-aware shadow (builds a depth material from the render artifact). default false */
@@ -122,7 +123,7 @@ export class FXMesh extends Mesh {
   }
 
   /** Scrubs live uniform values by name (picked up next frame). Unknown name = safe no-op. */
-  public applyValues(values: Readonly<Record<string, number | readonly number[] | Texture>>): void {
+  public applyValues(values: Readonly<Record<string, FXUniformValue>>): void {
     if (this.destroyed) {
       return;
     }

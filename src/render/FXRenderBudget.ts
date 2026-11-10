@@ -16,6 +16,7 @@ import {
   jsHeldFields,
   particleLayout,
 } from "../emitter/FXEmitterDriver.Internal.js";
+import { FX_LIGHTING_INTRINSIC } from "./FXLightingIntrinsics.Internal.js";
 import { kernelSlotLayout } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import {
   buildArtifactDepthMaterial,
@@ -259,7 +260,8 @@ export function fxGraphVaryingAllowance(
 ): number {
   const noReads = { position: false, lifecycle: false, attributes: [] };
   const heaviest: FXRenderArtifact = {
-    lightingIntrinsics: ["fxLambertShade"],
+    lightingIntrinsics: [FX_LIGHTING_INTRINSIC.lambert],
+    sceneDepth: false,
     options: { renderMode: "alphaHash" },
     uniformDeclarations: [],
     varyings: [],

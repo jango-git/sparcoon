@@ -21,7 +21,7 @@ import { layoutOf, unlitArtifact } from "../helpers/artifacts";
 const UNIFORMS = [{ value: 0 }, { value: 0 }, { value: [0, 0, 0] }, { value: [0, 0, 0] }] as const;
 
 function lit(render: FXRenderArtifact): FXRenderArtifact {
-  return { ...render, lightingIntrinsics: ["lambert"] };
+  return { ...render, lightingIntrinsics: ["fxLambertShade"] };
 }
 
 /** A vec3 behavior attribute `tint`, read by the fragment stage or not. */

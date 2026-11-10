@@ -1,9 +1,13 @@
-import type { Material, Texture } from "three";
-import type { FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
+import type { Material } from "three";
+import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import {
+  applyArtifactUniformValues,
   buildMeshArtifactDepthMaterial,
   buildMeshArtifactMaterial,
 } from "./FXArtifactMaterial.Internal.js";
+import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
+import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
+import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import type { FXFrameTimeUniform, FXFrameVec3Uniform } from "./FXArtifactMaterial.Internal.js";
 
 /**
@@ -21,7 +25,7 @@ export class FXMeshMaterial {
 
   // Durable per-mesh slots for `external` texture uniforms: an external uniform resolves per mesh, so
   // it binds its own live-scrubbable slot (non-external uniforms bind the shared artifact slot).
-  private readonly externalSlots: Record<string, FXValueSlot<Texture>> = {};
+  private readonly externalSlots: FXExternalTextureBindings;
 
   /**
    * @param textures - App-supplied external textures by slot name. A missing one fails fast here
@@ -29,20 +33,14 @@ export class FXMeshMaterial {
    */
   constructor(
     private readonly artifact: FXRenderArtifact,
-    textures: Readonly<Record<string, Texture>> = {},
+    textures: Readonly<Record<string, FXExternalTexture>> = {},
   ) {
-    for (const name in artifact.uniforms) {
-      const uniform = artifact.uniforms[name];
-      if ("external" in uniform) {
-        if (!(uniform.external in textures)) {
-          throw new Error(
-            `FXMeshMaterial: no texture supplied for external slot "${uniform.external}" ` +
-              `(uniform "${name}"); pass it via the mesh host's textures`,
-          );
-        }
-        this.externalSlots[name] = { value: textures[uniform.external] };
-      }
-    }
+    this.externalSlots = createExternalTextureBindings(
+      artifact,
+      textures,
+      "FXMeshMaterial",
+      "pass it via the mesh host's textures",
+    );
   }
 
   public buildThreeMaterial(): Material {
@@ -92,19 +90,11 @@ export class FXMeshMaterial {
    * Applies a value edit (a rebind, no rebuild). A non-external uniform mutates its shared artifact
    * slot; an external uniform mutates this mesh's own slot. Unknown name = no-op (an editor<->runtime
    * name drift never corrupts values).
+   * @throws When an external texture is of a variant its slot was not built with; nothing is
+   * written then.
    */
-  public applyUniformValues(
-    values: Readonly<Record<string, number | readonly number[] | Texture>>,
-  ): void {
-    for (const name in values) {
-      const value = values[name];
-      if (name in this.externalSlots) {
-        this.externalSlots[name].value = value as Texture;
-      } else if (name in this.artifact.uniforms) {
-        (this.artifact.uniforms[name] as FXValueSlot<number | readonly number[] | Texture>).value =
-          value;
-      }
-    }
+  public applyUniformValues(values: Readonly<Record<string, FXUniformValue>>): void {
+    applyArtifactUniformValues(this.artifact, this.externalSlots, values);
   }
 
   // No-op: the artifact owns no per-mesh resources (generated textures are module-scoped; external

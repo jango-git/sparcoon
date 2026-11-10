@@ -1,4 +1,5 @@
-import type { BufferGeometry, Texture } from "three";
+import type { BufferGeometry } from "three";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 
 /**
  * Options for {@link FXEmitter.applyRenderArtifact}: the render-only subset of
@@ -7,7 +8,7 @@ import type { BufferGeometry, Texture } from "three";
  * owns `textures`/`geometries`' lifecycle; the runtime never disposes them.
  */
 export interface FXApplyRenderArtifactOptions {
-  readonly textures?: Record<string, Texture>;
+  readonly textures?: Record<string, FXExternalTexture>;
   readonly geometries?: Record<string, BufferGeometry>;
   /** default false */
   readonly receiveShadow?: boolean;

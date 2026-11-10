@@ -63,6 +63,7 @@ describe("fxDataTexture", () => {
 describe("render artifact - generated & external textures", () => {
   const withGeneratedTexture = (texture: Texture): FXRenderArtifact => ({
     lightingIntrinsics: [],
+    sceneDepth: false,
     uniformDeclarations: ["uniform sampler2D u_grad$0;"],
     varyings: [],
     vertex: {
@@ -83,6 +84,7 @@ describe("render artifact - generated & external textures", () => {
 
   const withExternalTexture = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
+    sceneDepth: false,
     uniformDeclarations: ["uniform sampler2D u_flame$0;"],
     varyings: [],
     vertex: {
@@ -118,6 +120,7 @@ describe("render artifact - generated & external textures", () => {
     const flame = new Texture();
     const render: FXRenderArtifact = {
       lightingIntrinsics: [],
+      sceneDepth: false,
       uniformDeclarations: ["uniform sampler2D u_grad$0;", "uniform sampler2D u_flame$1;"],
       varyings: [],
       vertex: {

@@ -1,4 +1,5 @@
-import type { Camera, Mesh, Texture, WebGLRenderer } from "three";
+import type { Camera, Mesh, WebGLRenderer } from "three";
+import type { FXUniformValue } from "../render/FXExternalTexture.js";
 import { Object3D, Quaternion, Vector3 } from "three";
 import type { FXEmitterTransform } from "../artifact/FXArtifact.js";
 import type { FXBehaviorArtifact, FXRenderArtifact } from "../artifact/FXArtifact.js";
@@ -23,6 +24,7 @@ import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
 import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
 import type {
   FXApplyValues,
+  FXEmissionBasis,
   FXEmitterBurstOptions,
   FXEmitterOptions,
   FXEmitterPlayOptions,
@@ -30,6 +32,8 @@ import type {
   FXSpawnOrigin,
 } from "./FXEmitter.Internal.js";
 import {
+  asEmissionBasis,
+  FX_EMISSION_BASES,
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
   EMITTER_DEFAULT_PREWARM_MAX_STEP_COUNT,
@@ -76,7 +80,7 @@ export class FXEmitter extends Object3D {
   private readonly trailLimitWarning: { warned: boolean };
   // The last value applyValues set per uniform name, for a trail built later (applyTrailArtifact)
   // to start from the values its parameters are being driven with, not its baked ones.
-  private readonly appliedUniforms: Record<string, number | readonly number[] | Texture> = {};
+  private readonly appliedUniforms: Record<string, FXUniformValue> = {};
 
   private nextHandler = 0;
   // The schedule - what will spawn later: delayed bursts and plays, each with its handler. `stop`
@@ -90,6 +94,7 @@ export class FXEmitter extends Object3D {
   private readonly activePlays: {
     handler: number;
     rate: number;
+    over: FXEmissionBasis;
     duration: number;
     elapsed: number;
     accumulator: number;
@@ -417,8 +422,9 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * Starts continuous emission at `rate` particles/second, from this emitter's pose as each tick
-   * finds it, or from `options.origin` for the whole play.
+   * Starts continuous emission at `rate` particles per second, or per world unit the emitter
+   * travels (`options.over`), from this emitter's pose as each tick finds it, or from
+   * `options.origin` for the whole play.
    * @returns Handler for {@link stop} to cancel.
    */
   public play(rate: number, options: Partial<FXEmitterPlayOptions> = {}): number {
@@ -426,7 +432,19 @@ export class FXEmitter extends Object3D {
     if (options.delay !== undefined) {
       assertValidNonNegativeNumber(options.delay, "FXEmitter.play.options.delay");
     }
+    // Checked at runtime too: a plain-JS host can pass any string.
+    const over = asEmissionBasis(options.over ?? "time");
+    if (over === undefined) {
+      throw new Error(
+        `FXEmitter.play.options.over: expected one of ${FX_EMISSION_BASES.map((basis) => `"${basis}"`).join(", ")}`,
+      );
+    }
     if (options.origin !== undefined) {
+      if (over === "distance") {
+        throw new Error(
+          "FXEmitter.play: a play over distance follows the emitter's pose, so it takes no origin",
+        );
+      }
       assertValidOrigin(options.origin, "FXEmitter.play.options.origin");
     }
     this.assertCanSpawn("FXEmitter.play");
@@ -438,6 +456,7 @@ export class FXEmitter extends Object3D {
     this.activePlays.push({
       handler,
       rate,
+      over,
       duration: options.duration ?? Infinity,
       elapsed: 0,
       accumulator: 0,
@@ -617,12 +636,19 @@ export class FXEmitter extends Object3D {
    * Scrubs live parameter values into uniform/binding slots by name, picked up next frame - the
    * runtime's value channel for a non-structural edit. Unknown name = safe no-op; never recompiles.
    * A structural edit is instead a fresh {@link fromArtifacts} (the editor decides which).
+   * @throws When an external texture is of a variant its slot was not built with (see
+   * {@link FXExternalTexture}); the particles, the trail and the values a later trail starts from
+   * are then all left as they were.
    */
   public applyValues(values: FXApplyValues): void {
     if (this.destroyed) {
       return;
     }
     if (values.uniforms !== undefined) {
+      // Both materials checked before either changes, and before the values are kept for a later
+      // trail: a rejected edit must not leave the trail out of step or poison applyTrailArtifact.
+      this.artifactMaterial.assertUniformValues(values.uniforms);
+      this.trail?.artifactMaterial.assertUniformValues(values.uniforms);
       Object.assign(this.appliedUniforms, values.uniforms);
       this.artifactMaterial.applyUniformValues(values.uniforms);
       // One parameter namespace per emitter: a name the trail graph declares too drives both.
@@ -817,6 +843,11 @@ export class FXEmitter extends Object3D {
       }
     }
 
+    // The distance the emitter's world position travels per second this tick, for plays over
+    // distance: the motion sampled above, so a reset or a loop's jump counts as no travel.
+    const velocity = this.emitterTransform.velocity;
+    const speed = Math.hypot(velocity[0], velocity[1], velocity[2]);
+
     for (let i = this.activePlays.length - 1; i >= 0; i--) {
       const play = this.activePlays[i];
       let effectiveDeltaTime = deltaTime;
@@ -842,7 +873,8 @@ export class FXEmitter extends Object3D {
       const emitDeltaTime = expired
         ? Math.max(0, play.duration - previousElapsed)
         : effectiveDeltaTime;
-      play.accumulator += play.rate * emitDeltaTime;
+      play.accumulator +=
+        play.rate * (play.over === "distance" ? speed * emitDeltaTime : emitDeltaTime);
       const particlesToSpawn = Math.floor(play.accumulator);
 
       if (particlesToSpawn > 0) {

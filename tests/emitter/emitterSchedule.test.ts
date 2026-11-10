@@ -81,6 +81,36 @@ describe("FXEmitter.play", () => {
       emitter.destroy();
     }
   });
+
+  it("over distance, counts per world unit the emitter travels, and nothing while it stands", () => {
+    const emitter = plainEmitter();
+    try {
+      emitter.play(4, { over: "distance" });
+      tickEmitter(emitter, 0.125); // the motion baseline: no travel yet
+      expect(emitter.particleCount).toBe(0);
+      emitter.position.set(1.5, 2, 0); // 2.5 units: 4 * 2.5 = 10
+      tickEmitter(emitter, 0.125);
+      expect(emitter.particleCount).toBe(10);
+      tickEmitter(emitter, 0.125);
+      expect(emitter.particleCount).toBe(10);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("over distance, rejects an origin, and rejects an unknown basis", () => {
+    const emitter = plainEmitter();
+    try {
+      expect(() => emitter.play(1, { over: "distance", origin: { position: [0, 0, 0] } })).toThrow(
+        /no origin/,
+      );
+      expect(() => emitter.play(1, { over: "space" as never })).toThrow(
+        /one of "time", "distance"/,
+      );
+    } finally {
+      emitter.destroy();
+    }
+  });
 });
 
 describe("FXEmitter.stop", () => {

@@ -1,17 +1,19 @@
-import type { BufferGeometry, Texture, WebGLRenderer } from "three";
+import type { BufferGeometry, WebGLRenderer } from "three";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import type { FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
 import type { FXEmitterOptions } from "./FXEmitter.Internal.js";
 import type { FXTrailOptions } from "../trail/FXTrail.js";
 
 /**
  * Options for {@link FXEmitter.fromArtifacts}: the emitter options plus external textures by slot -
- * a uniform declared `{ type: "sampler2D", external: "<slot>" }` binds from `textures[<slot>]` -
+ * a uniform declared `{ type: "sampler2D", external: "<slot>" }` binds from `textures[<slot>]` (a
+ * whole `Texture`, or a {@link FXTextureRegion} of one) -
  * and custom geometries by name, resolving a `{ type: "custom", external: "<name>" }` geometry
  * source from `geometries[<name>]`. The app owns both maps' lifecycle; the runtime never disposes
  * them.
  */
 export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
-  readonly textures?: Record<string, Texture>;
+  readonly textures?: Record<string, FXExternalTexture>;
   readonly geometries?: Record<string, BufferGeometry>;
   /**
    * The standard-tier (WebGL2, transform-feedback) behavior artifact, present only when the
