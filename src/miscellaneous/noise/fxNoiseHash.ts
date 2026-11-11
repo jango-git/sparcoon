@@ -18,3 +18,23 @@ export function pcg(v: number): number {
 export function unit(h: number): number {
   return (h >>> 8) * 5.9604644775390625e-8;
 }
+
+const floatBitsF32 = new Float32Array(1);
+const floatBitsU32 = new Uint32Array(floatBitsF32.buffer);
+
+/** The float32 bit pattern of `x` - GLSL's `floatBitsToUint`. */
+export function floatBits(x: number): number {
+  floatBitsF32[0] = x;
+  return floatBitsU32[0];
+}
+
+/** The seed hash's first PCG state: the seed's bits as a lattice point, mixed with the salt's. */
+export function seedKey(x: number, y: number, z: number, salt: number): number {
+  return pcg(
+    (Math.imul(floatBits(x), LATTICE_P0) ^
+      Math.imul(floatBits(y), LATTICE_P1) ^
+      Math.imul(floatBits(z), LATTICE_P2) ^
+      pcg(floatBits(salt))) >>>
+      0,
+  );
+}

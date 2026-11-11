@@ -8,6 +8,12 @@ import {
   fxFractal3,
 } from "../../src/miscellaneous/noise/fxFractalNoise";
 import { fxNoise1, fxNoise2, fxNoise3 } from "../../src/miscellaneous/noise/fxValueNoise";
+import {
+  fxSeedHash1,
+  fxSeedHash2,
+  fxSeedHash3,
+  fxSeedHash4,
+} from "../../src/miscellaneous/noise/fxSeedHash";
 import { fxVoronoi2, fxVoronoi3 } from "../../src/miscellaneous/noise/fxVoronoiNoise";
 
 // Golden values pin the arithmetic: compiled kernels call these by name, so a silent formula
@@ -179,5 +185,41 @@ describe("fxVoronoi2 / fxVoronoi3", () => {
   it("is the regular grid of cell centers at zero jitter", () => {
     expect(fxVoronoi2(3.5, -1.5, 0, 1, 0, 0)).toBe(0);
     expect(fxVoronoi2(3.5, -1.5, 0, 1, 0, 1)).toBe(1);
+  });
+});
+
+describe("fxSeedHash1..4", () => {
+  it("pin their current output (frozen contract)", () => {
+    expect(fxSeedHash1(0, 0, 0, 0)).toBe(0.19039934873580933);
+    expect(fxSeedHash1(7, 0, 0, 3)).toBe(0.9653053283691406);
+    expect(fxSeedHash2(1.5, -2.25, 0, 0, 0)).toBe(0.26789677143096924);
+    expect(fxSeedHash2(1.5, -2.25, 0, 0, 1)).toBe(0.016468703746795654);
+    expect(fxSeedHash4(3, 1, -1, 2, 0)).toBe(0.778420090675354);
+    expect(fxSeedHash4(3, 1, -1, 2, 3)).toBe(0.5215178728103638);
+  });
+
+  it("share their leading components across widths", () => {
+    const first = fxSeedHash1(4.25, -1, 9, 5);
+    expect(fxSeedHash2(4.25, -1, 9, 5, 0)).toBe(first);
+    expect(fxSeedHash4(4.25, -1, 9, 5, 0)).toBe(first);
+    expect(fxSeedHash4(4.25, -1, 9, 5, 2)).toBe(fxSeedHash3(4.25, -1, 9, 5, 2));
+  });
+
+  it("stay in [0, 1) and give another draw for another seed or salt", () => {
+    for (let i = 0; i < 2000; i++) {
+      for (let c = 0; c < 4; c++) {
+        const v = fxSeedHash4(i, i * 0.5, -i, i % 3, c);
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThan(1);
+      }
+    }
+    expect(fxSeedHash1(1, 0, 0, 0)).not.toBe(fxSeedHash1(2, 0, 0, 0));
+    expect(fxSeedHash1(1, 0, 0, 0)).not.toBe(fxSeedHash1(1, 0, 0, 1));
+  });
+
+  it("recompute when interleaved with other arguments (memo is per call)", () => {
+    const a = fxSeedHash3(1, 2, 3, 0, 1);
+    fxSeedHash3(4, 5, 6, 0, 1);
+    expect(fxSeedHash3(1, 2, 3, 0, 1)).toBe(a);
   });
 });

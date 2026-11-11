@@ -96,6 +96,12 @@ export {
   fxFractal3,
 } from "./miscellaneous/noise/fxFractalNoise.js";
 export { fxNoise1, fxNoise2, fxNoise3 } from "./miscellaneous/noise/fxValueNoise.js";
+export {
+  fxSeedHash1,
+  fxSeedHash2,
+  fxSeedHash3,
+  fxSeedHash4,
+} from "./miscellaneous/noise/fxSeedHash.js";
 export { fxVoronoi2, fxVoronoi3 } from "./miscellaneous/noise/fxVoronoiNoise.js";
 export { fxFract, fxMix, fxMod, fxSampleLut, fxSmoothstep } from "./miscellaneous/fxMath.js";
 export { fxDataTexture } from "./miscellaneous/texture/fxDataTexture.js";
