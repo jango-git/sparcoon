@@ -99,11 +99,12 @@ returns the effect to frame zero. The timeline loops, and seamlessly: particles 
 end of a lap finish their lives in the next one.
 
 An effect authored to play once - or played with `effect.play({ loop: false })` - instead holds its
-last frame at the end and dispatches `"finished"`. What is alive keeps flying out its lifetime, so
-hide or dispose the effect once that is done:
+last frame at the end and dispatches `"finished"`. What is alive keeps flying out its lifetime;
+once it is gone the effect dispatches `"drained"` (see [Reusing effects](#reusing-effects) for when
+it can), so hide, reuse or dispose it then:
 
 ```ts
-effect.addEventListener("finished", () => setTimeout(() => effect.dispose(), 1000));
+effect.addEventListener("drained", () => effect.dispose());
 effect.play({ loop: false });
 ```
 
@@ -330,56 +331,41 @@ again. Reuse effects instead - see below.
 An effect is built to be played many times: `stop()` kills every live particle at once, on both
 backends, and a stopped emitter skips its simulation until it spawns again. Keeping finished
 effects in a pool instead of disposing them saves the compile, the buffer allocations and the GPU
-kernel link of a new instance:
+kernel link of a new instance.
+
+Once a played-through effect has nothing left to show, it dispatches `"drained"`: the timeline
+finished, every particle died and every trail faded. That is when a pool takes it back:
 
 ```ts
 class Pool {
   private readonly idle: MyEffect[] = [];
-  private readonly finishing: { effect: MyEffect; left: number }[] = [];
 
-  constructor(
-    private readonly build: () => MyEffect,
-    private readonly tail: number,
-  ) {}
+  constructor(private readonly build: () => MyEffect) {}
 
   play(scene: Scene, position: Vector3): void {
     const effect = this.idle.pop() ?? this.build();
     effect.position.copy(position);
     scene.add(effect);
-    effect.addEventListener("finished", () => this.finishing.push({ effect, left: this.tail }), {
-      once: true,
-    });
+    effect.addEventListener(
+      "drained",
+      () => {
+        effect.stop();
+        effect.removeFromParent();
+        this.idle.push(effect);
+      },
+      { once: true },
+    );
     effect.play({ loop: false });
   }
-
-  // The timeline is over, its particles are not: they get `tail` more seconds of world time.
-  update(deltaSeconds: number): void {
-    for (let i = this.finishing.length - 1; i >= 0; i--) {
-      const entry = this.finishing[i];
-      entry.left -= deltaSeconds;
-      if (entry.left <= 0) {
-        this.finishing.splice(i, 1);
-        entry.effect.stop();
-        entry.effect.removeFromParent();
-        this.idle.push(entry.effect);
-      }
-    }
-  }
-}
-
-const explosions = new Pool(() => new MyEffect(assets, { renderer, camera }), 1.5);
-
-function frame(deltaSeconds: number): void {
-  FXWorld.update(deltaSeconds);
-  explosions.update(deltaSeconds); // the same delta: a paused or slowed world waits too
-  renderer.render(scene, camera);
 }
 ```
 
-- **Tail.** `"finished"` marks the end of the timeline, not of the particles. A GPU-driven
-  emitter's particles never leave the GPU, so the runtime cannot tell when the last one died: the
-  tail is the longest particle lifetime, which the effect's author knows. Count it in the world's
-  time, not with a timer: particles age only while their world is updated.
+- **When `"drained"` comes.** An emitter knows its particles are gone only from the longest
+  lifetime they can be born with, which the editor exports when it can tell: a Lifetime node with
+  its min and max typed in. A lifetime fed by a graph or a parameter has no such bound, the editor
+  warns about it on the spawn sink, and that effect never drains by itself - count its tail after
+  `"finished"` yourself, in the world's time (the delta you pass to `FXWorld.update`), and call
+  `stop()`.
 - **What a replay resets:** the timeline, live particles, everything scheduled and the motion
   baseline. **What it keeps:** the root's transform, parameters set with `setEmitterParam` /
   `setMeshParam`, and event listeners - hence `{ once: true }`.

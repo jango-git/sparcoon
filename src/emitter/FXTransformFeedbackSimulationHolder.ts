@@ -16,6 +16,7 @@ import {
   type FXSlotLayout,
   type FXTransformFeedbackParticle,
 } from "../instancedParticle/FXTransformFeedbackParticle.js";
+import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
 import {
   acquireKernelProgram,
   type FXKernelProgramLease,
@@ -83,8 +84,8 @@ export class FXTransformFeedbackSimulationHolder {
 
     // A dedicated VAO for this simulation pass only - never one three.js's own WebGLBindingStates
     // manages, so raw attribute setup here can never corrupt a mesh's cached vertex state. This
-    // is exactly the raw gl.bindVertexArray() call whose effect on three's VAO cache `tick()`'s
-    // closing `resetState()` call exists to correct (see that call site's own doc comment).
+    // is exactly the raw gl.bindVertexArray() call whose effect on three's VAO cache the deferred
+    // state reset that ends every pass exists to correct (see `tick()`).
     this.vao = gl.createVertexArray();
   }
 
@@ -122,11 +123,9 @@ export class FXTransformFeedbackSimulationHolder {
     this.spawnIdBase += spawnRange.count;
 
     // Our raw gl.bindVertexArray() call above is invisible to three's own VAO-identity cache
-    // (WebGLBindingStates has no scoped, public way to invalidate just this mesh's entry) -
-    // resetState() is the only public lever, so it runs every tick. Per-emitter for now, not
-    // batched across every GPU-driven emitter into one call per frame - a real, deferred
-    // optimization, not required for correctness.
-    this.renderer.resetState();
+    // (WebGLBindingStates has no scoped, public way to invalidate just this mesh's entry) - the
+    // world resets three's state once its tick is done.
+    deferStateReset(this.renderer);
   }
 
   /**
@@ -205,7 +204,7 @@ export class FXTransformFeedbackSimulationHolder {
 
     this.spawnIdBase += births;
     // Same reason as in tick(): the raw VAO bind is invisible to three's caches.
-    this.renderer.resetState();
+    deferStateReset(this.renderer);
   }
 
   public destroy(): void {
@@ -231,7 +230,7 @@ export class FXTransformFeedbackSimulationHolder {
     // `WebGLState.currentProgram` cache stays truthful - its own next draw then correctly detects
     // the mismatch and re-binds, with no reset needed for this half of the state-hygiene problem.
     // The other half (the VAO-identity cache) has no such setter - see the raw
-    // gl.bindVertexArray() call below and the resetState() that ends every pass.
+    // gl.bindVertexArray() call below and the deferred state reset that ends every pass.
     this.renderer.state.useProgram(this.programLease.program);
     gl.bindVertexArray(this.vao);
 

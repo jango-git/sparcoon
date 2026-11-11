@@ -50,12 +50,17 @@ afterEach(() => {
 });
 
 /** An emitter built with `gpuKernel` on a mock renderer, in a world of its own. */
+function newWorld(): FXWorld {
+  const world = new FXWorld();
+  worlds.push(world);
+  return world;
+}
+
 function emitterOn(
   mock: MockRenderer,
   options: { gpuKernel?: FXParticleKernelArtifact; capacity?: number } = {},
+  world: FXWorld = newWorld(),
 ): { emitter: FXEmitter; world: FXWorld } {
-  const world = new FXWorld();
-  worlds.push(world);
   const emitter = FXEmitter.fromArtifacts(
     unlitArtifact(),
     behaviorArtifact({ lifetime: 5 }),
@@ -178,6 +183,52 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       [0, 16],
       [0, 16],
     ]);
+  });
+});
+
+describe("three state reset after GPU passes", () => {
+  it("resets each renderer once per world update, however many GPU emitters ticked", () => {
+    const mock = mockRenderer();
+    const first = emitterOn(mock, {});
+    const second = emitterOn(mock, {}, first.world);
+    first.emitter.burst(1);
+    second.emitter.burst(1);
+    first.world.update(1 / 60);
+    expect(draws(mock.gl)).toHaveLength(2);
+    expect(callsNamed(mock.gl, "resetState")).toHaveLength(1);
+  });
+
+  it("resets before the world hands out deaths, and after a throw mid-tick", () => {
+    const mock = mockRenderer();
+    const { emitter, world } = emitterOn(mock, {});
+    const resetsSeen: number[] = [];
+    let fail = false;
+    world.registerObject({
+      onWorldTick: () => {
+        if (fail) {
+          throw new Error("host failure");
+        }
+      },
+      afterWorldTick: () => resetsSeen.push(callsNamed(mock.gl, "resetState").length),
+      destroy: () => undefined,
+    });
+    emitter.burst(1);
+    world.update(1 / 60);
+    expect(resetsSeen).toEqual([1]);
+
+    fail = true;
+    expect(() => {
+      world.update(1 / 60);
+    }).toThrow("host failure");
+    expect(callsNamed(mock.gl, "resetState")).toHaveLength(2);
+  });
+
+  it("prewarm() resets once at its end, outside any world update", () => {
+    const { emitter, gl } = gpuEmitter(8);
+    emitter.burst(1);
+    emitter.prewarm(0.1);
+    expect(draws(gl).length).toBeGreaterThan(1);
+    expect(callsNamed(gl, "resetState")).toHaveLength(1);
   });
 });
 

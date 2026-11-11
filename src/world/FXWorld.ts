@@ -1,5 +1,6 @@
 import type { FXEffect } from "../effect/FXEffect.js";
 import { EMITTER_TIME_WRAP_PERIOD } from "../emitter/FXEmitter.Internal.js";
+import { flushStateResets } from "../render/FXDeferredStateReset.Internal.js";
 
 /**
  * A world-registered renderable driven once per frame: an emitter or a VFX mesh. `onWorldTick` reads
@@ -74,8 +75,14 @@ export class FXWorld {
     // Wrap the clock so a float32 `u_time` keeps sub-millisecond resolution in long sessions, then
     // tick every registered object once with the shared clock.
     this.elapsedTime = (this.elapsedTime + deltaTime) % EMITTER_TIME_WRAP_PERIOD;
-    for (const object of this.objects) {
-      object.onWorldTick(deltaTime, this.elapsedTime);
+    try {
+      for (const object of this.objects) {
+        object.onWorldTick(deltaTime, this.elapsedTime);
+      }
+    } finally {
+      // Before any listener below runs host code that may draw; also after a throw, or the next
+      // frame would draw through three's stale state.
+      flushStateResets();
     }
     // Iterated live: a death listener may dispose an object (or the whole world). One skipped
     // that way hands its deaths out next frame - nothing is lost.

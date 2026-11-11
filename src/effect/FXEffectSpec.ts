@@ -86,6 +86,8 @@ export interface FXEffectEmitterSpec {
    */
   readonly gpuBehavior?: FXParticleKernelArtifact;
   readonly expectedCapacity: number;
+  /** See `FXEmitterOptions.maxLifetime`; absent when the editor could not bound the lifetime. */
+  readonly maxLifetime?: number;
   readonly sortInterval: number;
   /**
    * A trail behind every particle (the emitter's trail graph), absent when the emitter has none.
@@ -188,6 +190,12 @@ export interface FXEffectEventMap extends Object3DEventMap {
    * by one of zero duration.
    */
   finished: object;
+  /**
+   * After `"finished"`: every particle and trail is gone and every emitter settled, so the effect
+   * can be stopped and reused. Comes only when every emitter has a `maxLifetime` - one without it
+   * never settles by itself. VFX meshes stay drawn.
+   */
+  drained: object;
 }
 
 /** Options shared by every {@link FXEffect}. */

@@ -15,6 +15,7 @@ import {
   assertValidPositiveNumber,
 } from "../miscellaneous/asserts.js";
 import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import { flushStateResets } from "../render/FXDeferredStateReset.Internal.js";
 import type { FXRenderBudget } from "../render/FXRenderBudget.js";
 import type { FXTrailOptions } from "../trail/FXTrail.js";
 import { assertValidTrailOptions, FXTrail } from "../trail/FXTrail.js";
@@ -104,9 +105,13 @@ export class FXEmitter extends Object3D {
   // Births that are due and wait for this emitter's tick to seed them, in call order - the only way
   // particles are born (see tick). Not cancellable: only `reset` drops them.
   private readonly dueBirths: FXDueBirth[] = [];
-  // Nothing alive and nothing to fade: true from construction and after `reset` until the next
-  // birth. A natural death never sets it - a GPU emitter cannot see one.
+  // Nothing alive and nothing to fade: true from construction and after `settle` until the next
+  // birth.
   private settled = true;
+  // See FXEmitterOptions.maxLifetime. Advanced at the start of a tick, before its births zero it,
+  // so no particle is older than it.
+  private readonly maxLifetime: number | undefined;
+  private sinceLastBirth = 0;
 
   // Particle-death listeners, and the deaths ticks found (position xyz, velocity xyz, flat), handed
   // out after the whole world ticked (afterWorldTick). Two queues swapped per hand-out: a death is
@@ -163,6 +168,13 @@ export class FXEmitter extends Object3D {
     // Every check that can throw comes first, before this emitter owns anything of its own (the
     // caller, fromArtifacts, releases the driver and trail it handed in).
     this.assertCanSpawn("FXEmitter.constructor");
+    if (options.maxLifetime !== undefined) {
+      assertValidNonNegativeNumber(
+        options.maxLifetime,
+        "FXEmitter.constructor.options.maxLifetime",
+      );
+    }
+    this.maxLifetime = options.maxLifetime;
     this.sortCamera = options.sortCamera;
     this.sortFraction = EMITTER_DEFAULT_SORT_FRACTION;
     if (options.sortFraction !== undefined) {
@@ -187,6 +199,12 @@ export class FXEmitter extends Object3D {
       this.add(trail.mesh);
     }
     this.world.registerObject(this);
+  }
+
+  /** Whether the emitter has nothing alive, drawn or scheduled, and skips its ticks until its next
+   *  birth. */
+  public get isSettled(): boolean {
+    return this.settled && !this.hasScheduledBirths();
   }
 
   /** Exact live count for a JS-driven emitter; for a GPU-driven one, there is no CPU-visible live
@@ -587,10 +605,15 @@ export class FXEmitter extends Object3D {
     const step = duration / stepCount;
     let remaining = duration;
 
-    while (remaining > 0) {
-      const deltaTime = Math.min(remaining, step);
-      this.tick(deltaTime);
-      remaining -= deltaTime;
+    try {
+      while (remaining > 0) {
+        const deltaTime = Math.min(remaining, step);
+        this.tick(deltaTime);
+        remaining -= deltaTime;
+      }
+    } finally {
+      // Outside the world's tick, so its reset is this call's to make.
+      flushStateResets();
     }
     // Deaths of a simulated past are not events: nothing should spawn where they happened.
     this.pendingDeaths.length = 0;
@@ -609,9 +632,7 @@ export class FXEmitter extends Object3D {
     this.dueBirths.length = 0;
     this.pendingDeaths.length = 0;
     this.dispatchingDeaths.length = 0;
-    this.driver.reset();
-    this.trail?.reset();
-    this.settled = true;
+    this.settle();
     // A restarted effect should not report a teleport spike from wherever the emitter was last
     // posed - drop the velocity/angular-velocity baseline along with the particles.
     this.motionTracker.reset();
@@ -807,12 +828,7 @@ export class FXEmitter extends Object3D {
     this.emitterTransform.angularVelocity[1] = motion.angularVelocity[1];
     this.emitterTransform.angularVelocity[2] = motion.angularVelocity[2];
 
-    if (
-      this.settled &&
-      this.dueBirths.length === 0 &&
-      this.pendingBursts.length === 0 &&
-      this.activePlays.length === 0
-    ) {
+    if (this.isSettled) {
       return;
     }
 
@@ -828,6 +844,8 @@ export class FXEmitter extends Object3D {
       this.dueBirths.length = 0;
       return;
     }
+
+    this.sinceLastBirth += deltaTime;
 
     // One order on both backends: update, then the births at this tick's pose (on the GPU, one
     // range of the tick's single pass), then every birth at another pose (one GPU pass each) -
@@ -904,11 +922,39 @@ export class FXEmitter extends Object3D {
     }
     elsewhere.length = 0;
     this.trail?.record(deltaTime);
+    if (this.diedOut(deltaTime)) {
+      this.settle();
+    }
   }
 
   private seed(count: number, transform: FXEmitterTransform): void {
     this.settled = false;
+    this.sinceLastBirth = 0;
     this.driver.spawn(count, transform);
+  }
+
+  private hasScheduledBirths(): boolean {
+    return (
+      this.dueBirths.length > 0 || this.pendingBursts.length > 0 || this.activePlays.length > 0
+    );
+  }
+
+  // Every particle was already past `maxLifetime` a tick ago - a whole tick, so a float32 age that
+  // rounded short of its lifetime is dead too - with nothing due to be born, and every point the
+  // trail still draws was recorded after that: settling now cuts nothing visible.
+  private diedOut(deltaTime: number): boolean {
+    if (this.settled || this.maxLifetime === undefined || this.hasScheduledBirths()) {
+      return false;
+    }
+    const sinceDeath = this.sinceLastBirth - deltaTime - this.maxLifetime;
+    return sinceDeath >= 0 && (this.trail === undefined || this.trail.oldestPointAge <= sinceDeath);
+  }
+
+  // Deaths already found stay queued for afterWorldTick: settling is no death of its own.
+  private settle(): void {
+    this.driver.reset();
+    this.trail?.reset();
+    this.settled = true;
   }
 
   // A scheduled spawn (a delayed burst expiring, a play's accumulator) inside a tick: at the

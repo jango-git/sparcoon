@@ -11,11 +11,12 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../../src/behaviorTransformFeedbackLayout";
+import { flushStateResets } from "../../src/render/FXDeferredStateReset.Internal";
 import { IDENTITY_EMITTER_TRANSFORM } from "../helpers/artifacts";
 import { callsNamed, mockRenderer, type MockRenderer } from "../helpers/mockWebGL";
 
 // The mock context proves the JS-side orchestration: call order (useProgram before bindVertexArray,
-// RASTERIZER_DISCARD and transform feedback strictly bracketing the draw, resetState() last), the
+// RASTERIZER_DISCARD and transform feedback strictly bracketing the draw, three's state reset owed), the
 // per-tick rand-seed advance, and that the buffer pair swaps exactly once per tick.
 
 function baseQuad(): BufferGeometry {
@@ -181,8 +182,10 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       expect(beginIndex).toBeLessThan(drawIndex);
       expect(drawIndex).toBeLessThan(endIndex);
       expect(endIndex).toBeLessThan(disableIndex);
-      // resetState is the very last thing this tick does.
-      expect(resetIndex).toBe(names.length - 1);
+      // Owed, not made: the world resets once its whole tick is done.
+      expect(resetIndex).toBe(-1);
+      flushStateResets();
+      expect(callsNamed(mock.gl, "resetState")).toHaveLength(1);
 
       // The program is bound through the renderer's own cache-aware setter, never raw
       // gl.useProgram - and before the (raw) VAO bind, since attribute setup depends on it.
@@ -301,7 +304,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
         3 * 12,
         4 * 12,
       ]);
-      expect(names[names.length - 1]).toBe("resetState");
+      expect(names).not.toContain("resetState");
       // No swap: the slots outside the range keep the read half they already had.
       expect(mesh.readBuffer()).toBe(read);
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM)).toBe(0);

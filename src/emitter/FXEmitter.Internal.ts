@@ -33,6 +33,12 @@ export interface FXEmitterOptions {
   sortCamera: Camera;
   /** Fraction of frames sorting runs on (`1` = every frame, `0.1` = ~every 10th). default 0.1 */
   sortFraction: number;
+  /**
+   * The longest lifetime any particle can be born with, in seconds. Given it, the emitter settles
+   * by itself - no simulation, nothing drawn - once that long has passed since its last birth,
+   * nothing is scheduled and its trail shows nothing older. Without it only `reset` settles it.
+   */
+  maxLifetime: number;
 }
 
 /**

@@ -126,6 +126,19 @@ export class FXTrail {
     this.mesh.name = "FXTrail";
   }
 
+  /** Seconds since the oldest point it still draws was recorded; 0 before its first record. */
+  public get oldestPointAge(): number {
+    // A frame not recorded since the reset reads 0 (every record is at a clock past 0) and holds
+    // no point; one lap on, the oldest recorded frame is the tail.
+    let oldest = this.clock;
+    for (const recordedAt of this.recordedAt) {
+      if (recordedAt > 0 && recordedAt < oldest) {
+        oldest = recordedAt;
+      }
+    }
+    return this.clock - oldest;
+  }
+
   /** The per-emitter material driver, for the clock, motion and parameter values. */
   public get artifactMaterial(): FXArtifactMaterial {
     return this.material;

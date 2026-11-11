@@ -275,6 +275,8 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
   // timeline then holds the last frame while particles and mesh clocks run on.
   private looping = true;
   private ended = false;
+  // `"drained"` went out for this playback.
+  private drained = false;
   private disposed = false;
 
   // Reused decompose scratch for the per-mesh motion diff (avoids a per-tick allocation); scale
@@ -320,6 +322,9 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           textures,
           geometries,
           expectedCapacity: emitterSpec.expectedCapacity,
+          ...(emitterSpec.maxLifetime === undefined
+            ? {}
+            : { maxLifetime: emitterSpec.maxLifetime }),
           castShadow: emitterSpec.castShadow ?? false,
           receiveShadow: emitterSpec.receiveShadow ?? false,
           // Only offered on an actual WebGL2 negotiation - the same `isWebGL2` signal already
@@ -431,6 +436,11 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     const simulationDelta = this.playing ? deltaSeconds : 0;
     if (this.playing && !this.ended) {
       this.advance(deltaSeconds);
+    }
+    // The emitters tick after this, so a drain shows here a frame late.
+    if (this.ended && !this.drained && this.emitters.every((emitter) => emitter.isSettled)) {
+      this.drained = true;
+      this.dispatchEvent({ type: "drained" });
     }
     this.meshClock += simulationDelta;
     for (let i = 0; i < this.meshes.length; i += 1) {
@@ -593,6 +603,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     this.lastTime = 0;
     this.lastFrame = -1;
     this.ended = false;
+    this.drained = false;
     // meshClock is deliberately NOT reset: a mesh's time-driven shader runs on monotonic sim time,
     // decoupled from the timeline playhead, so a replay does not snap its phase back. The motion
     // trackers ARE reset - unlike meshClock's phase, a restarted effect should not report a
