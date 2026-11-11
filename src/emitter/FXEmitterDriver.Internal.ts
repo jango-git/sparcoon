@@ -69,9 +69,7 @@ export interface FXEmitterDriver {
    *  CPU-visible positions) and warns once instead. */
   sortByDistance(cameraWorldPosition: Vector3): void;
   applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void;
-  /** Kills all live particles and rewinds the ring cursor; already-alive GPU particles age out
-   *  naturally instead (no CPU-visible state to zero immediately - see
-   *  `FXTransformFeedbackParticle.drop`'s own doc comment). */
+  /** Kills all live particles and rewinds the ring cursor. */
   reset(): void;
   /**
    * Swaps this driver's material and base geometry in place for a render-only structural edit

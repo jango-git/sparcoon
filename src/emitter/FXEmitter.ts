@@ -104,6 +104,9 @@ export class FXEmitter extends Object3D {
   // Births that are due and wait for this emitter's tick to seed them, in call order - the only way
   // particles are born (see tick). Not cancellable: only `reset` drops them.
   private readonly dueBirths: FXDueBirth[] = [];
+  // Nothing alive and nothing to fade: true from construction and after `reset` until the next
+  // birth. A natural death never sets it - a GPU emitter cannot see one.
+  private settled = true;
 
   // Particle-death listeners, and the deaths ticks found (position xyz, velocity xyz, flat), handed
   // out after the whole world ticked (afterWorldTick). Two queues swapped per hand-out: a death is
@@ -594,11 +597,8 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * Kills all live particles and cancels all active plays and pending bursts. For a GPU-driven
-   * emitter this is a known-narrower reset (see the mesh's own `drop()` doc comment): there is no
-   * CPU-visible per-particle state to instantly zero, so already-alive particles keep aging out
-   * naturally rather than vanishing on this call's own frame - only the spawn cursor and pending
-   * schedule reset immediately.
+   * Kills all live particles and cancels all active plays and pending bursts. Until the next birth
+   * the emitter then has nothing to simulate, and skips its ticks.
    */
   public reset(): void {
     if (this.destroyed) {
@@ -611,6 +611,7 @@ export class FXEmitter extends Object3D {
     this.dispatchingDeaths.length = 0;
     this.driver.reset();
     this.trail?.reset();
+    this.settled = true;
     // A restarted effect should not report a teleport spike from wherever the emitter was last
     // posed - drop the velocity/angular-velocity baseline along with the particles.
     this.motionTracker.reset();
@@ -806,6 +807,15 @@ export class FXEmitter extends Object3D {
     this.emitterTransform.angularVelocity[1] = motion.angularVelocity[1];
     this.emitterTransform.angularVelocity[2] = motion.angularVelocity[2];
 
+    if (
+      this.settled &&
+      this.dueBirths.length === 0 &&
+      this.pendingBursts.length === 0 &&
+      this.activePlays.length === 0
+    ) {
+      return;
+    }
+
     const transform = this.worldTransform();
     // Paused (dt == 0): skip the simulation step entirely - no JS age/kernel update, no GPU
     // transform-feedback dispatch, no schedule advance - the emitter keeps rendering whatever
@@ -813,7 +823,7 @@ export class FXEmitter extends Object3D {
     // on its own outside a tick (a host's burst while paused shows at once).
     if (deltaTime <= 0) {
       for (const birth of this.dueBirths) {
-        this.driver.spawn(birth.count, poseOf(birth, transform));
+        this.seed(birth.count, poseOf(birth, transform));
       }
       this.dueBirths.length = 0;
       return;
@@ -827,7 +837,7 @@ export class FXEmitter extends Object3D {
 
     for (const birth of this.dueBirths) {
       if (birth.matrix !== undefined && sameMatrix(birth.matrix, transform.worldMatrix)) {
-        this.driver.spawn(birth.count, transform);
+        this.seed(birth.count, transform);
       } else {
         elsewhere.push(birth);
       }
@@ -890,10 +900,15 @@ export class FXEmitter extends Object3D {
 
     this.driver.endTick(deltaTime, transform);
     for (const birth of elsewhere) {
-      this.driver.spawn(birth.count, poseOf(birth, transform));
+      this.seed(birth.count, poseOf(birth, transform));
     }
     elsewhere.length = 0;
     this.trail?.record(deltaTime);
+  }
+
+  private seed(count: number, transform: FXEmitterTransform): void {
+    this.settled = false;
+    this.driver.spawn(count, transform);
   }
 
   // A scheduled spawn (a delayed burst expiring, a play's accumulator) inside a tick: at the
@@ -904,7 +919,7 @@ export class FXEmitter extends Object3D {
     transform: FXEmitterTransform,
   ): void {
     if (origin === undefined) {
-      this.driver.spawn(count, transform);
+      this.seed(count, transform);
     } else {
       this.birthsElsewhere.push({ count, matrix: undefined, origin });
     }

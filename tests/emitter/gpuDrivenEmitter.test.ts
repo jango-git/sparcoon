@@ -171,6 +171,7 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       "a_pack1",
       "a_pack2",
     ]);
+    emitter.burst(1);
     world.update(1 / 60);
     world.update(1 / 60);
     expect(draws(mock.gl)).toEqual([
@@ -286,6 +287,37 @@ describe("FXEmitter GPU spawn passes", () => {
     expect(gl.uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(5);
   });
 
+  it("reset() kills every live particle at once: both halves zeroed, nothing drawn", () => {
+    const { emitter, world, gl } = gpuEmitter(32);
+    const drawn = (): number =>
+      (gpuParticlesOf(emitter).geometry as unknown as { instanceCount: number }).instanceCount;
+    emitter.burst(5);
+    world.update(1 / 60);
+    expect(drawn()).toBe(32);
+
+    gl.calls.length = 0;
+    emitter.reset();
+    expect(callsNamed(gl, "bufferData")).toHaveLength(2);
+    expect(drawn()).toBe(0);
+  });
+
+  it("skips its ticks while reset and not spawned since, and resumes with the next birth", () => {
+    const { emitter, world, gl } = gpuEmitter(32);
+    world.update(1 / 60);
+    expect(draws(gl)).toEqual([]);
+
+    emitter.burst(1, { delay: 0.02 });
+    world.update(1 / 60); // the delay counts down
+    world.update(1 / 60); // the burst lands
+    world.update(1 / 60);
+    expect(draws(gl)).toHaveLength(3);
+
+    emitter.reset();
+    gl.calls.length = 0;
+    world.update(1 / 60);
+    expect(draws(gl)).toEqual([]);
+  });
+
   it("reset() rewinds the spawn cursor, so the next burst starts at slot 0 again", () => {
     const { emitter, world, gl } = gpuEmitter(32);
     emitter.burst(5);
@@ -304,6 +336,7 @@ describe("FXEmitter GPU driver", () => {
     const mock = mockRenderer();
     const gravity = kernel(undefined, { b_gravity$0: { value: -2 } });
     const { emitter, world } = emitterOn(mock, { gpuKernel: gravity });
+    emitter.burst(1);
     world.update(1 / 60);
     expect(mock.gl.uniforms.get("b_gravity$0")).toBe(-2);
 
@@ -319,6 +352,7 @@ describe("FXEmitter GPU driver", () => {
     const { emitter, world, gl } = gpuEmitter(8);
     emitter.sortCamera = new PerspectiveCamera();
     emitter.sortFraction = 1;
+    emitter.burst(1);
     world.update(1 / 60);
     world.update(1 / 60);
     expect(warn).toHaveBeenCalledTimes(1);

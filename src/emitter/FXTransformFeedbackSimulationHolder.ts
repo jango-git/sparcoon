@@ -16,6 +16,10 @@ import {
   type FXSlotLayout,
   type FXTransformFeedbackParticle,
 } from "../instancedParticle/FXTransformFeedbackParticle.js";
+import {
+  acquireKernelProgram,
+  type FXKernelProgramLease,
+} from "./FXKernelProgramCache.Internal.js";
 
 /** WebGL's cap on a vertex attribute stride, in bytes - one particle's slot is that stride. */
 const MAX_VERTEX_STRIDE_BYTES = 255;
@@ -36,7 +40,7 @@ export class FXTransformFeedbackSimulationHolder {
   public readonly layout: FXSlotLayout;
 
   private readonly gl: WebGL2RenderingContext;
-  private readonly program: WebGLProgram;
+  private readonly programLease: FXKernelProgramLease;
   private readonly vao: WebGLVertexArrayObject;
   private readonly uniformLocations: Record<string, WebGLUniformLocation | null> = {};
 
@@ -66,36 +70,9 @@ export class FXTransformFeedbackSimulationHolder {
     this.layout = kernelSlotLayout(artifact.buffers);
     assertFitsTransformFeedback(gl, this.layout);
 
-    const vertexShader = compileShader(gl, gl.VERTEX_SHADER, artifact.vertexSource);
-    let fragmentShader: WebGLShader;
-    try {
-      fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, artifact.fragmentSource);
-    } catch (error) {
-      // compileShader deletes only the shader it failed on.
-      gl.deleteShader(vertexShader);
-      throw error;
-    }
-    const program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    // Must be called before linking (WebGL2 spec). The varyings come in buffer order, so the
-    // interleaved capture writes exactly the slot layout.
-    gl.transformFeedbackVaryings(
-      program,
-      [...artifact.transformFeedbackVaryings],
-      gl.INTERLEAVED_ATTRIBS,
-    );
-    gl.linkProgram(program);
-    // Shaders are safe to delete once linked - GL keeps them alive by refcount until the program
-    // itself is deleted, regardless of link success.
-    gl.deleteShader(vertexShader);
-    gl.deleteShader(fragmentShader);
-    if (gl.getProgramParameter(program, gl.LINK_STATUS) !== true) {
-      const info = gl.getProgramInfoLog(program);
-      gl.deleteProgram(program);
-      throw new Error(`FXTransformFeedbackSimulationHolder: program failed to link: ${info ?? ""}`);
-    }
-    this.program = program;
+    // Shared by every holder of this kernel: safe, as every pass sets all of its uniforms.
+    this.programLease = acquireKernelProgram(gl, artifact);
+    const program = this.programLease.program;
 
     for (const name of FIXED_UNIFORM_NAMES) {
       this.uniformLocations[name] = gl.getUniformLocation(program, name);
@@ -232,7 +209,7 @@ export class FXTransformFeedbackSimulationHolder {
   }
 
   public destroy(): void {
-    this.gl.deleteProgram(this.program);
+    this.programLease.release();
     this.gl.deleteVertexArray(this.vao);
   }
 
@@ -255,7 +232,7 @@ export class FXTransformFeedbackSimulationHolder {
     // the mismatch and re-binds, with no reset needed for this half of the state-hygiene problem.
     // The other half (the VAO-identity cache) has no such setter - see the raw
     // gl.bindVertexArray() call below and the resetState() that ends every pass.
-    this.renderer.state.useProgram(this.program);
+    this.renderer.state.useProgram(this.programLease.program);
     gl.bindVertexArray(this.vao);
 
     const slotBytes = this.layout.stride * Float32Array.BYTES_PER_ELEMENT;
@@ -364,19 +341,4 @@ function assertFitsTransformFeedback(gl: WebGL2RenderingContext, layout: FXSlotL
         `${String(maxInputs)} vertex inputs`,
     );
   }
-}
-
-function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
-  const shader = gl.createShader(type);
-  if (shader === null) {
-    throw new Error("FXTransformFeedbackSimulationHolder: gl.createShader() failed");
-  }
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) !== true) {
-    const info = gl.getShaderInfoLog(shader);
-    gl.deleteShader(shader);
-    throw new Error(`FXTransformFeedbackSimulationHolder: shader failed to compile: ${info ?? ""}`);
-  }
-  return shader;
 }

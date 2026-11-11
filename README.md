@@ -302,6 +302,91 @@ Within one world every effect shares the clock and one delta per frame, so `effe
 effect rather than freezing it. To freeze one effect on its own, give it its own world.
 `world.dispose()` disposes every effect in that world.
 
+## Compiling shaders ahead
+
+The GPU compiles an effect's shaders on the first frame it is drawn in, which can stall that frame.
+`effect.compile()` does it ahead of time, typically behind a loading screen:
+
+```ts
+const effect = new MyEffect(assets, { renderer, camera });
+await effect.compile(renderer, camera, scene); // `scene` lights a lit effect
+scene.add(effect);
+```
+
+- **Render target.** It is part of every compiled program. If the effect is drawn into a
+  post-processing buffer, set that target on the renderer before compiling, or the first frame
+  compiles again.
+- **Three r157** has no asynchronous compile: `compile()` compiles the whole `scene`
+  synchronously and resolves at once, so add the effect to the scene first.
+- **Not covered:** shadow depth programs (compiled by the first shadow pass), and GPU simulation
+  kernels, which the constructor already links.
+
+Three deletes a program together with the last material using it, and an effect's GPU simulation
+kernels go with its last emitter too: an effect built after every earlier one was disposed compiles
+again. Reuse effects instead - see below.
+
+## Reusing effects
+
+An effect is built to be played many times: `stop()` kills every live particle at once, on both
+backends, and a stopped emitter skips its simulation until it spawns again. Keeping finished
+effects in a pool instead of disposing them saves the compile, the buffer allocations and the GPU
+kernel link of a new instance:
+
+```ts
+class Pool {
+  private readonly idle: MyEffect[] = [];
+  private readonly finishing: { effect: MyEffect; left: number }[] = [];
+
+  constructor(
+    private readonly build: () => MyEffect,
+    private readonly tail: number,
+  ) {}
+
+  play(scene: Scene, position: Vector3): void {
+    const effect = this.idle.pop() ?? this.build();
+    effect.position.copy(position);
+    scene.add(effect);
+    effect.addEventListener("finished", () => this.finishing.push({ effect, left: this.tail }), {
+      once: true,
+    });
+    effect.play({ loop: false });
+  }
+
+  // The timeline is over, its particles are not: they get `tail` more seconds of world time.
+  update(deltaSeconds: number): void {
+    for (let i = this.finishing.length - 1; i >= 0; i--) {
+      const entry = this.finishing[i];
+      entry.left -= deltaSeconds;
+      if (entry.left <= 0) {
+        this.finishing.splice(i, 1);
+        entry.effect.stop();
+        entry.effect.removeFromParent();
+        this.idle.push(entry.effect);
+      }
+    }
+  }
+}
+
+const explosions = new Pool(() => new MyEffect(assets, { renderer, camera }), 1.5);
+
+function frame(deltaSeconds: number): void {
+  FXWorld.update(deltaSeconds);
+  explosions.update(deltaSeconds); // the same delta: a paused or slowed world waits too
+  renderer.render(scene, camera);
+}
+```
+
+- **Tail.** `"finished"` marks the end of the timeline, not of the particles. A GPU-driven
+  emitter's particles never leave the GPU, so the runtime cannot tell when the last one died: the
+  tail is the longest particle lifetime, which the effect's author knows. Count it in the world's
+  time, not with a timer: particles age only while their world is updated.
+- **What a replay resets:** the timeline, live particles, everything scheduled and the motion
+  baseline. **What it keeps:** the root's transform, parameters set with `setEmitterParam` /
+  `setMeshParam`, and event listeners - hence `{ once: true }`.
+- **Warm-up.** Build and `compile()` the pool's first instances behind the loading screen.
+- **Waiting instances** stay registered in their world but simulate nothing and draw no particles
+  or trails. Their VFX meshes are still drawn, so take them out of the scene.
+
 ## How it works
 
 An exported module carries the project's timeline and, per emitter or mesh, the artifacts

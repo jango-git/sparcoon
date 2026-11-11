@@ -59,8 +59,9 @@ const GAP_SMOOTHING = 0.2;
 
 /**
  * @internal The trail of one emitter: a single instanced draw of `frames * capacity` ribbon
- * segments over an {@link FXTrailHistory}, plus the head bookkeeping that decides which history
- * frame each tick records into. Owned by an `FXEmitter`, which records after every simulated tick.
+ * segments over an {@link FXTrailHistory} (none while it has nothing to show), plus the head
+ * bookkeeping that decides which history frame each tick records into. Owned by an `FXEmitter`,
+ * which records after every simulated tick.
  *
  * Drawn after the emitter's particles at the same depth (three breaks a transparent tie by object
  * id, and the trail is built after them), so with plain blending the ribbon lies over a particle.
@@ -117,8 +118,8 @@ export class FXTrail {
     geometry.setIndex(quad.index);
     geometry.setAttribute("position", quad.position);
     history.mount(geometry);
-    geometry.instanceCount = this.frames * history.capacity;
     this.geometry = geometry;
+    this.syncDrawnSegments();
 
     this.mesh = new Mesh(geometry, threeMaterial);
     this.mesh.frustumCulled = false;
@@ -167,6 +168,7 @@ export class FXTrail {
     for (let i = 0; i < this.frames; i++) {
       ages[i] = this.clock - this.recordedAt[i];
     }
+    this.syncDrawnSegments();
   }
 
   /** Forgets the whole recorded path: the trail is empty until the next tick records. */
@@ -186,6 +188,7 @@ export class FXTrail {
     this.uniforms.tail.value = 0;
     this.uniforms.span.value = (this.frames - 1) * this.sampleInterval;
     this.uniforms.ages.value.fill(0);
+    this.syncDrawnSegments();
   }
 
   public destroy(): void {
@@ -195,5 +198,12 @@ export class FXTrail {
     (this.mesh.material as Material).dispose();
     this.material.destroy();
     this.history.destroy();
+  }
+
+  // All segments or none: the history is laid out frame by frame, so a partial draw would cut
+  // whole frames, not slots.
+  private syncDrawnSegments(): void {
+    const visible = this.recordedOnce && !this.history.idle;
+    this.geometry.instanceCount = visible ? this.frames * this.history.capacity : 0;
   }
 }

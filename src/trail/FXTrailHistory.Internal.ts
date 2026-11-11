@@ -49,6 +49,9 @@ export interface FXTrailHistory {
    *  interpolated along a segment, their packed views, and the trail's reads it does not hold. On
    *  `"cpu"` the position is not among the fields: it is packed into the point itself. */
   readonly layout: FXTrailLayout;
+  /** Nothing to draw as of the last record: no particle alive and every frame dead. Always false
+   *  where that cannot be seen (`"gpu"`: age and death never leave the GPU). */
+  readonly idle: boolean;
   /** Sets every attribute the trail shader reads for this layout onto `geometry`. */
   mount(geometry: InstancedBufferGeometry): void;
   /**
@@ -166,7 +169,8 @@ export class FXCPUTrailHistory implements FXTrailHistory {
   // means idle - see the class doc.
   private readonly frameLive: Uint8Array;
   private liveFrames = 0;
-  private idle = false;
+  // Records skipped as idle since the last real one, which then resyncs the whole GPU copy.
+  private skippedRecords = false;
 
   /**
    * @param drawnCount - The emitter's drawn slot range: every slot it has claimed since the last
@@ -202,6 +206,11 @@ export class FXCPUTrailHistory implements FXTrailHistory {
     this.frameLive = new Uint8Array(frames);
   }
 
+  // Nothing claimed since the last clear leaves every frame zero, as dead as an idle stretch.
+  public get idle(): boolean {
+    return this.skippedRecords || this.drawnCount() === 0;
+  }
+
   public mount(geometry: InstancedBufferGeometry): void {
     const frameFloats = this.capacity * this.stride;
     const views = [...CPU_POINT_VIEWS, ...this.layout.packed];
@@ -232,7 +241,7 @@ export class FXCPUTrailHistory implements FXTrailHistory {
     }
     if (this.liveFrames === 0 && this.liveCount() === 0) {
       // Nothing alive, nothing left to fade: this record would only rewrite dead points.
-      this.idle = true;
+      this.skippedRecords = true;
       return;
     }
     const base = head * frameFloats;
@@ -278,9 +287,9 @@ export class FXCPUTrailHistory implements FXTrailHistory {
     if (head === 0) {
       array.copyWithin(this.frames * frameFloats, 0, drawn * stride);
     }
-    if (this.idle) {
+    if (this.skippedRecords) {
       // The GPU copy missed whatever the idle stretch's head moves left out: resync it whole.
-      this.idle = false;
+      this.skippedRecords = false;
       markRange(this.buffer, 0, this.array.length);
     } else if (head === 0) {
       markRange(this.buffer, this.frames * frameFloats, drawn * stride);
@@ -295,7 +304,7 @@ export class FXCPUTrailHistory implements FXTrailHistory {
     this.array.fill(0);
     this.frameLive.fill(0);
     this.liveFrames = 0;
-    this.idle = false;
+    this.skippedRecords = false;
     markRange(this.buffer, 0, this.array.length);
   }
 
@@ -315,6 +324,7 @@ export class FXCPUTrailHistory implements FXTrailHistory {
  */
 export class FXGPUTrailHistory implements FXTrailHistory {
   public readonly kind = "gpu";
+  public readonly idle = false;
   public readonly capacity: number;
 
   private readonly buffer: WebGLBuffer;

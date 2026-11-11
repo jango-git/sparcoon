@@ -128,9 +128,9 @@ export function mountPacked(
  * all: the material declares it as the constant zero (`FXParticleLayout.missing`).
  *
  * Capacity is fixed at construction, no growth - the same ring as `FXInstancedParticle`.
- * Every particle slot is always drawn (`instanceCount` is always `capacity`) - the CPU never knows
+ * Once a birth is seeded every slot is drawn (`instanceCount` is `capacity`) - the CPU never knows
  * the true live count for a GPU-driven emitter, so dead slots are hidden by the render shader's
- * own age/lifetime test, not by shrinking the draw range.
+ * own age/lifetime test. Before the first birth, and after {@link drop}, nothing is drawn.
  */
 export class FXTransformFeedbackParticle extends Mesh {
   public readonly capacity: number;
@@ -171,14 +171,11 @@ export class FXTransformFeedbackParticle extends Mesh {
     this.instancedGeometry = instancedGeometry;
     this.capacity = capacity;
     this.layout = layout;
-    this.instancedGeometry.instanceCount = capacity;
+    this.instancedGeometry.instanceCount = 0;
 
-    // Sized but uninitialized (garbage) - the kernel's spawn branch zero-defaults every field of
-    // a slot it claims, so a slot is never read before it is written.
-    this.slotBuffers = [
-      this.createSizedBuffer(layout.stride * capacity),
-      this.createSizedBuffer(layout.stride * capacity),
-    ];
+    // WebGL zero-fills a new buffer: every slot reads as dead (age 0 >= lifetime 0).
+    this.slotBuffers = [this.gl.createBuffer(), this.gl.createBuffer()];
+    this.zeroSlotBuffers();
     this.mountSlotAttributes();
   }
 
@@ -204,10 +201,16 @@ export class FXTransformFeedbackParticle extends Mesh {
     this.mountSlotAttributes();
   }
 
+  /** Kills every particle at once: zeroes both halves (all dead) and draws nothing until
+   *  {@link occupy}. */
   public drop(): void {
-    // No live-particle count to reset for a GPU-driven emitter (instanceCount is always
-    // `capacity`) - a reset instead means "everything currently alive should read as dead", which
-    // is the simulation holder's job (it owns dt/age, not this buffer-holding class).
+    this.zeroSlotBuffers();
+    this.instancedGeometry.instanceCount = 0;
+  }
+
+  /** Draws every slot from now on: call before seeding a birth. */
+  public occupy(): void {
+    this.instancedGeometry.instanceCount = this.capacity;
   }
 
   /**
@@ -272,16 +275,13 @@ export class FXTransformFeedbackParticle extends Mesh {
     );
   }
 
-  /** A buffer of `floats` floats, sized but uninitialized. */
-  private createSizedBuffer(floats: number): WebGLBuffer {
-    const buffer = this.gl.createBuffer();
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
-    this.gl.bufferData(
-      this.gl.ARRAY_BUFFER,
-      floats * Float32Array.BYTES_PER_ELEMENT,
-      this.gl.DYNAMIC_DRAW,
-    );
+  // Reallocating is the cheapest zero-fill: WebGL guarantees a new data store reads as zeros.
+  private zeroSlotBuffers(): void {
+    const bytes = this.layout.stride * this.capacity * Float32Array.BYTES_PER_ELEMENT;
+    for (const buffer of this.slotBuffers) {
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, bytes, this.gl.DYNAMIC_DRAW);
+    }
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
-    return buffer;
   }
 }

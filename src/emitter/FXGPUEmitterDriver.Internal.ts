@@ -128,6 +128,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     // not checking occupancy at all).
     const start = this.gpuSpawnCursor;
     this.gpuSpawnCursor = (this.gpuSpawnCursor + count) % this.mesh.capacity;
+    this.mesh.occupy();
     if (this.ticking) {
       this.gpuPendingSpawnCount += count;
       return;

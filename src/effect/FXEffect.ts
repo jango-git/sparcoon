@@ -4,8 +4,10 @@ import {
   Quaternion,
   Vector3,
   type BufferGeometry,
+  type Camera,
   type Material,
   type Object3D,
+  type WebGLRenderer,
 } from "three";
 import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import { checkRuntimeVersion } from "./FXRuntimeVersion.Internal.js";
@@ -19,6 +21,7 @@ import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
+import { compilePrograms } from "../render/FXProgramCompile.Internal.js";
 import { FXWorld } from "../world/FXWorld.js";
 import {
   assertDeathReactionAction,
@@ -540,6 +543,18 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     if (Object.keys(uniforms).length > 0) {
       this.meshMaterials[index].applyUniformValues(uniforms);
     }
+  }
+
+  /**
+   * Compiles this effect's shader programs ahead of its first frame, lit by `scene`'s lights and
+   * fog. Resolves once they are ready. See the README's "Compiling shaders ahead" for what it does
+   * not cover and how to keep the programs compiled.
+   */
+  public compile(renderer: WebGLRenderer, camera: Camera, scene?: Object3D): Promise<void> {
+    if (this.disposed) {
+      return Promise.resolve();
+    }
+    return compilePrograms(renderer, this, camera, scene);
   }
 
   /**

@@ -36,6 +36,30 @@ describe("FXEmitter construction", () => {
   });
 });
 
+describe("FXEmitter.reset", () => {
+  it("leaves nothing to simulate until the next birth", () => {
+    const update = vi.fn();
+    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ update }));
+    try {
+      tickEmitter(emitter, 0.1);
+      expect(update).not.toHaveBeenCalled();
+
+      emitter.burst(2);
+      tickEmitter(emitter, 0.1);
+      tickEmitter(emitter, 0.1);
+      expect(update).toHaveBeenCalled();
+
+      emitter.reset();
+      update.mockClear();
+      tickEmitter(emitter, 0.1);
+      expect(update).not.toHaveBeenCalled();
+      expect(emitter.particleCount).toBe(0);
+    } finally {
+      emitter.destroy();
+    }
+  });
+});
+
 describe("FXEmitter.destroy", () => {
   it("dispatches dispose on the geometry and the mounted material exactly once", () => {
     const emitter = plainEmitter();

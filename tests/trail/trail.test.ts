@@ -80,7 +80,7 @@ describe("trail history - JS backend", () => {
     vi.restoreAllMocks();
   });
 
-  it("draws frames x capacity segments, each reading two history frames of one buffer", () => {
+  it("draws frames x capacity segments once recorded, each reading two history frames of one buffer", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 5 }), 3);
     try {
       expect(emitter.hasTrail).toBe(true);
@@ -90,6 +90,9 @@ describe("trail history - JS backend", () => {
         instanceCount: number;
         attributes: Record<string, unknown>;
       };
+      expect(geometry.instanceCount).toBe(0);
+      emitter.burst(1);
+      tickEmitter(emitter, 0.1);
       expect(geometry.instanceCount).toBe(15);
       const a = geometry.attributes["a_tA_trailPoint"] as InterleavedBufferAttribute;
       const b = geometry.attributes["a_tB_trailPoint"] as InterleavedBufferAttribute;
@@ -764,6 +767,73 @@ describe("trail in an effect", () => {
   });
 });
 
+describe("trail draw range", () => {
+  const drawn = (emitter: FXEmitter): number =>
+    (trailOf(emitter).mesh.geometry as unknown as { instanceCount: number }).instanceCount;
+
+  it("JS: draws nothing once every particle died and its path faded, and again on a birth", () => {
+    const emitter = cpuEmitter(trailOptions({ frames: 2 }), 2, movingBehavior(0.15));
+    try {
+      emitter.burst(1);
+      tickEmitter(emitter, 0.1);
+      expect(drawn(emitter)).toBe(4);
+      // Dead after 0.15 s; two more records leave no frame holding a live point.
+      for (let i = 0; i < 4; i++) {
+        tickEmitter(emitter, 0.1);
+      }
+      expect(drawn(emitter)).toBe(0);
+      emitter.burst(1);
+      tickEmitter(emitter, 0.1);
+      expect(drawn(emitter)).toBe(4);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("JS: draws nothing from reset until the next birth", () => {
+    const emitter = cpuEmitter(trailOptions({ frames: 2 }), 2);
+    try {
+      emitter.burst(1);
+      tickEmitter(emitter, 0.1);
+      emitter.reset();
+      expect(drawn(emitter)).toBe(0);
+      tickEmitter(emitter, 0.1);
+      expect(drawn(emitter)).toBe(0);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("GPU: draws every segment from the first birth on, nothing after reset", () => {
+    const { renderer } = mockRenderer();
+    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
+      gpuKernel: {
+        vertexSource: "",
+        fragmentSource: "",
+        buffers: [
+          { name: FX_CORE_POSITION, stride: 3 },
+          { name: FX_CORE_LIFECYCLE, stride: 3 },
+        ],
+        transformFeedbackVaryings: ["out_position", "out_lifecycle"],
+        bindings: {},
+      },
+      renderer,
+      expectedCapacity: 4,
+      trail: trailOptions({ frames: 3 }),
+    });
+    try {
+      expect(drawn(emitter)).toBe(0);
+      emitter.burst(1);
+      tickEmitter(emitter, 0.1);
+      expect(drawn(emitter)).toBe(12);
+      emitter.reset();
+      expect(drawn(emitter)).toBe(0);
+    } finally {
+      emitter.destroy();
+    }
+  });
+});
+
 describe("trail history - GPU backend", () => {
   const kernel: FXParticleKernelArtifact = {
     vertexSource: "",
@@ -786,6 +856,7 @@ describe("trail history - GPU backend", () => {
     });
     try {
       const frameBytes = 4 * 6 * 4;
+      emitter.burst(1);
       gl.calls.length = 0;
       tickEmitter(emitter, 0.01); // head 0
       const copies = (): (readonly unknown[])[] =>
@@ -819,6 +890,7 @@ describe("trail history - GPU backend", () => {
       // Four physical frames: [mirror of 1][frame 0][frame 1][mirror of 0].
       const allocations = callsNamed(gl, "bufferData");
       expect(allocations.map((call) => call.args[1])).toContain(4 * frameBytes);
+      emitter.burst(1);
       gl.calls.length = 0;
       tickEmitter(emitter, 0.01); // head 0: itself and its mirror after frame 1
       expect(copies()).toEqual([frameBytes, 3 * frameBytes]);

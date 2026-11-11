@@ -100,7 +100,7 @@ describe("FXTransformFeedbackParticle", () => {
       expect(mesh.capacity).toBe(64);
       expect(mesh.readBuffer()).not.toBe(mesh.writeBuffer());
       const uploads = callsNamed(gl, "bufferData").map((call) => call.args[1]);
-      // Two halves of 64 slots x 7 floats x 4 bytes, uninitialized - and nothing else.
+      // Two halves of 64 slots x 7 floats x 4 bytes, zero-filled - and nothing else.
       expect(uploads).toEqual([64 * 7 * 4, 64 * 7 * 4]);
     } finally {
       mesh.destroy();
@@ -122,11 +122,35 @@ describe("FXTransformFeedbackParticle", () => {
     }
   });
 
-  it("every particle slot is always drawn - instanceCount is always capacity, never grows", () => {
+  it("draws nothing until occupied, every slot once occupied, nothing again once dropped", () => {
     const gl = mockWebGL();
     const mesh = particle(gl, 128);
+    const drawn = (): number =>
+      (mesh.geometry as unknown as { instanceCount: number }).instanceCount;
     try {
-      expect((mesh.geometry as unknown as { instanceCount: number }).instanceCount).toBe(128);
+      expect(drawn()).toBe(0);
+      mesh.occupy();
+      expect(drawn()).toBe(128);
+      mesh.drop();
+      expect(drawn()).toBe(0);
+    } finally {
+      mesh.destroy();
+    }
+  });
+
+  it("drop() zero-fills both halves in place, keeping the buffers", () => {
+    const gl = mockWebGL();
+    const mesh = particle(gl, 64);
+    try {
+      const halves = [mesh.readBuffer(), mesh.writeBuffer()];
+      gl.calls.length = 0;
+      mesh.drop();
+      expect(callsNamed(gl, "bufferData").map((call) => call.args[1])).toEqual([
+        64 * 7 * 4,
+        64 * 7 * 4,
+      ]);
+      expect(callsNamed(gl, "bindBuffer").map((call) => call.args[1])).toEqual([...halves, null]);
+      expect([mesh.readBuffer(), mesh.writeBuffer()]).toEqual(halves);
     } finally {
       mesh.destroy();
     }

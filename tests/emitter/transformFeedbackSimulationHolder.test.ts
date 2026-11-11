@@ -314,4 +314,16 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       holder.destroy();
     }
   });
+
+  it("shares one program with every holder of the same kernel, deleted with the last", () => {
+    const mock = mockRenderer();
+    const first = new FXTransformFeedbackSimulationHolder(mock.renderer, minimalArtifact());
+    const second = new FXTransformFeedbackSimulationHolder(mock.renderer, minimalArtifact());
+    expect(callsNamed(mock.gl, "linkProgram")).toHaveLength(1);
+
+    first.destroy();
+    expect(callsNamed(mock.gl, "deleteProgram")).toEqual([]);
+    second.destroy();
+    expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
+  });
 });

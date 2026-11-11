@@ -107,6 +107,8 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
 
   const context: Record<string, unknown> = {
     ...CONSTANTS,
+    // Dispatch "webglcontextlost" on it to simulate a loss.
+    canvas: new EventTarget(),
     getParameter: (name: number) => {
       if (name === CONSTANTS.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS) {
         return options.maxFeedbackComponents ?? 64;
