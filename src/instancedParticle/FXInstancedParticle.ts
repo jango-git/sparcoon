@@ -45,6 +45,10 @@ export class FXInstancedParticle extends Mesh {
   // Births lost to a full ring: live particles overwritten plus births beyond capacity in one claim.
   private overflowCountInternal = 0;
 
+  // Liveness before this tick's update, so a kill in it counts as a death.
+  private liveBeforeUpdate = new Uint8Array(0);
+  private liveBeforeUpdateCaptured = false;
+
   private sortingIndices: Int32Array = new Int32Array(0);
   private sortingSquaredDistances: Float64Array = new Float64Array(0);
   private sortingTemporaryBuffer: Float32Array = new Float32Array(0);
@@ -168,9 +172,31 @@ export class FXInstancedParticle extends Mesh {
   }
 
   /**
-   * Adds `deltaTime` to the age of every drawn slot and recounts the live ones. Age is host-owned.
-   * `onDeath` is called with each slot whose particle was alive before and is dead after - the
-   * only way one dies, since no graph writes `age`, and `lifetime` is written at birth only.
+   * Records which drawn slots are live before the tick's update, so {@link advanceAges} also
+   * reports the deaths the update causes (kills). Required before an `advanceAges` with `onDeath`.
+   */
+  public captureLiveness(): void {
+    const lifecycle = this.propertyBuffers[FX_CORE_LIFECYCLE] as
+      InstancedBufferAttribute | undefined;
+    if (lifecycle === undefined) {
+      return;
+    }
+    if (this.liveBeforeUpdate.length !== this.capacity) {
+      this.liveBeforeUpdate = new Uint8Array(this.capacity);
+    }
+    const { array, itemSize } = lifecycle;
+    for (let i = 0; i < this.highWaterMark; i++) {
+      const offset = i * itemSize;
+      this.liveBeforeUpdate[i] = array[offset + FX_AGE] < array[offset + FX_LIFETIME] ? 1 : 0;
+    }
+    this.liveBeforeUpdateCaptured = true;
+  }
+
+  /**
+   * Adds `deltaTime` to the age of every drawn slot and recounts the live ones. `onDeath` gets each
+   * slot live before the update (see {@link captureLiveness}) and dead now.
+   *
+   * @throws When `onDeath` is given without a {@link captureLiveness} since the last call.
    */
   public advanceAges(deltaTime: number, onDeath?: (slot: number) => void): void {
     const lifecycle = this.propertyBuffers[FX_CORE_LIFECYCLE] as
@@ -178,17 +204,20 @@ export class FXInstancedParticle extends Mesh {
     if (lifecycle === undefined) {
       return;
     }
+    if (onDeath !== undefined && !this.liveBeforeUpdateCaptured) {
+      throw new Error("FXInstancedParticle.advanceAges: deaths need captureLiveness() first");
+    }
+    this.liveBeforeUpdateCaptured = false;
     const { array, itemSize } = lifecycle;
+    const liveBefore = this.liveBeforeUpdate;
     let live = 0;
     for (let i = 0; i < this.highWaterMark; i++) {
       const offset = i * itemSize;
-      const lifetime = array[offset + FX_LIFETIME];
-      const wasLive = array[offset + FX_AGE] < lifetime;
       array[offset + FX_AGE] += deltaTime;
-      if (array[offset + FX_AGE] < lifetime) {
+      if (array[offset + FX_AGE] < array[offset + FX_LIFETIME]) {
         live += 1;
-      } else if (wasLive) {
-        onDeath?.(i);
+      } else if (onDeath !== undefined && liveBefore[i] === 1) {
+        onDeath(i);
       }
     }
     this.liveCountInternal = live;

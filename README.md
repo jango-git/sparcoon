@@ -235,7 +235,8 @@ given velocity - what its spawn graph reads through `world-matrix` and `object-v
 `over: "distance"` counts its rate per world unit the emitter's position travels, so it spawns
 nothing while the emitter stands still; it takes no `origin`, which does not move.
 
-An emitter simulated on the CPU reports its particles' deaths. The editor wires them up as death
+An emitter simulated on the CPU reports its particles' deaths - of age, or killed by its update
+graph (the update sink's `kill`, e.g. wired from a collider's `contact`). The editor wires them up as death
 reactions (a burst or a play on another emitter where each particle died, one frame later, built in
 the export), and the host can listen too - a sound on every firework burst:
 

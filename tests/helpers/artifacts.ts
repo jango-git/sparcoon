@@ -228,6 +228,29 @@ export function behaviorArtifact(
  * `world-matrix` would), recording that pose into `poses`, and moving every live particle +`speed`
  * along x per second.
  */
+/**
+ * {@link placingBehavior} whose update also kills a live particle once it reaches `killX` - the
+ * way an editor-emitted kernel kills: `age = max(age, lifetime)`, after its writes.
+ */
+export function killingBehavior(lifetime: number, killX: number, speed = 2): FXBehaviorArtifact {
+  const placing = placingBehavior(lifetime, [], speed);
+  return {
+    ...placing,
+    updateWrittenBuffers: [FX_CORE_POSITION, FX_CORE_LIFECYCLE],
+    update(buffers: FXKernelBuffers, count, dt, bindings, emitter): void {
+      placing.update(buffers, count, dt, bindings, emitter);
+      const position = buffers[FX_CORE_POSITION];
+      const lifecycle = buffers[FX_CORE_LIFECYCLE];
+      for (let i = 0; i < count; i++) {
+        const row = i * FX_CORE_LIFECYCLE_STRIDE;
+        if (position[i * 3 + FX_POSITION_X] >= killX - 1e-6) {
+          lifecycle[row + FX_AGE] = Math.max(lifecycle[row + FX_AGE], lifecycle[row + FX_LIFETIME]);
+        }
+      }
+    },
+  };
+}
+
 export function placingBehavior(
   lifetime: number,
   poses: FXEmitterTransform[] = [],

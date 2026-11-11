@@ -468,9 +468,10 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * Calls `listener` for each of this emitter's particles that dies of age - once per death, after
-   * every emitter of this world has ticked (so a listener spawning elsewhere does it the same way
-   * whatever order the emitters tick in: the births land on the next tick). A particle a birth
+   * Calls `listener` for each of this emitter's particles that dies - of age, or killed by its
+   * behavior's update (`kill`) - once per death, after every emitter of this world has ticked (so
+   * a listener spawning elsewhere does it the same way whatever order the emitters tick in: the
+   * births land on the next tick). A particle a birth
    * overwrites in a full ring, or one {@link reset} clears, does not die; nor do the particles of
    * {@link prewarm}. Watching costs a copy of the particle positions per tick while any listener
    * is attached.

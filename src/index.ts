@@ -87,18 +87,17 @@ export type {
 // every effect's timeline and the shared particle pool.
 export { FXWorld } from "./world/FXWorld.js";
 
+export { fxCurl2, fxCurl3 } from "./miscellaneous/noise/fxCurlNoise.js";
 export {
   fxFbm,
   fxFbm3,
-  fxFract,
-  fxMix,
-  fxMod,
-  fxNoise1,
-  fxNoise2,
-  fxNoise3,
-  fxSampleLut,
-  fxSmoothstep,
-} from "./miscellaneous/fxMath.js";
+  fxFractal1,
+  fxFractal2,
+  fxFractal3,
+} from "./miscellaneous/noise/fxFractalNoise.js";
+export { fxNoise1, fxNoise2, fxNoise3 } from "./miscellaneous/noise/fxValueNoise.js";
+export { fxVoronoi2, fxVoronoi3 } from "./miscellaneous/noise/fxVoronoiNoise.js";
+export { fxFract, fxMix, fxMod, fxSampleLut, fxSmoothstep } from "./miscellaneous/fxMath.js";
 export { fxDataTexture } from "./miscellaneous/texture/fxDataTexture.js";
 export type { FXDataTextureOptions } from "./miscellaneous/texture/fxDataTexture.js";
 

@@ -161,6 +161,8 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     }
     const positions = this.kernelBuffers[FX_CORE_POSITION];
     if (this.deathSink !== undefined) {
+      // Before the update, so a kill in it still counts as a death.
+      this.mesh.captureLiveness();
       this.positionsBeforeUpdate.set(positions.subarray(0, slotCount * FX_CORE_POSITION_STRIDE));
       this.tickDeltaTime = deltaTime;
     }

@@ -51,8 +51,9 @@ export interface FXEmitterDriver {
    *  with a pass of its own. Either way a newborn is seeded, not yet updated. */
   spawn(count: number, transform: FXEmitterTransform): void;
   /**
-   * Starts (`sink`) or stops (`undefined`) reporting each particle that dies of age: during
-   * {@link beginTick}, once per particle alive before the tick and dead after it, with its position
+   * Starts (`sink`) or stops (`undefined`) reporting each particle that dies - of age, or killed
+   * by its update: during {@link beginTick}, once per particle alive before the tick and dead after
+   * it, with its position
    * and its velocity over the tick. A slot a birth overwrites, and particles {@link reset} clears,
    * are not deaths. Throws when {@link reportsDeaths} is false and `sink` is given.
    */

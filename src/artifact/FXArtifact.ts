@@ -218,6 +218,8 @@ export interface FXBehaviorArtifact {
    * a dead slot (even a NaN from `age / lifetime`) is never shown - the render and trail hide dead
    * slots - and is discarded when a birth claims the slot, which zero-fills it before seeding.
    * Skipped altogether on a tick when no particle is alive.
+   *
+   * Writes `age` only to kill: `age = max(age, lifetime)`. `lifetime` stays birth-only.
    */
   update(
     buffers: FXKernelBuffers,

@@ -73,6 +73,29 @@ describe("FXInstancedParticle - fixed-capacity ring", () => {
     expect([seed[0], seed[1], seed[2]]).toEqual([10, 11, 12]);
   });
 
+  it("reports a death by the liveness captured before the update, so a kill counts", () => {
+    const mesh = makeMesh();
+    mesh.claim(3);
+    seedLifetime(mesh, 0, 3);
+    const lifecycle = mesh.propertyBuffers.lifecycle.array;
+    lifecycle[2 * LIFECYCLE_STRIDE + FX_AGE] = 5; // slot 2 is already dead before the tick
+    const deaths: number[] = [];
+
+    mesh.captureLiveness();
+    lifecycle[0 * LIFECYCLE_STRIDE + FX_AGE] = 1; // the update kills slot 0: age = lifetime
+    mesh.advanceAges(0.1, (slot) => deaths.push(slot));
+
+    expect(deaths).toEqual([0]);
+    expect(mesh.liveCount).toBe(1);
+  });
+
+  it("refuses to report deaths without a liveness capture before the update", () => {
+    const mesh = makeMesh();
+    mesh.claim(1);
+    seedLifetime(mesh, 0, 1);
+    expect(() => mesh.advanceAges(0.1, () => undefined)).toThrow(/captureLiveness/);
+  });
+
   it("zeroes a reused slot so a birth never inherits its previous occupant's age", () => {
     const mesh = makeMesh(2);
     mesh.claim(2);

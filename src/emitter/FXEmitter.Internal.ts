@@ -92,8 +92,9 @@ export interface FXEmitterPlayOptions {
 }
 
 /**
- * One particle that just died of age, handed to {@link FXEmitter.onParticleDeath} listeners. The
- * same object is reused for every death: read it during the call, copy what you keep.
+ * One particle that just died (of age, or killed), handed to {@link FXEmitter.onParticleDeath}
+ * listeners. The same object is reused for every death: read it during the call, copy what you
+ * keep.
  */
 export interface FXParticleDeath {
   /** `[x, y, z]`: the particle's position after its last update. */

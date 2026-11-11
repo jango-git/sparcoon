@@ -4,7 +4,7 @@ import { connectDeathReaction, fireSpawnAction } from "../../src/effect/FXSpawnA
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { FXParticleDeath } from "../../src/emitter/FXEmitter.Internal";
 import { FXWorld } from "../../src/world/FXWorld";
-import { placingBehavior, unlitArtifact } from "../helpers/artifacts";
+import { killingBehavior, placingBehavior, unlitArtifact } from "../helpers/artifacts";
 import { landBirths } from "../helpers/internals";
 
 const worlds: FXWorld[] = [];
@@ -50,6 +50,23 @@ describe("FXEmitter.onParticleDeath", () => {
     expect(deaths[0].velocity[0]).toBeCloseTo(2, 4);
     expect(deaths[0].velocity[1]).toBe(0);
     world.update(0.1);
+    expect(deaths).toHaveLength(1);
+  });
+
+  it("reports a particle its update kills, once, where it was killed", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, killingBehavior(10, 0.4));
+    const deaths = collectDeaths(emitter);
+    emitter.burst(1);
+    world.update(0.1); // born at x 0
+    world.update(0.1); // x 0.2
+    expect(deaths).toEqual([]);
+    world.update(0.1); // x 0.4: killed long before its lifetime of 10
+    expect(deaths).toHaveLength(1);
+    expect(deaths[0].position[0]).toBeCloseTo(0.4, 5);
+    expect(deaths[0].velocity[0]).toBeCloseTo(2, 4);
+    expect(emitter.particleCount).toBe(0);
+    world.update(0.1); // still dead: the update kills it again, but it is not a death again
     expect(deaths).toHaveLength(1);
   });
 
