@@ -23,6 +23,7 @@ import {
   trailOf,
 } from "../helpers/internals";
 import { callsNamed, mockRenderer } from "../helpers/mockWebGL";
+import { behaviorSlot } from "../helpers/slots";
 
 const GLSL_FLOAT_TYPES = ["float", "vec2", "vec3", "vec4"];
 
@@ -40,9 +41,8 @@ function reading(attributeReads: readonly FXAttributeDecl[]): FXRenderArtifact {
 function movingBehavior(lifetime = 10): ReturnType<typeof behaviorArtifact> {
   return behaviorArtifact({
     lifetime,
-    updateWrittenBuffers: [FX_CORE_POSITION],
-    update(buffers, count): void {
-      const position = buffers[FX_CORE_POSITION];
+    update(fields, count): void {
+      const position = fields[FX_CORE_POSITION];
       for (let i = 0; i < count; i++) {
         position[i * 3] += 1;
       }
@@ -536,9 +536,9 @@ describe("trail material", () => {
     try {
       const { vertexShader } = trailOf(emitter).mesh.material as ShaderMaterial;
       expect(vertexShader).not.toContain("a_tA_fx_heat");
-      expect(fxTrailRenderBudget(unlitArtifact({ attributeReads: heat }), heat).attributes).toBe(
-        fxTrailRenderBudget(unlitArtifact(), heat).attributes,
-      );
+      expect(
+        fxTrailRenderBudget(unlitArtifact({ attributeReads: heat }), behaviorSlot(heat)).attributes,
+      ).toBe(fxTrailRenderBudget(unlitArtifact(), behaviorSlot(heat)).attributes);
     } finally {
       emitter.destroy();
     }
@@ -566,7 +566,9 @@ describe("trail material", () => {
       { renderer, expectedCapacity: 2, trail: trailReading(5) },
     );
     try {
-      expect(fxTrailRenderBudget(trailReading(5).render, floats(5)).attributes).toBe(9);
+      expect(fxTrailRenderBudget(trailReading(5).render, behaviorSlot(floats(5))).attributes).toBe(
+        9,
+      );
       expect(emitter.hasTrail).toBe(false);
       emitter.burst(2);
       tickEmitter(emitter, 0.1);
@@ -613,11 +615,11 @@ describe("trail material", () => {
 
   it("fits the WebGL1 attribute minimum with up to four recorded floats, packed, not with five", () => {
     // The quad, then each end's packed point and joint.
-    expect(fxTrailRenderBudget(unlitArtifact(), []).attributes).toBe(5);
+    expect(fxTrailRenderBudget(unlitArtifact(), behaviorSlot()).attributes).toBe(5);
     const floats = (names: readonly string[]): { name: string; components: 1 }[] =>
       names.map((name) => ({ name, components: 1 }));
     const budget = (names: readonly string[]): number =>
-      fxTrailRenderBudget(reading(floats(names)), floats(names)).attributes;
+      fxTrailRenderBudget(reading(floats(names)), behaviorSlot(floats(names))).attributes;
     expect(budget(["a"])).toBe(7);
     // Two to four floats share one vec4 view per end.
     expect(budget(["a", "b"])).toBe(7);
@@ -627,10 +629,14 @@ describe("trail material", () => {
     );
     expect(budget(["a", "b", "c", "d", "e"])).toBe(9);
     // Read but not simulated: zero, unrecorded.
-    expect(fxTrailRenderBudget(reading([{ name: "a", components: 1 }]), []).attributes).toBe(5);
-    // The GPU history, its kernel unknown: frame, previous point (position, lifecycle), both ends'
-    // position and lifecycle - one attribute per field, the most any slot order needs.
-    expect(fxTrailRenderBudget(unlitArtifact(), [], { backend: "gpu" }).attributes).toBe(8);
+    expect(
+      fxTrailRenderBudget(reading([{ name: "a", components: 1 }]), behaviorSlot()).attributes,
+    ).toBe(5);
+    // The GPU history over the core slot: the quad, the frame, the previous point's position and
+    // lifecycle, and both ends' position and lifecycle.
+    expect(
+      fxTrailRenderBudget(unlitArtifact(), behaviorSlot(), { backend: "gpu" }).attributes,
+    ).toBe(8);
   });
 
   it("budgets exactly the attributes a JS-driven trail mounts", () => {
@@ -649,7 +655,7 @@ describe("trail material", () => {
       // The quad, the packed point and joint, and one view of the lifecycle (read: age/lifetime)
       // with the heat - per end.
       expect(mounted).toHaveLength(7);
-      expect(fxTrailRenderBudget(render, attributes).attributes).toBe(mounted.length);
+      expect(fxTrailRenderBudget(render, behaviorSlot(attributes)).attributes).toBe(mounted.length);
     } finally {
       emitter.destroy();
     }
@@ -919,7 +925,9 @@ describe("trail history - GPU backend", () => {
     try {
       const mounted = Object.keys(trailOf(emitter).mesh.geometry.attributes);
       expect(mounted).toHaveLength(8);
-      expect(fxTrailRenderBudget(render, [], { backend: "gpu" }).attributes).toBe(mounted.length);
+      expect(fxTrailRenderBudget(render, kernel.buffers, { backend: "gpu" }).attributes).toBe(
+        mounted.length,
+      );
     } finally {
       emitter.destroy();
     }

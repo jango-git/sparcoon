@@ -6,6 +6,7 @@ import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeo
 import { FX_AGE, FX_LIFETIME } from "../../src/coreLayout";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { particlesOf, tickEmitter } from "../helpers/internals";
+import { fieldOf } from "../helpers/slots";
 
 /** A plain emitter: flat-white render, a spawn that seeds lifetime 4. */
 function plainEmitter(options?: Parameters<typeof FXEmitter.fromArtifacts>[2]): FXEmitter {
@@ -132,8 +133,7 @@ describe("FXEmitter.destroy", () => {
 
 describe("respawn into reused ring slots", () => {
   function lifecycleAt(emitter: FXEmitter, row: number, offset: number): number {
-    const { array, itemSize } = particlesOf(emitter).propertyBuffers.lifecycle;
-    return array[row * itemSize + offset];
+    return fieldOf(particlesOf(emitter), "lifecycle")[row * 3 + offset];
   }
 
   it("starts a birth into a dead particle's slot at age 0, not the previous occupant's age", () => {

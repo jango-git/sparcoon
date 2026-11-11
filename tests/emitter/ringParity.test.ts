@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FXBehaviorArtifact, FXKernelBuffers } from "../../src/artifact/FXArtifact";
+import type { InterleavedBufferAttribute } from "three";
+import type { FXBehaviorArtifact } from "../../src/artifact/FXArtifact";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import {
   FX_AGE,
@@ -10,6 +11,8 @@ import {
 } from "../../src/coreLayout";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
+import { fieldOf, setField } from "../helpers/slots";
+import type { FieldBuffers } from "../helpers/slots";
 
 /**
  * The JS backend kept step-for-step with the GPU backend's fused transform-feedback pass: one
@@ -21,8 +24,7 @@ import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
 function steppingBehavior(agesSeen: number[], lifetime = 10): FXBehaviorArtifact {
   return behaviorArtifact({
     lifetime,
-    updateWrittenBuffers: [FX_CORE_POSITION],
-    update(buffers: FXKernelBuffers, count: number): void {
+    update(buffers: FieldBuffers, count: number): void {
       const position = buffers[FX_CORE_POSITION];
       const lifecycle = buffers[FX_CORE_LIFECYCLE];
       for (let i = 0; i < count; i++) {
@@ -37,7 +39,7 @@ function steppingBehavior(agesSeen: number[], lifetime = 10): FXBehaviorArtifact
 }
 
 function positionX(emitter: FXEmitter, slot: number): number {
-  return particlesOf(emitter).propertyBuffers[FX_CORE_POSITION].array[slot * 3 + FX_POSITION_X];
+  return fieldOf(particlesOf(emitter), FX_CORE_POSITION)[slot * 3 + FX_POSITION_X];
 }
 
 describe("JS backend tick order matches the GPU fused pass", () => {
@@ -168,8 +170,7 @@ describe("an idle JS emitter (nothing alive)", () => {
     const updates: number[] = [];
     const behavior = behaviorArtifact({
       lifetime,
-      updateWrittenBuffers: [FX_CORE_POSITION],
-      update(_buffers: FXKernelBuffers, count: number): void {
+      update(_buffers: FieldBuffers, count: number): void {
         updates.push(count);
       },
     });
@@ -187,15 +188,15 @@ describe("an idle JS emitter (nothing alive)", () => {
       expect(emitter.particleCount).toBe(0);
 
       const mesh = particlesOf(emitter);
-      const lifecycle = mesh.propertyBuffers[FX_CORE_LIFECYCLE];
-      const ages = Array.from(lifecycle.array);
-      const version = lifecycle.version;
+      const slots = Array.from(mesh.slots);
+      const buffer = (mesh.geometry.getAttribute("a_pack0") as InterleavedBufferAttribute).data;
+      const version = buffer.version;
       for (let i = 0; i < 5; i++) {
         tickEmitter(emitter, 1);
       }
       expect(updates).toEqual([1000]);
-      expect(Array.from(lifecycle.array)).toEqual(ages); // every slot stays dead as it was
-      expect(lifecycle.version).toBe(version); // nothing re-uploaded
+      expect(Array.from(mesh.slots)).toEqual(slots); // every slot stays dead as it was
+      expect(buffer.version).toBe(version); // nothing re-uploaded
       // The drawn range is kept (a trail relies on it), but no instance is drawn.
       expect(mesh.instanceCount).toBe(1000);
       expect((mesh.geometry as unknown as { instanceCount: number }).instanceCount).toBe(0);
@@ -219,7 +220,7 @@ describe("particle ids", () => {
   });
 
   function idOf(emitter: FXEmitter, slot: number): number {
-    return particlesOf(emitter).propertyBuffers[FX_CORE_LIFECYCLE].array[slot * 3 + FX_ID];
+    return fieldOf(particlesOf(emitter), FX_CORE_LIFECYCLE)[slot * 3 + FX_ID];
   }
 
   it("numbers births in order across bursts, never reusing an id", () => {
@@ -255,7 +256,7 @@ describe("particle ids", () => {
       emitter.burst(3); // ids 0, 1, 2 at slots 0, 1, 2
       landBirths(emitter);
       // Kill slot 0 alone - the fixture's fixed lifetime would otherwise kill all three together.
-      particlesOf(emitter).propertyBuffers[FX_CORE_LIFECYCLE].array[0 * 3 + FX_AGE] = 100;
+      setField(particlesOf(emitter), FX_CORE_LIFECYCLE, 0, FX_AGE, 100);
       tickEmitter(emitter, 0.125);
       expect(emitter.particleCount).toBe(2);
       // No compaction: the dead slot stays put, and no survivor moves.

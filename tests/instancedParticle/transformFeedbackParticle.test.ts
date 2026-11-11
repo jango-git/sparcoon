@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { BufferAttribute, BufferGeometry, MeshBasicMaterial } from "three";
-import {
-  FXTransformFeedbackParticle,
-  slotLayout,
-} from "../../src/instancedParticle/FXTransformFeedbackParticle";
+import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
+import { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import { callsNamed, mockWebGL, type MockGL } from "../helpers/mockWebGL";
+import { allViews } from "../helpers/slots";
 
 // The mock context proves the ping-pong bookkeeping (index flipping, buffer pairing,
 // attribute-object replacement), not the raw GL calls against a real driver.
@@ -28,6 +27,7 @@ function particle(gl: MockGL, capacity = 64, layout = LAYOUT) {
   return new FXTransformFeedbackParticle(
     gl.context,
     layout,
+    allViews(layout),
     capacity,
     new MeshBasicMaterial(),
     baseQuad(),
@@ -47,15 +47,15 @@ function attributeOf(mesh: FXTransformFeedbackParticle, name: string): SlotAttri
 }
 
 describe("slotLayout", () => {
-  it("lays buffers out back to back, in order, and packs adjacent ones into views", () => {
+  it("lays buffers out back to back, in order", () => {
     expect(LAYOUT.stride).toBe(7);
     expect(LAYOUT.fields).toEqual([
       { name: "position", components: 3, offset: 0 },
       { name: "lifecycle", components: 3, offset: 3 },
       { name: "fx_glow", components: 1, offset: 6 },
     ]);
-    // Position (3) and lifecycle (3) cannot share a vec4; lifecycle and glow can.
-    expect(LAYOUT.packed).toEqual([
+    // Packed whole: position (3) and lifecycle (3) cannot share a vec4; lifecycle and glow can.
+    expect(allViews(LAYOUT)).toEqual([
       {
         name: "pack0",
         offset: 0,
@@ -84,7 +84,7 @@ describe("slotLayout", () => {
       { name: "fx_size", components: 1 },
       { name: "fx_color", components: 3 },
     ]);
-    expect(layout.packed.map((view) => view.members.map((member) => member.name))).toEqual([
+    expect(allViews(layout).map((view) => view.members.map((member) => member.name))).toEqual([
       ["position", "fx_alpha"],
       ["lifecycle", "fx_size"],
       ["fx_color"],

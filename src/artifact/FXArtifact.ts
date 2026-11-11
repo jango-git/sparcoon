@@ -14,7 +14,7 @@ import type {
  * Every value scrub must no-op on an unknown name so a name drift never corrupts values.
  */
 
-/** One state buffer: name + per-particle stride in floats. */
+/** One state buffer - a field of the particle slot: name + per-particle width in floats. */
 export interface FXBufferLayout {
   readonly name: string;
   readonly stride: number;
@@ -25,9 +25,6 @@ export interface FXAttributeDecl {
   readonly name: string;
   readonly components: 1 | 2 | 3 | 4;
 }
-
-/** Named set of state buffers handed to a kernel (core + attribute buffers). */
-export type FXKernelBuffers = Readonly<Record<string, Float32Array>>;
 
 /**
  * Emitter world transform passed to spawn/update: `matrixWorld` as a column-major mat4 (16 floats),
@@ -188,25 +185,25 @@ export type FXGLSLRenderTier = "baseline" | "standard";
 export type FXRenderArtifactsByGLSLTier = Readonly<Record<FXGLSLRenderTier, FXRenderArtifact>>;
 
 /**
- * Behavior half of an emitted effect: authored spawn/update functions mutating the packed state
- * buffers, plus buffer layout and live bindings. Math helpers are inlined, so the artifact carries
- * no runtime dependency. Attribute offsets are literals derived from {@link buffers}; only the core
- * position/lifecycle offsets are the fixed ABI (`coreLayout.ts`).
+ * Behavior half of an emitted effect: authored spawn/update functions mutating the particle slots,
+ * plus the slot's layout and live bindings. Math helpers are inlined, so the artifact carries no
+ * runtime dependency.
  */
 export interface FXBehaviorArtifact {
+  /**
+   * The particle slot: its fields back to back in this order (`slotLayout`), core `position` and
+   * `lifecycle` included - the layout `spawn`/`update` index by literal offsets, and every field the
+   * behavior simulates. The runtime never reorders it, so the editor declares it in `packingOrder`,
+   * the same order as the emitter's GPU kernel's `buffers`.
+   */
   readonly buffers: readonly FXBufferLayout[];
-  readonly attributeWrites: readonly FXAttributeDecl[];
   /** number, or Float32Array (a curve LUT). */
   readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
 
-  /** Buffers `spawn` writes; the host marks only these `needsUpdate`. */
-  readonly spawnWrittenBuffers?: readonly string[];
-  /** Buffers `update` writes; the host marks only these `needsUpdate`. */
-  readonly updateWrittenBuffers: readonly string[];
-
-  /** Seeds newborns `[start, start+count)`. Optional (an update-only, non-particle host). */
+  /** Seeds newborns `[start, start+count)` of `slots` (every slot back to back, see {@link buffers}).
+   *  Optional (an update-only, non-particle host). */
   spawn?(
-    buffers: FXKernelBuffers,
+    slots: Float32Array,
     start: number,
     count: number,
     bindings: Record<string, FXValueSlot<number | Float32Array>>,
@@ -222,7 +219,7 @@ export interface FXBehaviorArtifact {
    * Writes `age` only to kill: `age = max(age, lifetime)`. `lifetime` stays birth-only.
    */
   update(
-    buffers: FXKernelBuffers,
+    slots: Float32Array,
     count: number,
     deltaTime: number,
     bindings: Record<string, FXValueSlot<number | Float32Array>>,

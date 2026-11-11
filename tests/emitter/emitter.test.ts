@@ -3,6 +3,7 @@ import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FX_POSITION_Y } from "../../src/coreLayout";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
+import { fieldComponents, fieldOf } from "../helpers/slots";
 
 describe("FXEmitter wires the behavior attribute channel", () => {
   it("allocates a_fx_<name> at construction and fills it on spawn", () => {
@@ -16,16 +17,16 @@ describe("FXEmitter wires the behavior attribute channel", () => {
     );
     try {
       const mesh = particlesOf(emitter);
-      // Allocated up front from the behavior artifact's attributeWrites.
-      expect(mesh.propertyBuffers["fx_seed"]).toBeDefined();
-      expect(mesh.propertyBuffers["fx_seed"].itemSize).toBe(1);
+      // Laid out up front from the behavior artifact's slot.
+      expect(fieldComponents(mesh, "fx_seed")).toBeDefined();
+      expect(fieldComponents(mesh, "fx_seed")).toBe(1);
 
       emitter.burst(2);
       expect(emitter.particleCount).toBe(0); // due, seeded in the next tick
       landBirths(emitter);
       expect(emitter.particleCount).toBe(2);
 
-      const seed = mesh.propertyBuffers["fx_seed"].array;
+      const seed = fieldOf(mesh, "fx_seed");
       expect(seed[0]).toBeCloseTo(0.5, 6);
       expect(seed[1]).toBeCloseTo(0.5, 6);
     } finally {
@@ -49,14 +50,12 @@ describe("FXEmitter wires the behavior attribute channel", () => {
     try {
       const mesh = particlesOf(emitter);
       // A single shared vec3 buffer, allocated up front from the merged set.
-      expect(mesh.propertyBuffers["fx_tint"].itemSize).toBe(3);
+      expect(fieldComponents(mesh, "fx_tint")).toBe(3);
 
       emitter.burst(2);
       landBirths(emitter);
       // Each particle got its own value, in its own slot.
-      expect(Array.from(mesh.propertyBuffers["fx_tint"].array.subarray(0, 6))).toEqual([
-        0, 0, 0.5, 1, 2, 0.5,
-      ]);
+      expect(Array.from(fieldOf(mesh, "fx_tint").subarray(0, 6))).toEqual([0, 0, 0.5, 1, 2, 0.5]);
     } finally {
       emitter.destroy();
     }
@@ -69,30 +68,29 @@ describe("FXEmitter wires the behavior attribute channel", () => {
       unlitArtifact(),
       behaviorArtifact({
         lifetime: 100,
-        update: (buffers, count, dt) => {
-          const position = buffers.position;
+        update: (fields, count, dt) => {
+          const position = fields.position;
           for (let i = 0; i < count; i++) {
             position[i * 3 + FX_POSITION_Y] += 2 * dt;
           }
         },
-        updateWrittenBuffers: ["position"],
       }),
     );
     try {
       emitter.burst(1);
-      const position = particlesOf(emitter).propertyBuffers.position.array;
+      const positionY = (): number => fieldOf(particlesOf(emitter), "position")[FX_POSITION_Y];
       tickEmitter(emitter, 1);
       // Born in this tick: seeded after its update, not moved yet.
       expect(emitter.particleCount).toBe(1);
-      expect(position[FX_POSITION_Y]).toBe(0);
+      expect(positionY()).toBe(0);
 
       tickEmitter(emitter, 1);
       // Age tick + update ran: the particle rose 2 units and stays alive (lifetime 100).
       expect(emitter.particleCount).toBe(1);
-      expect(position[FX_POSITION_Y]).toBeCloseTo(2, 6);
+      expect(positionY()).toBeCloseTo(2, 6);
 
       tickEmitter(emitter, 0.5);
-      expect(position[FX_POSITION_Y]).toBeCloseTo(3, 6);
+      expect(positionY()).toBeCloseTo(3, 6);
     } finally {
       emitter.destroy();
     }

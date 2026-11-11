@@ -3,6 +3,7 @@ import type { Material } from "three";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf } from "../helpers/internals";
+import { fieldComponents, fieldOf } from "../helpers/slots";
 
 // FXEmitter.applyRenderArtifact: a render-only structural edit (new shader, geometry, shadow flags)
 // applied in place, without rebuilding the emitter or resetting live particles.
@@ -20,7 +21,7 @@ describe("FXEmitter.applyRenderArtifact", () => {
       landBirths(emitter);
       expect(emitter.particleCount).toBe(3);
       const mesh = particlesOf(emitter);
-      const seedBefore = mesh.propertyBuffers["fx_seed"].array.slice();
+      const seedBefore = fieldOf(mesh, "fx_seed").slice();
       const previousMaterial = mesh.material;
       const previousGeometry = mesh.geometry.getAttribute("position");
 
@@ -34,7 +35,7 @@ describe("FXEmitter.applyRenderArtifact", () => {
       // Same emitter, same mesh instance, same live particles - only material/base geometry moved.
       expect(particlesOf(emitter)).toBe(mesh);
       expect(emitter.particleCount).toBe(3);
-      expect(Array.from(mesh.propertyBuffers["fx_seed"].array)).toEqual(Array.from(seedBefore));
+      expect(Array.from(fieldOf(mesh, "fx_seed"))).toEqual(Array.from(seedBefore));
       expect(mesh.material).not.toBe(previousMaterial);
       // A box's base geometry has more vertices than the default plane - proves the swap landed.
       expect(mesh.geometry.getAttribute("position")).not.toBe(previousGeometry);
@@ -94,7 +95,44 @@ describe("FXEmitter.applyRenderArtifact", () => {
       expect(particlesOf(emitter)).toBe(mesh);
       expect(mesh.material).not.toBe(materialBefore);
       expect(Object.keys(mesh.geometry.attributes).sort()).toEqual(attributesBefore);
-      expect("fx_glow" in mesh.propertyBuffers).toBe(false);
+      expect(fieldComponents(mesh, "fx_glow") !== undefined).toBe(false);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("rebinds the views to what the new render reads, leaving the particles as they are", () => {
+    const seedRender = unlitArtifact({
+      attributeReads: [{ name: "seed", components: 1 }],
+      outputs: { albedo: "vec4(p_fx_seed)" },
+    });
+    const emitter = FXEmitter.fromArtifacts(
+      seedRender,
+      behaviorArtifact({
+        lifetime: 5,
+        attributes: [{ name: "seed", components: 1, value: [0.5] }],
+      }),
+    );
+    try {
+      emitter.burst(2);
+      landBirths(emitter);
+      const mesh = particlesOf(emitter);
+      const views = (): number[] =>
+        Object.keys(mesh.geometry.attributes)
+          .filter((name) => name.startsWith("a_"))
+          .sort()
+          .map((name) => mesh.geometry.getAttribute(name).itemSize);
+      // position, then lifecycle + seed.
+      expect(views()).toEqual([3, 4]);
+
+      emitter.applyRenderArtifact(unlitArtifact());
+      // The seed is read no more: the lifecycle view ends before it.
+      expect(views()).toEqual([3, 3]);
+      expect(emitter.particleCount).toBe(2);
+      expect(Array.from(fieldOf(mesh, "fx_seed").subarray(0, 2))).toEqual([0.5, 0.5]);
+
+      emitter.applyRenderArtifact(seedRender);
+      expect(views()).toEqual([3, 4]);
     } finally {
       emitter.destroy();
     }

@@ -9,7 +9,6 @@ export type {
   FXBufferLayout,
   FXFragmentStageSource,
   FXGeometrySource,
-  FXKernelBuffers,
   FXParticleKernelArtifact,
   FXParticleReads,
   FXRenderArtifact,
@@ -22,6 +21,7 @@ export type {
 
 export {
   FX_AGE,
+  FX_CORE_BUFFERS,
   FX_CORE_LIFECYCLE,
   FX_CORE_LIFECYCLE_STRIDE,
   FX_CORE_LIFECYCLE_VARYING,

@@ -1,18 +1,12 @@
 import type { BufferGeometry, WebGLRenderer } from "three";
 import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
-import {
-  FXTransformFeedbackParticle,
-  kernelSlotLayout,
-} from "../instancedParticle/FXTransformFeedbackParticle.js";
+import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
-import type {
-  FXEmitterDriver,
-  FXHeldParticleFields,
-  FXParticleDeathSink,
-} from "./FXEmitterDriver.Internal.js";
-import { gpuHeldFields, particleLayout } from "./FXEmitterDriver.Internal.js";
+import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
+import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
 import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
@@ -21,9 +15,8 @@ import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
  * @internal The GPU (WebGL2 transform-feedback) particle-simulation backend: a fixed-capacity
  * `FXTransformFeedbackParticle` mesh driven by a precompiled `FXParticleKernelArtifact` through
  * `FXTransformFeedbackSimulationHolder`. Self-sufficient from its own artifact - its fields are the
- * slot `gpu.kernel.buffers` lays out (read through that slot's packed views), never a JS behavior
- * artifact's `attributeWrites`; a field only the render reads is a zero constant in the shader, not
- * a buffer (see `particleLayout`).
+ * slot `gpu.kernel.buffers` lays out, never a JS behavior artifact's `buffers`; a field only the
+ * render reads is a zero constant in the shader, not a buffer (see `particleLayout`).
  *
  * No sorting or dead-particle compaction: every particle slot is always drawn at the fixed
  * `capacity`, and `particleCount`/`particleCapacity` both report that capacity rather than an
@@ -34,8 +27,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
 
   private readonly simulation: FXTransformFeedbackSimulationHolder;
   private readonly gl: WebGL2RenderingContext;
-  // The kernel's slot fields - fixed by the kernel - and the current render's layout over them.
-  private readonly held: FXHeldParticleFields;
+  // The current render's layout over the kernel's slot (fixed by the kernel).
   private currentLayout: FXParticleLayout;
 
   // Cursor/overwrite bookkeeping: `gpuSpawnCursor` is the next write position (mod capacity).
@@ -61,9 +53,9 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     capacity: number,
     baseGeometry: BufferGeometry,
   ) {
-    // The same slot the holder lays out below (both by kernelSlotLayout), known before it exists.
-    this.held = gpuHeldFields(kernelSlotLayout(kernel.buffers));
-    this.currentLayout = particleLayout(this.held, material.attributeReads);
+    // The slot the holder lays out below (both by particleSlotLayout), known before it exists: a
+    // render the slot cannot draw throws before any GPU resource is allocated.
+    this.currentLayout = particleLayout(particleSlotLayout(kernel.buffers), material.artifact);
     const threeMaterial = material.buildThreeMaterial(this.currentLayout);
 
     // The holder first: it checks the kernel fits this GPU before any particle buffer exists. A
@@ -74,7 +66,8 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     try {
       this.mesh = new FXTransformFeedbackParticle(
         renderer.getContext() as WebGL2RenderingContext,
-        simulation.layout,
+        simulation.slot,
+        this.currentLayout.packed,
         capacity,
         threeMaterial,
         baseGeometry,
@@ -193,12 +186,12 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   }
 
   public applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void {
-    // Over this driver's OWN kernel slot (never a JS behavior artifact's attributeWrites): it
-    // depends on the kernel alone, so the buffers always fit - a new unwritten read is one more
-    // zero constant. Throws (before anything changes) only on a read at another width than held.
-    const layout = particleLayout(this.held, material.attributeReads);
+    // Over this driver's OWN kernel slot (never a JS behavior artifact's): it depends on the kernel
+    // alone, so it always fits - a new unwritten read is one more zero constant. Throws (before
+    // anything changes) only on a read at another width than held.
+    const layout = particleLayout(this.mesh.slot, material.artifact);
     const threeMaterial = material.buildThreeMaterial(layout);
-    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry);
+    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry, layout.packed);
     this.currentLayout = layout;
   }
 
@@ -207,7 +200,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     frames: number,
   ): FXGPUTrailHistory {
     // The kernel's slot: what one copy records, at the offsets the history views it by.
-    const layout = trailHistoryLayout("gpu", reads, this.held.fields, this.mesh.layout);
+    const layout = trailHistoryLayout("gpu", reads, this.mesh.slot);
     return new FXGPUTrailHistory(this.gl, this.mesh, layout, frames);
   }
 

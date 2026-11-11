@@ -4,12 +4,9 @@ import type {
   FXPackingField,
   FXPlacedField,
 } from "../../src/render/FXAttributePacking";
-import {
-  packConsecutive,
-  packingOrder,
-  unpackedAttributes,
-} from "../../src/render/FXAttributePacking";
+import { packConsecutive, packingOrder } from "../../src/render/FXAttributePacking";
 import * as editor from "../../src/editor/index";
+import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
 
 const pack = (index: number): string => `pack${String(index)}`;
 
@@ -291,22 +288,10 @@ describe("packConsecutive", () => {
   });
 });
 
-describe("unpackedAttributes", () => {
-  it("gives every field a whole view of its own", () => {
-    expect(unpackedAttributes([{ name: "a", components: 2 }], (field) => field.name)).toEqual([
-      {
-        name: "a",
-        offset: 0,
-        components: 2,
-        members: [{ name: "a", components: 2, componentOffset: 0 }],
-      },
-    ]);
-  });
-});
-
 describe("sparcoon/editor", () => {
   it("exports the one packing implementation", () => {
     expect(editor.packingOrder).toBe(packingOrder);
     expect(editor.packConsecutive).toBe(packConsecutive);
+    expect(editor.slotLayout).toBe(slotLayout);
   });
 });

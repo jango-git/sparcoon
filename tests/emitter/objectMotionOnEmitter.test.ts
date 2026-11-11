@@ -4,6 +4,7 @@ import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_LIFETIME } from "../../src/core
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { unlitArtifact } from "../helpers/artifacts";
 import { landBirths, tickEmitter } from "../helpers/internals";
+import { fieldBehavior } from "../helpers/slots";
 
 interface Captured {
   readonly velocity: readonly number[];
@@ -25,19 +26,15 @@ function capturingBehavior(
   spawnCaptures: Captured[],
   updateCaptures: Captured[],
 ): FXBehaviorArtifact {
-  return {
+  return fieldBehavior({
     buffers: [
       { name: FX_CORE_POSITION, stride: 3 },
-      { name: FX_CORE_LIFECYCLE, stride: 2 },
+      { name: FX_CORE_LIFECYCLE, stride: 3 },
     ],
-    attributeWrites: [],
-    bindings: {},
-    spawnWrittenBuffers: [FX_CORE_LIFECYCLE],
-    updateWrittenBuffers: [],
-    spawn(buffers, start, count, _bindings, emitter): void {
-      const lifecycle = buffers[FX_CORE_LIFECYCLE];
+    spawn(fields, start, count, _bindings, emitter): void {
+      const lifecycle = fields[FX_CORE_LIFECYCLE];
       for (let i = start; i < start + count; i++) {
-        lifecycle[i * 2 + FX_LIFETIME] = 1000;
+        lifecycle[i * 3 + FX_LIFETIME] = 1000;
       }
       const captured = capture(emitter);
       if (captured !== undefined) {
@@ -50,7 +47,7 @@ function capturingBehavior(
         updateCaptures.push(captured);
       }
     },
-  };
+  });
 }
 
 describe("FXEmitter exposes world-space velocity/angular velocity to the behavior kernel", () => {

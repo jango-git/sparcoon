@@ -14,6 +14,7 @@ import {
 import { flushStateResets } from "../../src/render/FXDeferredStateReset.Internal";
 import { IDENTITY_EMITTER_TRANSFORM } from "../helpers/artifacts";
 import { callsNamed, mockRenderer, type MockRenderer } from "../helpers/mockWebGL";
+import { allViews } from "../helpers/slots";
 
 // The mock context proves the JS-side orchestration: call order (useProgram before bindVertexArray,
 // RASTERIZER_DISCARD and transform feedback strictly bracketing the draw, three's state reset owed), the
@@ -34,7 +35,8 @@ function meshFor(
 ): FXTransformFeedbackParticle {
   return new FXTransformFeedbackParticle(
     mock.gl.context,
-    holder.layout,
+    holder.slot,
+    allViews(holder.slot),
     16,
     new MeshBasicMaterial(),
     baseQuad(),

@@ -69,7 +69,10 @@ describe("fxAtlasRegion", () => {
       sourceSize: { w: 50, h: 60 },
     };
     const region = fxAtlasRegion(atlasTexture(), sprite);
-    const [minU, minV, maxU, maxV] = region.uvBounds ?? [];
+    if (region.uvBounds === undefined) {
+      throw new Error("a frame region has uv bounds");
+    }
+    const [minU, minV, maxU, maxV] = region.uvBounds;
     expect(minU).toBeCloseTo(5 / 50, 10);
     expect(minV).toBeCloseTo(1 - 50 / 60, 10);
     expect(maxU).toBeCloseTo(35 / 50, 10);

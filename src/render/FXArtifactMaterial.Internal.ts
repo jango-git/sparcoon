@@ -103,15 +103,13 @@ export function renderReadProperties(render: FXRenderArtifact): ReadonlySet<stri
 
 /**
  * What a particle material reads from its mesh (built by the driver that owns the mesh, see
- * `FXEmitterDriver.Internal.ts`, and by the render budget the same way): the fields the mesh holds
- * and the packed attribute views it binds them through, plus the fields the render reads that the
- * mesh does not hold at all.
+ * `particleLayout`, and by the render budget the same way): the packed attribute views the mesh
+ * binds the fields the render reads through, plus the fields the render reads that the mesh does
+ * not hold at all.
  */
 export interface FXParticleLayout {
-  /** Every field the mesh holds per particle (property key -> type): the two core buffers and
-   *  every attribute its simulation writes. */
-  readonly fields: Readonly<Record<string, GLTypeInfo>>;
-  /** The views the mesh binds those fields through, each as `a_<view.name>`. */
+  /** The views the mesh binds, each as `a_<view.name>` - every field the render reads that the
+   *  mesh holds is a member of exactly one. */
   readonly packed: readonly FXPackedAttribute[];
   /**
    * The fields the render reads that nothing writes. Attributes have no defaults, so such a field
@@ -157,10 +155,10 @@ function unpackStatements(
 /**
  * Each packed view becomes an `a_<view.name>` attribute, split back into the `p_<name>` property
  * of every field it carries, which the generated code reads (directly, or through
- * FX_CORE_PARTICLE_DEFINES' macros) - unchanged by packing; a view carrying no field the render
- * reads (its stages' `particleReads`) is not declared at all. A missing field's property is a zero
- * constant instead. Only a property the fragment stage reads makes `p_<name>` a varying; for the
- * rest it is a plain vertex-shader global, so it costs none of the GPU's few varying vectors.
+ * FX_CORE_PARTICLE_DEFINES' macros) - unchanged by packing. The layout's views carry only fields
+ * the render reads (see `particleLayout`), so each is declared. A missing field's property is a
+ * zero constant instead. Only a property the fragment stage reads makes `p_<name>` a varying; for
+ * the rest it is a plain vertex-shader global, so it costs none of the GPU's few varying vectors.
  * Shared by both adapters and the depth material.
  */
 function declareVaryings(
@@ -172,12 +170,20 @@ function declareVaryings(
   fragmentVaryingDeclarations: string;
   vertexAssignments: string;
 } {
-  const properties: Record<string, GLTypeInfo> = { ...layout.fields, ...layout.missing };
+  const properties: Record<string, string> = {};
+  for (const view of layout.packed) {
+    for (const member of view.members) {
+      properties[member.name] = floatGLSLType(member.components);
+    }
+  }
+  for (const name in layout.missing) {
+    properties[name] = layout.missing[name].glslTypeName;
+  }
   const fragmentReads = fragmentReadProperties(render);
   const vertexVaryingDeclarations: string[] = [];
   const fragmentVaryingDeclarations: string[] = [];
   for (const name in properties) {
-    const { glslTypeName } = properties[name];
+    const glslTypeName = properties[name];
     if (fragmentReads.has(name)) {
       vertexVaryingDeclarations.push(`varying ${glslTypeName} p_${name};`);
       fragmentVaryingDeclarations.push(`varying ${glslTypeName} p_${name};`);
@@ -185,13 +191,7 @@ function declareVaryings(
       vertexVaryingDeclarations.push(`${glslTypeName} p_${name};`);
     }
   }
-  // A view none of whose fields the render reads is left undeclared: still mounted (three skips
-  // what the program lacks), but counted by no budget. The core buffers are always read - the
-  // adapters place the particle and hide a dead one by them.
-  const reads = renderReadProperties(render);
-  const read = (name: string): boolean =>
-    name === FX_CORE_POSITION || name === FX_CORE_LIFECYCLE || reads.has(name);
-  const views = layout.packed.filter((view) => view.members.some((member) => read(member.name)));
+  const views = layout.packed;
   const attributeName = (view: FXPackedAttribute): string => `a_${view.name}`;
   const vertexAssignments = [
     ...unpackStatements(views, attributeName, (member) => `p_${member.name}`),

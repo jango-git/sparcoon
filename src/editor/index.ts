@@ -72,15 +72,17 @@ export type {
   FXTrailRenderBudgetOptions,
 } from "../render/FXRenderBudget.js";
 
-// Attribute packing: the order the editor lays a GPU kernel's buffers out in (packingOrder), and
-// how the runtime groups any layout into vertex attributes (packConsecutive) - one implementation
-// both sides use, so a kernel slot and the views bound over it agree by construction.
+// Attribute packing: the order the editor lays a particle slot out in (packingOrder), how a slot
+// lies in memory (slotLayout - the offsets a JS kernel bakes in), and how the runtime groups any
+// layout into vertex attributes (packConsecutive) - one implementation both sides use, so a
+// kernel's slot and the views bound over it agree by construction.
+export { slotLayout } from "../instancedParticle/FXParticleSlot.js";
+export type { FXSlotField, FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 export {
   FX_ATTRIBUTE_MAX_COMPONENTS,
   floatGLSLType,
   packConsecutive,
   packingOrder,
-  unpackedAttributes,
 } from "../render/FXAttributePacking.js";
 export type {
   FXPackConsecutiveOptions,

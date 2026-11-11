@@ -4,6 +4,7 @@ import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FX_POSITION_X, FX_POSITION_Z } from "../../src/coreLayout";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, renderFrame } from "../helpers/internals";
+import { fieldOf, setField } from "../helpers/slots";
 
 /** A behavior artifact: long lifetime, no motion, so positions stay put. */
 function staticBehavior(): ReturnType<typeof behaviorArtifact> {
@@ -24,12 +25,11 @@ describe("FXEmitter depth sort order", () => {
       emitter.burst(2);
       landBirths(emitter);
       expect(emitter.particleCount).toBe(2);
-      const position = particlesOf(emitter).propertyBuffers.position.array;
-      const itemSize = particlesOf(emitter).propertyBuffers.position.itemSize;
+      const mesh = particlesOf(emitter);
       const writeRow = (row: number, x: number, z: number): void => {
-        position[row * itemSize + FX_POSITION_X] = x;
-        position[row * itemSize + 1] = 0;
-        position[row * itemSize + FX_POSITION_Z] = z;
+        setField(mesh, "position", row, FX_POSITION_X, x);
+        setField(mesh, "position", row, 1, 0);
+        setField(mesh, "position", row, FX_POSITION_Z, z);
       };
       // B in row 0, so only a sort that puts A first moves anything.
       writeRow(0, 10, 5);
@@ -43,6 +43,7 @@ describe("FXEmitter depth sort order", () => {
 
       renderFrame(emitter, 0); // dt=0: no aging/integration, positions preserved
 
+      const position = fieldOf(mesh, "position");
       return [position[FX_POSITION_X], position[FX_POSITION_Z]];
     } finally {
       emitter.destroy();

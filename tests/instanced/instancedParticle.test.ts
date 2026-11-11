@@ -1,24 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { MeshBasicMaterial, Vector3 } from "three";
+import { MeshBasicMaterial, Vector3, type InterleavedBufferAttribute } from "three";
 import { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
+import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
 import { FX_AGE, FX_LIFETIME, FX_POSITION_Z } from "../../src/coreLayout";
-import { FLOAT_VARYING, VEC3_VARYING } from "../helpers/artifacts";
-
-/** The core lifecycle buffer is a vec3 `[age, lifetime, id]`. */
-const LIFECYCLE_STRIDE = 3;
+import { allViews, fieldOf, setField } from "../helpers/slots";
+import { packConsecutive } from "../../src/render/FXAttributePacking";
 
 /**
- * A ring of `capacity` slots with the two fixed core buffers (position vec3 + lifecycle vec3)
- * plus a one-float `fx_seed` attribute buffer.
+ * A ring of `capacity` slots with the two fixed core fields (position vec3 + lifecycle vec3
+ * `[age, lifetime, id]`) plus a one-float `fx_seed` attribute, interleaved.
  */
+const SLOT = slotLayout([
+  { name: "position", components: 3 },
+  { name: "lifecycle", components: 3 },
+  { name: "fx_seed", components: 1 },
+]);
+
 function makeMesh(capacity = 4): FXInstancedParticle {
   return new FXInstancedParticle(
-    {
-      position: VEC3_VARYING,
-      lifecycle: VEC3_VARYING,
-      fx_seed: FLOAT_VARYING,
-    },
+    SLOT,
+    allViews(SLOT),
     capacity,
     new MeshBasicMaterial(),
     buildPrimitiveGeometry("plane"),
@@ -27,11 +29,14 @@ function makeMesh(capacity = 4): FXInstancedParticle {
 
 /** Gives every slot in `[start, end)` the lifetime `lifetime` - what a spawn kernel would do. */
 function seedLifetime(mesh: FXInstancedParticle, start: number, end: number, lifetime = 1): void {
-  const lifecycle = mesh.propertyBuffers.lifecycle.array;
   for (let i = start; i < end; i++) {
-    lifecycle[i * LIFECYCLE_STRIDE + FX_LIFETIME] = lifetime;
+    setField(mesh, "lifecycle", i, FX_LIFETIME, lifetime);
   }
 }
+
+const setAge = (mesh: FXInstancedParticle, slot: number, age: number): void => {
+  setField(mesh, "lifecycle", slot, FX_AGE, age);
+};
 
 describe("FXInstancedParticle - fixed-capacity ring", () => {
   it("claims contiguous slots at the cursor and draws up to the high-water mark", () => {
@@ -60,13 +65,13 @@ describe("FXInstancedParticle - fixed-capacity ring", () => {
     const mesh = makeMesh();
     mesh.claim(3);
     seedLifetime(mesh, 0, 3);
-    const seed = mesh.propertyBuffers["fx_seed"].array;
-    seed[0] = 10;
-    seed[1] = 11;
-    seed[2] = 12;
-    mesh.propertyBuffers.lifecycle.array[1 * LIFECYCLE_STRIDE + FX_AGE] = 5; // slot 1 dies
+    setField(mesh, "fx_seed", 0, 0, 10);
+    setField(mesh, "fx_seed", 1, 0, 11);
+    setField(mesh, "fx_seed", 2, 0, 12);
+    setAge(mesh, 1, 5); // slot 1 dies
 
     mesh.advanceAges(0.1);
+    const seed = fieldOf(mesh, "fx_seed");
 
     expect(mesh.liveCount).toBe(2);
     expect(mesh.instanceCount).toBe(3); // the dead slot is still drawn (the shader hides it)
@@ -77,12 +82,11 @@ describe("FXInstancedParticle - fixed-capacity ring", () => {
     const mesh = makeMesh();
     mesh.claim(3);
     seedLifetime(mesh, 0, 3);
-    const lifecycle = mesh.propertyBuffers.lifecycle.array;
-    lifecycle[2 * LIFECYCLE_STRIDE + FX_AGE] = 5; // slot 2 is already dead before the tick
+    setAge(mesh, 2, 5); // slot 2 is already dead before the tick
     const deaths: number[] = [];
 
     mesh.captureLiveness();
-    lifecycle[0 * LIFECYCLE_STRIDE + FX_AGE] = 1; // the update kills slot 0: age = lifetime
+    setAge(mesh, 0, 1); // the update kills slot 0: age = lifetime
     mesh.advanceAges(0.1, (slot) => deaths.push(slot));
 
     expect(deaths).toEqual([0]);
@@ -100,13 +104,12 @@ describe("FXInstancedParticle - fixed-capacity ring", () => {
     const mesh = makeMesh(2);
     mesh.claim(2);
     seedLifetime(mesh, 0, 2);
-    mesh.propertyBuffers["fx_seed"].array[0] = 7;
+    setField(mesh, "fx_seed", 0, 0, 7);
     mesh.advanceAges(3); // both dead, age 3
 
     mesh.claim(1);
-    const lifecycle = mesh.propertyBuffers.lifecycle.array;
-    expect(lifecycle[0 * LIFECYCLE_STRIDE + FX_AGE]).toBe(0);
-    expect(mesh.propertyBuffers["fx_seed"].array[0]).toBe(0);
+    expect(fieldOf(mesh, "lifecycle")[0 * 3 + FX_AGE]).toBe(0);
+    expect(fieldOf(mesh, "fx_seed")[0]).toBe(0);
   });
 
   it("counts overwritten live particles and births beyond capacity as overflow", () => {
@@ -148,19 +151,68 @@ describe("FXInstancedParticle - fixed-capacity ring", () => {
     const mesh = makeMesh();
     mesh.claim(4);
     seedLifetime(mesh, 0, 4);
-    const position = mesh.propertyBuffers.position.array;
     for (let i = 0; i < 4; i++) {
-      position[i * 3 + FX_POSITION_Z] = i; // slot i at z = i
+      setField(mesh, "position", i, FX_POSITION_Z, i); // slot i at z = i
+      setField(mesh, "fx_seed", i, 0, i);
     }
-    mesh.propertyBuffers.lifecycle.array[1 * LIFECYCLE_STRIDE + FX_AGE] = 5; // slot 1 dies
+    setAge(mesh, 1, 5); // slot 1 dies
     mesh.advanceAges(0);
 
     mesh.sortByDistance(new Vector3(0, 0, -10));
+    const position = fieldOf(mesh, "position");
 
     // Back to front from a camera at z = -10: z 3, 2, 0; the dead slot goes behind them all.
     expect([position[0 * 3 + 2], position[1 * 3 + 2], position[2 * 3 + 2]]).toEqual([3, 2, 0]);
+    // Every field moves with its particle, not the position alone.
+    expect(Array.from(fieldOf(mesh, "fx_seed").subarray(0, 3))).toEqual([3, 2, 0]);
     expect(mesh.instanceCount).toBe(3);
     expect(mesh.claim(1)).toEqual([{ start: 3, count: 1 }]);
     expect(mesh.overflowCount).toBe(0);
+  });
+
+  it("binds the slot through its packed views, one interleaved buffer", () => {
+    const mesh = makeMesh();
+    // [position, lifecycle, fx_seed] as declared: position alone, then lifecycle + seed as a vec4.
+    const names = Object.keys(mesh.geometry.attributes).filter((name) => name.startsWith("a_"));
+    expect(names.sort()).toEqual(["a_pack0", "a_pack1"]);
+  });
+
+  it("replaces its views in place, leaving no stale one and the slots untouched", () => {
+    const mesh = makeMesh();
+    mesh.claim(1);
+    setField(mesh, "fx_seed", 0, 0, 7);
+    const buffer = (mesh.geometry.getAttribute("a_pack1") as InterleavedBufferAttribute).data;
+    // A render reading only the core fields: lifecycle no longer shares a view with the seed.
+    const coreOnly = packConsecutive(SLOT.fields, (index) => `pack${String(index)}`, {
+      reads: (name) => name !== "fx_seed",
+    });
+    mesh.replaceMaterialAndBaseGeometry(
+      new MeshBasicMaterial(),
+      buildPrimitiveGeometry("plane"),
+      coreOnly,
+    );
+    const pack1 = mesh.geometry.getAttribute("a_pack1") as InterleavedBufferAttribute;
+    expect(pack1.itemSize).toBe(3);
+    expect(pack1.data).toBe(buffer);
+    expect(fieldOf(mesh, "fx_seed")[0]).toBe(7);
+
+    mesh.replaceMaterialAndBaseGeometry(new MeshBasicMaterial(), buildPrimitiveGeometry("plane"), [
+      coreOnly[0],
+    ]);
+    const names = Object.keys(mesh.geometry.attributes).filter((name) => name.startsWith("a_"));
+    expect(names).toEqual(["a_pack0"]);
+  });
+
+  it("refuses a slot without both core fields", () => {
+    expect(
+      () =>
+        new FXInstancedParticle(
+          slotLayout([{ name: "position", components: 3 }]),
+          [],
+          1,
+          new MeshBasicMaterial(),
+          buildPrimitiveGeometry("plane"),
+        ),
+    ).toThrow(/lifecycle/);
   });
 });

@@ -1,12 +1,12 @@
 /**
  * Frozen per-particle ABI shared by the runtime loop and every editor-emitted module.
- * Two GPU-mirrored core buffers only: `position` (vec3) and `lifecycle` (vec3 [age, lifetime, id]);
- * a particle is dead once `age >= lifetime`. Everything else (velocity, scale, ...) is an ordinary
- * node-declared `a_fx_<name>` attribute, not core.
+ * Two core fields of every particle slot: `position` (vec3) and `lifecycle` (vec3 [age, lifetime,
+ * id]); a particle is dead once `age >= lifetime`. Everything else (velocity, scale, ...) is an
+ * ordinary node-declared `fx_<name>` field, not core (`FXParticleSlot.ts` lays the slot out).
  *
- * Split into two buffers because a Three instanced attribute is at most a vec4 - a 6-float core
- * cannot be one attribute, whereas vec3 + vec3 are two clean varyings. Dependency-free (the editor's
- * module emitter imports this too), so keep it three-free and portable.
+ * Two fields, not one, because a vertex attribute is at most a vec4 - a 6-float core cannot be one
+ * view, whereas vec3 + vec3 are two clean varyings. Dependency-free (the editor's module emitter
+ * imports this too), so keep it three-free and portable.
  */
 
 export const FX_CORE_POSITION = "position";
@@ -14,6 +14,12 @@ export const FX_CORE_LIFECYCLE = "lifecycle";
 
 export const FX_CORE_POSITION_STRIDE = 3;
 export const FX_CORE_LIFECYCLE_STRIDE = 3;
+
+/** The two core buffers every particle slot holds, as a behavior or kernel declares its buffers. */
+export const FX_CORE_BUFFERS: readonly { readonly name: string; readonly stride: number }[] = [
+  { name: FX_CORE_POSITION, stride: FX_CORE_POSITION_STRIDE },
+  { name: FX_CORE_LIFECYCLE, stride: FX_CORE_LIFECYCLE_STRIDE },
+];
 
 export const FX_POSITION_X = 0;
 export const FX_POSITION_Y = 1;

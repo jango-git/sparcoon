@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FX_CORE_POSITION } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
-import { markRange, type FXRangedBuffer } from "../../src/trail/FXTrailHistory.Internal";
+import { markRange, type FXRangedBuffer } from "../../src/render/FXBufferUpload.Internal";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { tickEmitter, trailOf, type TrailInternals } from "../helpers/internals";
@@ -21,9 +21,8 @@ const TICK = SAMPLE_INTERVAL / 2;
 function movingBehavior(lifetime: number): ReturnType<typeof behaviorArtifact> {
   return behaviorArtifact({
     lifetime,
-    updateWrittenBuffers: [FX_CORE_POSITION],
-    update(buffers, count): void {
-      const position = buffers[FX_CORE_POSITION];
+    update(fields, count): void {
+      const position = fields[FX_CORE_POSITION];
       for (let i = 0; i < count; i++) {
         position[i * 3] += 1;
       }

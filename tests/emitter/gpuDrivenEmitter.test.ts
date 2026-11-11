@@ -156,7 +156,7 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
 
   it("builds its buffer set from the GPU kernel artifact alone, and ticks with it", () => {
     // FXGPUEmitterDriver is self-sufficient from its own artifact, never derived from the JS
-    // behavior artifact's attributeWrites: the JS artifact here declares no attribute at all.
+    // behavior artifact's slot: the JS artifact here declares no attribute at all.
     // A driver keys a non-core buffer as `fx_<name>` while the kernel names it raw ("velocity"),
     // so the first real tick is where a missed translation would throw.
     const mock = mockRenderer();
@@ -168,13 +168,12 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
       ]),
     });
     expect(isGPUDriven(emitter)).toBe(true);
-    // The kernel's slot (position, lifecycle, velocity: three vec3s) as packed views.
+    // The kernel's slot holds the velocity, but the render reads only the core: two views.
     const mesh = gpuParticlesOf(emitter);
-    expect(mesh.layout.fields.map((field) => field.name)).toContain("fx_velocity");
+    expect(mesh.slot.fields.map((field) => field.name)).toContain("fx_velocity");
     expect(Object.keys(mesh.geometry.attributes).filter((name) => name.startsWith("a_"))).toEqual([
       "a_pack0",
       "a_pack1",
-      "a_pack2",
     ]);
     emitter.burst(1);
     world.update(1 / 60);
@@ -439,7 +438,7 @@ describe("FXEmitter GPU driver", () => {
 
   it("applyRenderArtifact swaps the material in place without touching the GPU kernel or buffers", () => {
     // The driver re-derives its layout from the kernel's own buffers (never a JS behavior
-    // artifact's attributeWrites), so a render reading an attribute the kernel does not write
+    // artifact's), so a render reading an attribute the kernel does not write
     // applies too, adding no attribute; the simulation is left in place.
     const mock = mockRenderer();
     const { emitter, world } = emitterOn(mock);

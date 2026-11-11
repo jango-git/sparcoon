@@ -1,16 +1,15 @@
-import type { InstancedBufferAttribute, InstancedBufferGeometry } from "three";
+import type { InstancedBufferGeometry } from "three";
 import {
   DynamicDrawUsage,
-  InstancedBufferAttribute as ThreeInstancedBufferAttribute,
+  InstancedBufferAttribute,
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
 } from "three";
-import { FX_AGE, FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_ID, FX_LIFETIME } from "../coreLayout.js";
+import { FX_AGE, FX_ID, FX_LIFETIME } from "../coreLayout.js";
+import type { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle.js";
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
-import {
-  FXInterleavedGLAttribute,
-  mountPacked,
-} from "../instancedParticle/FXTransformFeedbackParticle.js";
+import { FXInterleavedGLAttribute } from "../instancedParticle/FXTransformFeedbackParticle.js";
+import { mountPacked } from "../instancedParticle/FXMeshGeometry.Internal.js";
 import type { FXTrailLayout } from "../render/FXArtifactMaterial.Internal.js";
 import {
   FX_TRAIL_CPU_POINT,
@@ -20,6 +19,7 @@ import {
   trailPreviousAttributeName,
 } from "../render/FXArtifactMaterial.Internal.js";
 import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
+import { markRange } from "../render/FXBufferUpload.Internal.js";
 
 /**
  * @internal The recorded past of every particle slot, for a trail to draw: a ring of `frames`
@@ -79,67 +79,19 @@ const CPU_POINT_VIEWS: readonly FXPackedAttribute[] = [
   { name: FX_TRAIL_CPU_TANGENT, offset: 4, components: 4, members: [] },
 ];
 
-/** The update-range API of three's `InterleavedBuffer`, across the supported three versions. */
-export interface FXRangedBuffer {
-  // three >= 0.159 (and the only form left after 0.169).
-  addUpdateRange?: (start: number, count: number) => void;
-  updateRanges?: { start: number; count: number }[];
-  // three 0.157 / 0.158.
-  updateRange?: { offset: number; count: number };
-  needsUpdate: boolean;
-}
-
-/**
- * @internal Marks `[start, start + count)` floats of `buffer` for upload, on top of whatever is
- * still pending (several ticks can pass between two renders - a prewarm is hundreds). Either way
- * the pending upload stays one range, widened to cover both: three 0.157 has a single range (reset
- * to `count: -1` once uploaded), and newer three's list (emptied once uploaded) would otherwise
- * grow by one range - one `bufferSubData` call - per tick. An empty range is skipped: WebGL2 reads
- * a zero `bufferSubData` length as "to the end of the array".
- */
-export function markRange(buffer: FXRangedBuffer, start: number, count: number): void {
-  if (count <= 0) {
-    return;
-  }
-  if (typeof buffer.addUpdateRange === "function") {
-    let first = start;
-    let end = start + count;
-    const pending = buffer.updateRanges;
-    if (pending !== undefined && pending.length > 0) {
-      for (const range of pending) {
-        first = Math.min(first, range.start);
-        end = Math.max(end, range.start + range.count);
-      }
-      pending.length = 0;
-    }
-    buffer.addUpdateRange(first, end - first);
-  } else if (buffer.updateRange !== undefined) {
-    const range = buffer.updateRange;
-    if (range.count < 0) {
-      range.offset = start;
-      range.count = count;
-    } else {
-      const end = Math.max(range.offset + range.count, start + count);
-      range.offset = Math.min(range.offset, start);
-      range.count = end - range.offset;
-    }
-  }
-  buffer.needsUpdate = true;
-}
-
 /** The per-instance history frame each segment starts at: `floor(instance / capacity)`. */
-function segmentFrames(frames: number, capacity: number): ThreeInstancedBufferAttribute {
+function segmentFrames(frames: number, capacity: number): InstancedBufferAttribute {
   const segments = frames * capacity;
   const frameOfSegment = new Float32Array(segments);
   for (let i = 0; i < segments; i++) {
     frameOfSegment[i] = Math.floor(i / capacity);
   }
-  return new ThreeInstancedBufferAttribute(frameOfSegment, 1);
+  return new InstancedBufferAttribute(frameOfSegment, 1);
 }
 
 /**
  * @internal History of a JS-driven emitter: a CPU array the trail's attributes read through three,
- * filled from the emitter's own `InstancedBufferAttribute`s each recorded tick - except while it
+ * filled from the emitter's particle slots each recorded tick - except while it
  * is idle: no particle alive, and every frame already dead, so a record would change nothing
  * visible. The first record after an idle stretch uploads the whole array once, which keeps the
  * GPU copy exact without tracking what the skipped ticks left behind.
@@ -160,8 +112,11 @@ function segmentFrames(frames: number, capacity: number): ThreeInstancedBufferAt
 export class FXCPUTrailHistory implements FXTrailHistory {
   public readonly kind = "cpu";
 
-  // Where each recorded field lies in a point, read off the layout's packed views.
-  private readonly placed: readonly FXHistoryField[];
+  public readonly capacity: number;
+
+  // Where each recorded field lies in a point (read off the layout's packed views), and where it
+  // lies in the mesh's slot.
+  private readonly placed: readonly (FXHistoryField & { readonly from: number })[];
   private readonly stride: number;
   private readonly array: Float32Array;
   private readonly buffer: InstancedInterleavedBuffer;
@@ -173,30 +128,35 @@ export class FXCPUTrailHistory implements FXTrailHistory {
   private skippedRecords = false;
 
   /**
-   * @param drawnCount - The emitter's drawn slot range: every slot it has claimed since the last
-   *   clear. Must not shrink while this history is in use without a {@link clear} alongside - a
-   *   slot past it would keep its last recorded point, live tag included.
-   * @param liveCount - The emitter's live particle count.
-   * @param layout - A `"cpu"` `trailHistoryLayout`: the fields to record beside the packed point
-   *   (each held by `source`), where in the point, and the point's stride - this decides none of it.
+   * @param mesh - The emitter's particles. Its drawn range (every slot claimed since the last clear)
+   *   must not shrink while this history is in use without a {@link clear} alongside - a slot past
+   *   it would keep its last recorded point, live tag included.
+   * @param layout - A `"cpu"` `trailHistoryLayout` over `mesh`'s slot: the fields to record beside
+   *   the packed point, where in the point, and the point's stride - this decides none of it.
    */
   constructor(
-    private readonly source: Readonly<Record<string, InstancedBufferAttribute>>,
-    private readonly drawnCount: () => number,
-    private readonly liveCount: () => number,
+    private readonly mesh: FXInstancedParticle,
     public readonly layout: FXTrailLayout,
-    public readonly capacity: number,
     public readonly frames: number,
   ) {
     if (layout.kind !== "cpu") {
       throw new Error("FXCPUTrailHistory: expected a cpu trail layout");
     }
+    this.capacity = mesh.instanceCapacity;
+    const capacity = this.capacity;
     this.placed = layout.packed.flatMap((view) =>
-      view.members.map((member) => ({
-        name: member.name,
-        components: member.components,
-        offset: view.offset + member.componentOffset,
-      })),
+      view.members.map((member) => {
+        const from = mesh.slot.fields.find((field) => field.name === member.name);
+        if (from === undefined) {
+          throw new Error(`FXCPUTrailHistory: the slot lacks the recorded "${member.name}"`);
+        }
+        return {
+          name: member.name,
+          components: member.components,
+          offset: view.offset + member.componentOffset,
+          from: from.offset,
+        };
+      }),
     );
     const stride = layout.stride;
     this.stride = stride;
@@ -208,7 +168,7 @@ export class FXCPUTrailHistory implements FXTrailHistory {
 
   // Nothing claimed since the last clear leaves every frame zero, as dead as an idle stretch.
   public get idle(): boolean {
-    return this.skippedRecords || this.drawnCount() === 0;
+    return this.skippedRecords || this.mesh.instanceCount === 0;
   }
 
   public mount(geometry: InstancedBufferGeometry): void {
@@ -234,31 +194,33 @@ export class FXCPUTrailHistory implements FXTrailHistory {
     const frameFloats = this.capacity * stride;
     // Slots past the drawn range were never claimed since the last clear: zero in the source and
     // in every frame alike, so they need no copy.
-    const drawn = Math.min(this.drawnCount(), this.capacity);
+    const drawn = Math.min(this.mesh.instanceCount, this.capacity);
     if (drawn === 0) {
       // No slot claimed since the last clear (or ever): every frame is still all zeros.
       return;
     }
-    if (this.liveFrames === 0 && this.liveCount() === 0) {
+    if (this.liveFrames === 0 && this.mesh.liveCount === 0) {
       // Nothing alive, nothing left to fade: this record would only rewrite dead points.
       this.skippedRecords = true;
       return;
     }
     const base = head * frameFloats;
     const previous = ((head + this.frames - 1) % this.frames) * frameFloats;
-    const position = this.source[FX_CORE_POSITION].array;
-    const lifecycle = this.source[FX_CORE_LIFECYCLE].array;
+    const { slots: source, core } = this.mesh;
+    const sourceStride = this.mesh.slot.stride;
     const array = this.array;
     let anyAlive = false;
     for (let slot = 0; slot < drawn; slot++) {
       const point = base + slot * stride;
       const before = previous + slot * stride;
-      const x = position[slot * 3];
-      const y = position[slot * 3 + 1];
-      const z = position[slot * 3 + 2];
-      const alive = lifecycle[slot * 3 + FX_AGE] < lifecycle[slot * 3 + FX_LIFETIME];
+      const position = slot * sourceStride + core.position;
+      const lifecycle = slot * sourceStride + core.lifecycle;
+      const x = source[position];
+      const y = source[position + 1];
+      const z = source[position + 2];
+      const alive = source[lifecycle + FX_AGE] < source[lifecycle + FX_LIFETIME];
       // The particle's id + 1, or 0 when dead - so a zero-filled (never written) point is dead.
-      const tag = alive ? lifecycle[slot * 3 + FX_ID] + 1 : 0;
+      const tag = alive ? source[lifecycle + FX_ID] + 1 : 0;
       anyAlive ||= alive;
       const continues = tag > 0 && array[before + 3] === tag;
       array[point] = x;
@@ -271,12 +233,11 @@ export class FXCPUTrailHistory implements FXTrailHistory {
       array[point + 7] = time;
     }
     for (const field of this.placed) {
-      const { array: from, itemSize } = this.source[field.name];
       for (let slot = 0; slot < drawn; slot++) {
         const target = base + slot * stride + field.offset;
-        const origin = slot * itemSize;
+        const origin = slot * sourceStride + field.from;
         for (let c = 0; c < field.components; c++) {
-          array[target + c] = from[origin + c];
+          array[target + c] = source[origin + c];
         }
       }
     }
@@ -341,17 +302,17 @@ export class FXGPUTrailHistory implements FXTrailHistory {
     public readonly layout: FXTrailLayout,
     public readonly frames: number,
   ) {
-    if (layout.kind !== "gpu" || layout.stride !== mesh.layout.stride) {
+    if (layout.kind !== "gpu" || layout.stride !== mesh.slot.stride) {
       throw new Error("FXGPUTrailHistory: expected a gpu trail layout over this mesh's slot");
     }
     this.capacity = mesh.capacity;
-    this.slotBytes = mesh.layout.stride * Float32Array.BYTES_PER_ELEMENT;
+    this.slotBytes = mesh.slot.stride * Float32Array.BYTES_PER_ELEMENT;
     this.buffer = gl.createBuffer();
     this.clear();
   }
 
   public mount(geometry: InstancedBufferGeometry): void {
-    const { stride } = this.mesh.layout;
+    const { stride } = this.mesh.slot;
     const points = (this.frames + 2) * this.capacity;
     const frameFloats = this.capacity * stride;
     // Physical frame 0 is the mirror before frame 0: the previous point of a segment starting at

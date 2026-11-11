@@ -6,7 +6,7 @@ import type {
   FXParticleKernelArtifact,
   FXRenderArtifact,
 } from "../../src/artifact/FXArtifact";
-import { FX_CORE_LIFECYCLE, FX_CORE_POSITION } from "../../src/coreLayout";
+import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_LIFETIME } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { packingOrder } from "../../src/render/FXAttributePacking";
 import { fxEmitterRenderBudget, fxTrailRenderBudget } from "../../src/render/FXRenderBudget";
@@ -20,6 +20,7 @@ import {
   trailOf,
 } from "../helpers/internals";
 import { mockRenderer } from "../helpers/mockWebGL";
+import { fieldBehavior, fieldComponents } from "../helpers/slots";
 
 function vertexShaderOf(mesh: Mesh): string {
   return (mesh.material as ShaderMaterial).vertexShader;
@@ -54,8 +55,15 @@ function trailOptions(render: FXRenderArtifact): FXTrailOptions {
   return { render, frames: 3, sampleInterval: 0.1 };
 }
 
-/** The kernel buffers of a GPU emitter writing color, alpha and size - laid out by packingOrder,
- *  as the editor lays a kernel out. */
+/** The slot of an emitter writing color, alpha and size, in the JS behavior's declaration order. */
+const DECLARED_SLOT: readonly FXBufferLayout[] = [
+  { name: FX_CORE_POSITION, stride: 3 },
+  { name: FX_CORE_LIFECYCLE, stride: 3 },
+  ...COLOR_ALPHA_SIZE.map((decl) => ({ name: decl.name, stride: decl.components })),
+];
+
+/** The slot of an emitter writing color, alpha and size - laid out by packingOrder, as the editor
+ *  lays out both the JS behavior's and the GPU kernel's. */
 function packedKernelBuffers(): FXBufferLayout[] {
   return packingOrder([
     { name: FX_CORE_POSITION, components: 3 },
@@ -150,7 +158,7 @@ describe("CPU trail history packing", () => {
     try {
       const mounted = Object.keys(trailOf(emitter).mesh.geometry.attributes);
       expect(mounted).toHaveLength(9);
-      expect(fxTrailRenderBudget(render, COLOR_ALPHA_SIZE).attributes).toBe(mounted.length);
+      expect(fxTrailRenderBudget(render, DECLARED_SLOT).attributes).toBe(mounted.length);
     } finally {
       emitter.destroy();
     }
@@ -179,16 +187,49 @@ describe("GPU packing", () => {
       expect(shader).toContain("p_lifecycle = a_pack1.xyz;");
       expect(shader).toContain("p_fx_size = a_pack1.w;");
       expect(shader).toContain("p_position = a_pack2;");
-      // The base geometry's three, then the views: what the budget reads given the kernel order
-      // - the JS mesh's one attribute per field without it.
-      const budget = fxEmitterRenderBudget(render, COLOR_ALPHA_SIZE, { kernelBuffers: buffers });
+      // The base geometry's three, then the views - fewer for the packing order than for the
+      // order fields were declared in.
+      const budget = fxEmitterRenderBudget(render, buffers);
       expect(budget.attributes).toBe(3 + 3);
-      expect(fxEmitterRenderBudget(render, COLOR_ALPHA_SIZE).attributes).toBe(3 + 5);
-      const depth = fxEmitterRenderBudget(render, COLOR_ALPHA_SIZE, {
-        kernelBuffers: buffers,
-        castShadow: true,
-      });
+      expect(fxEmitterRenderBudget(render, DECLARED_SLOT).attributes).toBe(3 + 4);
+      const depth = fxEmitterRenderBudget(render, buffers, { castShadow: true });
       expect(depth.attributes).toBe(budget.attributes);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("binds a JS-driven mesh through the same packed views, over its own slot", () => {
+    const render = colorAlphaSizeRender();
+    const buffers = packedKernelBuffers();
+    const emitter = FXEmitter.fromArtifacts(
+      render,
+      fieldBehavior({
+        buffers,
+        spawn(fields, start, count): void {
+          for (let i = start; i < start + count; i++) {
+            fields[FX_CORE_LIFECYCLE][i * 3 + FX_LIFETIME] = 1;
+            fields["alpha"][i] = 0.4;
+            fields["size"][i] = 0.5;
+          }
+        },
+      }),
+      { expectedCapacity: 2 },
+    );
+    try {
+      const mesh = particlesOf(emitter);
+      expect(instancedAttributes(mesh)).toEqual(["a_pack0", "a_pack1", "a_pack2"]);
+      const shader = vertexShaderOf(mesh);
+      expect(shader).toContain("p_fx_alpha = a_pack0.w;");
+      expect(shader).toContain("p_fx_size = a_pack1.w;");
+      expect(fxEmitterRenderBudget(render, buffers).attributes).toBe(3 + 3);
+
+      emitter.burst(1);
+      tickEmitter(emitter, 0);
+      // One interleaved record per particle: color, alpha, lifecycle, size, position.
+      expect(mesh.slot.stride).toBe(11);
+      expect(mesh.slots[3]).toBeCloseTo(0.4, 6);
+      expect(mesh.slots[7]).toBeCloseTo(0.5, 6);
     } finally {
       emitter.destroy();
     }
@@ -250,12 +291,9 @@ describe("GPU packing", () => {
       // The quad, the frame, the previous point's two views and three views per end.
       const mounted = Object.keys(mesh.geometry.attributes);
       expect(mounted).toHaveLength(10);
-      expect(
-        fxTrailRenderBudget(render, COLOR_ALPHA_SIZE, { backend: "gpu", kernelBuffers: buffers })
-          .attributes,
-      ).toBe(mounted.length);
-      // Without the kernel order: one attribute per field, the most any order needs.
-      expect(fxTrailRenderBudget(render, COLOR_ALPHA_SIZE, { backend: "gpu" }).attributes).toBe(14);
+      expect(fxTrailRenderBudget(render, buffers, { backend: "gpu" }).attributes).toBe(
+        mounted.length,
+      );
     } finally {
       emitter.destroy();
     }
@@ -276,15 +314,15 @@ describe("unwritten reads", () => {
     });
     try {
       const mesh = particlesOf(emitter);
-      expect("fx_glow" in mesh.propertyBuffers).toBe(false);
-      expect(instancedAttributes(mesh)).toEqual(["a_lifecycle", "a_position"]);
+      expect(fieldComponents(mesh, "fx_glow")).toBeUndefined();
+      expect(instancedAttributes(mesh)).toEqual(["a_pack0", "a_pack1"]);
       for (const material of [mesh.material, mesh.customDepthMaterial] as ShaderMaterial[]) {
         expect(material.vertexShader).toContain("p_fx_glow = vec3(0.0);");
         expect(material.vertexShader).not.toContain("a_fx_glow");
         // Still a varying: the fragment stage reads it.
         expect(material.fragmentShader).toContain("varying vec3 p_fx_glow;");
       }
-      expect(fxEmitterRenderBudget(glowRender(), []).attributes).toBe(3 + 2);
+      expect(fxEmitterRenderBudget(glowRender(), DECLARED_SLOT.slice(0, 2)).attributes).toBe(3 + 2);
     } finally {
       emitter.destroy();
     }
@@ -300,9 +338,7 @@ describe("unwritten reads", () => {
       const mesh = gpuParticlesOf(emitter);
       expect(instancedAttributes(mesh)).toEqual(["a_pack0", "a_pack1"]);
       expect(vertexShaderOf(mesh)).toContain("p_fx_glow = vec3(0.0);");
-      expect(fxEmitterRenderBudget(glowRender(), [], { kernelBuffers: buffers }).attributes).toBe(
-        3 + 2,
-      );
+      expect(fxEmitterRenderBudget(glowRender(), buffers).attributes).toBe(3 + 2);
     } finally {
       emitter.destroy();
     }

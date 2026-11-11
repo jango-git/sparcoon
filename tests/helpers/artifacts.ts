@@ -3,7 +3,6 @@ import type {
   FXBehaviorArtifact,
   FXBufferLayout,
   FXEmitterTransform,
-  FXKernelBuffers,
   FXParticleReads,
   FXRenderArtifact,
   FXRenderArtifactsByGLSLTier,
@@ -19,7 +18,8 @@ import {
 } from "../../src/coreLayout";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 import type { FXParticleLayout } from "../../src/render/FXArtifactMaterial.Internal";
-import { unpackedAttributes } from "../../src/render/FXAttributePacking";
+import type { FieldBuffers, FieldUpdate } from "./slots";
+import { fieldBehavior } from "./slots";
 
 /** The pose of an emitter at the world origin, at rest. */
 export const IDENTITY_EMITTER_TRANSFORM: FXEmitterTransform = {
@@ -38,16 +38,16 @@ export const VEC2_VARYING: GLTypeInfo = { glslTypeName: "vec2", bufferSize: 2, i
 export const VEC3_VARYING: GLTypeInfo = { glslTypeName: "vec3", bufferSize: 3, instantiable: true };
 
 /**
- * A particle layout holding exactly `fields`, one attribute each (`a_<key>`), nothing missing - what
- * the JS driver builds for a behavior writing them, for tests that call a material builder directly.
+ * A particle layout binding exactly `fields`, one whole view each, named after it (`a_<key>`), and
+ * nothing missing - the plainest layout a material builder takes, for tests that call one directly
+ * and read each field's own attribute (a mesh packs what its render reads: `particleLayout`).
  */
 export function layoutOf(fields: Record<string, GLTypeInfo>): FXParticleLayout {
   return {
-    fields,
-    packed: unpackedAttributes(
-      Object.keys(fields).map((name) => ({ name, components: fields[name].bufferSize })),
-      (field) => field.name,
-    ),
+    packed: Object.keys(fields).map((name) => {
+      const components = fields[name].bufferSize;
+      return { name, offset: 0, components, members: [{ name, components, componentOffset: 0 }] };
+    }),
     missing: {},
   };
 }
@@ -174,8 +174,7 @@ export function behaviorArtifact(
   spec: {
     lifetime?: number;
     attributes?: readonly SeedAttr[];
-    update?: FXBehaviorArtifact["update"];
-    updateWrittenBuffers?: readonly string[];
+    update?: FieldUpdate;
     noSpawn?: boolean;
   } = {},
 ): FXBehaviorArtifact {
@@ -187,40 +186,30 @@ export function behaviorArtifact(
     { name: FX_CORE_LIFECYCLE, stride: FX_CORE_LIFECYCLE_STRIDE },
     ...attributes.map((a) => ({ name: a.name, stride: a.components })),
   ];
-  const attributeWrites: FXAttributeDecl[] = attributes.map((a) => ({
-    name: a.name,
-    components: a.components,
-  }));
 
-  const spawnPart = spec.noSpawn
-    ? {}
-    : {
-        spawnWrittenBuffers: [FX_CORE_LIFECYCLE, ...attributes.map((a) => a.name)],
-        spawn(buffers2: FXKernelBuffers, start: number, count: number): void {
-          const lifecycle = buffers2[FX_CORE_LIFECYCLE];
-          for (let i = start; i < start + count; i++) {
-            lifecycle[i * FX_CORE_LIFECYCLE_STRIDE + FX_LIFETIME] = lifetime;
-          }
-          for (const attr of attributes) {
-            const buf = buffers2[attr.name];
+  return fieldBehavior({
+    buffers,
+    ...(spec.update === undefined ? {} : { update: spec.update }),
+    ...(spec.noSpawn === true
+      ? {}
+      : {
+          spawn(fields: FieldBuffers, start: number, count: number): void {
+            const lifecycle = fields[FX_CORE_LIFECYCLE];
             for (let i = start; i < start + count; i++) {
-              const value = attr.valueFn ? attr.valueFn(i) : (attr.value ?? []);
-              for (let c = 0; c < attr.components; c++) {
-                buf[i * attr.components + c] = value[c] ?? 0;
+              lifecycle[i * FX_CORE_LIFECYCLE_STRIDE + FX_LIFETIME] = lifetime;
+            }
+            for (const attr of attributes) {
+              const buf = fields[attr.name];
+              for (let i = start; i < start + count; i++) {
+                const value = attr.valueFn ? attr.valueFn(i) : (attr.value ?? []);
+                for (let c = 0; c < attr.components; c++) {
+                  buf[i * attr.components + c] = value[c] ?? 0;
+                }
               }
             }
-          }
-        },
-      };
-
-  return {
-    buffers,
-    attributeWrites,
-    bindings: {},
-    updateWrittenBuffers: spec.updateWrittenBuffers ?? [],
-    update: spec.update ?? ((): void => undefined),
-    ...spawnPart,
-  };
+          },
+        }),
+  });
 }
 
 /**
@@ -233,22 +222,16 @@ export function behaviorArtifact(
  * way an editor-emitted kernel kills: `age = max(age, lifetime)`, after its writes.
  */
 export function killingBehavior(lifetime: number, killX: number, speed = 2): FXBehaviorArtifact {
-  const placing = placingBehavior(lifetime, [], speed);
-  return {
-    ...placing,
-    updateWrittenBuffers: [FX_CORE_POSITION, FX_CORE_LIFECYCLE],
-    update(buffers: FXKernelBuffers, count, dt, bindings, emitter): void {
-      placing.update(buffers, count, dt, bindings, emitter);
-      const position = buffers[FX_CORE_POSITION];
-      const lifecycle = buffers[FX_CORE_LIFECYCLE];
-      for (let i = 0; i < count; i++) {
-        const row = i * FX_CORE_LIFECYCLE_STRIDE;
-        if (position[i * 3 + FX_POSITION_X] >= killX - 1e-6) {
-          lifecycle[row + FX_AGE] = Math.max(lifecycle[row + FX_AGE], lifecycle[row + FX_LIFETIME]);
-        }
+  return placingFields(lifetime, [], speed, (fields, count) => {
+    const position = fields[FX_CORE_POSITION];
+    const lifecycle = fields[FX_CORE_LIFECYCLE];
+    for (let i = 0; i < count; i++) {
+      const row = i * FX_CORE_LIFECYCLE_STRIDE;
+      if (position[i * 3 + FX_POSITION_X] >= killX - 1e-6) {
+        lifecycle[row + FX_AGE] = Math.max(lifecycle[row + FX_AGE], lifecycle[row + FX_LIFETIME]);
       }
-    },
-  };
+    }
+  });
 }
 
 export function placingBehavior(
@@ -256,18 +239,24 @@ export function placingBehavior(
   poses: FXEmitterTransform[] = [],
   speed = 2,
 ): FXBehaviorArtifact {
-  return {
+  return placingFields(lifetime, poses, speed);
+}
+
+// placingBehavior, with `after` run after its update.
+function placingFields(
+  lifetime: number,
+  poses: FXEmitterTransform[],
+  speed: number,
+  after?: (fields: FieldBuffers, count: number) => void,
+): FXBehaviorArtifact {
+  return fieldBehavior({
     buffers: [
       { name: FX_CORE_POSITION, stride: 3 },
       { name: FX_CORE_LIFECYCLE, stride: FX_CORE_LIFECYCLE_STRIDE },
     ],
-    attributeWrites: [],
-    bindings: {},
-    spawnWrittenBuffers: [FX_CORE_POSITION, FX_CORE_LIFECYCLE],
-    updateWrittenBuffers: [FX_CORE_POSITION],
-    spawn(buffers: FXKernelBuffers, start, count, _bindings, emitter): void {
-      const position = buffers[FX_CORE_POSITION];
-      const lifecycle = buffers[FX_CORE_LIFECYCLE];
+    spawn(fields, start, count, _bindings, emitter): void {
+      const position = fields[FX_CORE_POSITION];
+      const lifecycle = fields[FX_CORE_LIFECYCLE];
       if (emitter !== undefined) {
         poses.push({
           worldMatrix: [...emitter.worldMatrix],
@@ -282,15 +271,16 @@ export function placingBehavior(
         }
       }
     },
-    update(buffers: FXKernelBuffers, count, dt): void {
-      const position = buffers[FX_CORE_POSITION];
-      const lifecycle = buffers[FX_CORE_LIFECYCLE];
+    update(fields, count, dt): void {
+      const position = fields[FX_CORE_POSITION];
+      const lifecycle = fields[FX_CORE_LIFECYCLE];
       for (let i = 0; i < count; i++) {
         const row = i * FX_CORE_LIFECYCLE_STRIDE;
         if (lifecycle[row + FX_AGE] < lifecycle[row + FX_LIFETIME]) {
           position[i * 3 + FX_POSITION_X] += speed * dt;
         }
       }
+      after?.(fields, count);
     },
-  };
+  });
 }

@@ -1,5 +1,5 @@
 import type { Material, ShaderMaterial } from "three";
-import type { FXAttributeDecl, FXRenderArtifact } from "../artifact/FXArtifact.js";
+import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import {
   applyArtifactUniformValues,
   assertArtifactUniformValues,
@@ -40,7 +40,8 @@ export class FXArtifactMaterial {
    * rather than surfacing as a blank sampler at draw time.
    */
   constructor(
-    private readonly artifact: FXRenderArtifact,
+    /** The artifact the materials are built from - what `particleLayout` reads it by. */
+    public readonly artifact: FXRenderArtifact,
     textures: Readonly<Record<string, FXExternalTexture>> = {},
   ) {
     this.externalSlots = createExternalTextureBindings(
@@ -49,10 +50,6 @@ export class FXArtifactMaterial {
       "FXArtifactMaterial",
       "pass it via FXEmitter.fromArtifacts({ textures })",
     );
-  }
-
-  public get attributeReads(): readonly FXAttributeDecl[] {
-    return this.artifact.attributeReads;
   }
 
   /** The particle material over a mesh of `layout` (its driver's, see `particleLayout`). */

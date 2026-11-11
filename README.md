@@ -386,17 +386,19 @@ below:
   simulation and compiled.
 
 The editor/runtime boundary is frozen:
-each particle carries two core buffers, `position` (vec3) and `lifecycle` (vec3 `[age, lifetime,
-id]`), a particle counts as dead once `age >= lifetime`, and everything else lives in ordinary
-`a_fx_<name>` attributes. The package exports the constants of that layout (`FX_AGE`, `FX_LIFETIME`,
-`FX_ID`, `FX_CORE_POSITION` and the rest).
+each particle is one interleaved slot of fields laid out back to back, the same on the JS and the
+GPU backend. Two fields are core, `position` (vec3) and `lifecycle` (vec3 `[age, lifetime, id]`), a
+particle counts as dead once `age >= lifetime`, and everything else is an ordinary `fx_<name>`
+field. The package exports the constants of that layout (`FX_AGE`, `FX_LIFETIME`, `FX_ID`,
+`FX_CORE_POSITION` and the rest).
 
 Vertex attributes are the scarce resource (WebGL1 guarantees only 8), so the runtime packs
-particle fields that lie side by side in one buffer into a single attribute - a vec3 color and a
+particle fields that lie side by side in the slot into a single attribute - a vec3 color and a
 float alpha travel as one vec4 - and splits them back apart in the shader, so the generated code
-reads the same `p_fx_<name>` values either way. This covers trail histories and the GPU kernel's
-particle slot; a JS-driven emitter's own particle attributes stay one per field. It is internal: no
-API changes, and nothing to opt into. An attribute the render reads but nothing writes has no
+reads the same `p_fx_<name>` values either way. Only what the render reads is packed: a field it
+never reads takes no attribute, and read fields an unread one sits between still share one when
+they fit. This covers the particle slot on both backends and the trail histories. It is internal:
+no API changes, and nothing to opt into. An attribute the render reads but nothing writes has no
 buffer and no attribute slot at all - it is always zero, so the shader declares it as that
 constant.
 

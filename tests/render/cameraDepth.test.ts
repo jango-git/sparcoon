@@ -84,7 +84,7 @@ describe("camera depth", () => {
     expect(Object.keys(material.uniforms).some((name) => name.startsWith("fxCameraDepth"))).toBe(
       false,
     );
-    expect(Object.hasOwn(material, "onBeforeRender")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(material, "onBeforeRender")).toBe(false);
   });
 
   it("defines fxDepthFade before the graph reads it", () => {
@@ -178,7 +178,7 @@ describe("camera depth", () => {
         "float fxDepthFade(float fadeDistance) { return 1.0; }",
       );
       expect(depthMaterial.fragmentShader).not.toContain("fxCameraDepthDistance");
-      expect(Object.hasOwn(depthMaterial, "onBeforeRender")).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(depthMaterial, "onBeforeRender")).toBe(false);
     }
   });
 });

@@ -1,5 +1,9 @@
 import type { BufferGeometry, Mesh, Vector3 } from "three";
-import type { FXAttributeDecl, FXEmitterTransform } from "../artifact/FXArtifact.js";
+import type {
+  FXAttributeDecl,
+  FXEmitterTransform,
+  FXRenderArtifact,
+} from "../artifact/FXArtifact.js";
 import {
   FX_CORE_LIFECYCLE,
   FX_CORE_LIFECYCLE_STRIDE,
@@ -8,11 +12,11 @@ import {
   meshPropertyKeyFor,
 } from "../coreLayout.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
-import type { FXSlotLayout } from "../instancedParticle/FXTransformFeedbackParticle.js";
+import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
-import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
-import { floatGLSLType, unpackedAttributes } from "../render/FXAttributePacking.js";
+import { renderReadProperties } from "../render/FXArtifactMaterial.Internal.js";
+import { floatGLSLType, packConsecutive } from "../render/FXAttributePacking.js";
 import type { FXTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 
 /**
@@ -26,10 +30,10 @@ import type { FXTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 export interface FXEmitterDriver {
   /** The real Three.js draw object; `FXEmitter` adds it to the scene and sets shadow flags on it. */
   readonly mesh: Mesh;
-  /** What the current render material reads off this driver's mesh: the fields it holds (core
-   *  buffers + every `fx_<name>` attribute its own artifact writes - never the other backend's),
-   *  their packed views, and the render's unwritten reads (zero). Replaced by
-   *  {@link applyRenderArtifact}; reused for the depth (shadow-caster) material. */
+  /** What the current render material reads off this driver's mesh: the views it binds over its
+   *  own slot (never the other backend's), packed from what that render reads, and the render's
+   *  unwritten reads (zero). Replaced by {@link applyRenderArtifact}; reused for the depth
+   *  (shadow-caster) material. */
   readonly layout: FXParticleLayout;
   readonly particleCount: number;
   readonly particleCapacity: number;
@@ -74,10 +78,11 @@ export interface FXEmitterDriver {
   /**
    * Swaps this driver's material and base geometry in place for a render-only structural edit
    * (new shader, geometry primitive/mesh, shadow flags) - particle buffers, instance count, and
-   * simulation state are left completely untouched, so playback never resets. What the mesh holds
+   * simulation state are left completely untouched, so playback never resets; only the views bound
+   * over the slot follow the new render's reads (see {@link particleLayout}). What the slot holds
    * depends only on the simulation, never on the render - a new read of a field nothing writes is
-   * just another zero constant (see {@link particleLayout}) - so this throws only when the new
-   * render reads a held field at another width, which no driver could draw either.
+   * just another zero constant - so this throws only when the new render reads a held field at
+   * another width, which no driver could draw either.
    */
   applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void;
   /**
@@ -120,41 +125,27 @@ function floatType(components: number): GLTypeInfo {
   };
 }
 
-/** A named width declaration - shape shared by `FXAttributeDecl` (`components`) and a mapped
- *  `FXBufferLayout` (`stride`), the two concrete lists {@link mergeAttributeWidths} merges. */
-interface FXNamedWidth {
-  readonly name: string;
-  readonly components: number;
-}
-
 /**
- * Merges width-declaring attribute lists (a driver's own state buffers, the render artifact's
- * `attributeReads`) into one name -> component-count map, throwing on a genuine cross-source
- * disagreement rather than sizing a buffer wrong. Shared by both drivers' constructors so the
- * validation itself never drifts between them, even though each driver's own input list does not.
+ * A render's `attributeReads` as one name -> component-count map, throwing when it reads one name
+ * at two widths rather than declaring an attribute wrong (message shared with a read at another
+ * width than held, see {@link particleLayout}).
  */
-export function mergeAttributeWidths(
-  ...sources: readonly (readonly FXNamedWidth[])[]
-): ReadonlyMap<string, number> {
+function attributeWidths(decls: readonly FXAttributeDecl[]): ReadonlyMap<string, number> {
   const components = new Map<string, number>();
-  for (const source of sources) {
-    for (const decl of source) {
-      const existing = components.get(decl.name);
-      if (existing !== undefined && existing !== decl.components) {
-        throw new Error(
-          `FXEmitter: attribute "${decl.name}" is declared with conflicting widths ` +
-            `(${existing.toString()} vs ${decl.components.toString()}) across its sources`,
-        );
-      }
-      components.set(decl.name, decl.components);
+  for (const decl of decls) {
+    const existing = components.get(decl.name);
+    if (existing !== undefined && existing !== decl.components) {
+      throw new Error(
+        `FXEmitter: attribute "${decl.name}" is declared with conflicting widths ` +
+          `(${existing.toString()} vs ${decl.components.toString()}) across its sources`,
+      );
     }
+    components.set(decl.name, decl.components);
   }
   return components;
 }
 
-/** Builds a driver's full varyings map (the two core buffers plus one `fx_<name>` per attribute)
- *  from a merged width map - the input to both `FXArtifactMaterial.buildThreeMaterial` and either
- *  mesh class's constructor. */
+/** The core fields plus one `fx_<name>` per attribute of a width map, by property key and type. */
 export function varyingsFromComponents(
   components: ReadonlyMap<string, number>,
 ): Record<string, GLTypeInfo> {
@@ -168,65 +159,49 @@ export function varyingsFromComponents(
   return varyings;
 }
 
-/** The fields a particle mesh holds and the views it binds them through - what a driver's
- *  {@link FXParticleLayout} is built on, fixed for the driver's life. */
-export interface FXHeldParticleFields {
-  readonly fields: Readonly<Record<string, GLTypeInfo>>;
-  readonly packed: readonly FXPackedAttribute[];
-}
-
-/**
- * What the JS mesh holds for a behavior writing `attributeWrites`: the core buffers and every
- * written attribute, each its own `Float32Array` (the editor-emitted kernel indexes them by literal
- * offsets of its own buffers), so one view per field, named after it (`a_<key>`, as
- * `FXInstancedParticle` binds it).
- */
-export function jsHeldFields(attributeWrites: readonly FXNamedWidth[]): FXHeldParticleFields {
-  const fields = varyingsFromComponents(mergeAttributeWidths(attributeWrites));
-  return {
-    fields,
-    packed: unpackedAttributes(
-      Object.keys(fields).map((name) => ({ name, components: fields[name].bufferSize })),
-      (field) => field.name,
-    ),
-  };
-}
-
-/** What the GPU mesh holds for a kernel's `slot`: every field of it, through the slot's own
- *  packed views (see {@link FXSlotLayout.packed}). */
-export function gpuHeldFields(slot: FXSlotLayout): FXHeldParticleFields {
+/** Every field of a particle `slot`, by property key and type. */
+export function slotFields(slot: FXSlotLayout): Record<string, GLTypeInfo> {
   const fields: Record<string, GLTypeInfo> = {};
   for (const field of slot.fields) {
     fields[field.name] = floatType(field.components);
   }
-  return { fields, packed: slot.packed };
+  return fields;
+}
+
+/** A particle mesh's `index`-th view, bound as `a_<name>`. */
+function particleViewName(index: number): string {
+  return `pack${String(index)}`;
 }
 
 /**
- * The layout a render reading `attributeReads` draws a mesh holding `held` with - built the same
- * way by both drivers and the render budget. A read field the mesh does not hold is written by
- * nothing, so always zero (attributes have no defaults): it goes into `missing`, a constant in the
- * shader, with no buffer and no attribute - the trail's mechanism for a field its emitter does not
- * hold (`trailHistoryLayout`), here for the particle path. The core buffers are always read (the
- * shader's macros and dead-particle clip use them), so a mesh lacking one reads it as zero too.
+ * The layout `render` draws a mesh of `slot` with - either backend's, built the same way by both
+ * drivers and the render budget: the views the mesh binds, and the reads it cannot bind.
  *
- * @throws When the render reads a field at another width than the mesh holds it, or reads one name
+ * The views pack only what the render reads (its stages' `particleReads`, and the core fields,
+ * always read: the shader's macros and dead-particle clip use them): a field it does not read
+ * never opens or ends a view, only bridges two read ones lying around it - so read fields an unread
+ * one separates still share a view when they fit in four floats (see `packConsecutive`).
+ *
+ * A read field the slot does not hold is written by nothing, so always zero (attributes have no
+ * defaults): it goes into `missing`, a constant in the shader, with no buffer and no attribute -
+ * the trail's mechanism for a field its emitter does not hold (`trailHistoryLayout`), here for the
+ * particle path. So is a core field the slot lacks.
+ *
+ * @throws When the render reads a field at another width than the slot holds it, or reads one name
  *   at two widths - no layout could draw that.
  */
-export function particleLayout(
-  held: FXHeldParticleFields,
-  attributeReads: readonly FXAttributeDecl[],
-): FXParticleLayout {
+export function particleLayout(slot: FXSlotLayout, render: FXRenderArtifact): FXParticleLayout {
+  const held = slotFields(slot);
   const missing: Record<string, GLTypeInfo> = {};
   const core = varyingsFromComponents(new Map());
   for (const name in core) {
-    if (!(name in held.fields)) {
+    if (!(name in held)) {
       missing[name] = core[name];
     }
   }
-  for (const [name, components] of mergeAttributeWidths(attributeReads)) {
+  for (const [name, components] of attributeWidths(render.attributeReads)) {
     const key = meshPropertyKeyFor(name);
-    const holding = held.fields[key] as GLTypeInfo | undefined;
+    const holding = held[key] as GLTypeInfo | undefined;
     if (holding === undefined) {
       missing[key] = floatType(components);
     } else if (holding.bufferSize !== components) {
@@ -236,5 +211,9 @@ export function particleLayout(
       );
     }
   }
-  return { fields: held.fields, packed: held.packed, missing };
+  const reads = renderReadProperties(render);
+  const packed = packConsecutive(slot.fields, particleViewName, {
+    reads: (name) => name in core || reads.has(name),
+  });
+  return { packed, missing };
 }

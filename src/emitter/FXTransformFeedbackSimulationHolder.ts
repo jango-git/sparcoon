@@ -11,11 +11,8 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../behaviorTransformFeedbackLayout.js";
-import {
-  kernelSlotLayout,
-  type FXSlotLayout,
-  type FXTransformFeedbackParticle,
-} from "../instancedParticle/FXTransformFeedbackParticle.js";
+import { particleSlotLayout, type FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
 import {
   acquireKernelProgram,
@@ -32,13 +29,13 @@ const MAX_VERTEX_STRIDE_BYTES = 255;
  * no transform-feedback support at all.
  *
  * The kernel's outputs are captured interleaved (INTERLEAVED_ATTRIBS) into one buffer, one slot per
- * particle laid out by {@link kernelSlotLayout}; its inputs read the same layout back. Interleaved
+ * particle laid out by {@link particleSlotLayout}; its inputs read the same layout back. Interleaved
  * capture is limited only by its total component count (WebGL2 guarantees 64), where capturing each
  * buffer separately is limited to 4 buffers - the two core ones included.
  */
 export class FXTransformFeedbackSimulationHolder {
   /** The slot this kernel writes; the mesh it simulates must be laid out the same. */
-  public readonly layout: FXSlotLayout;
+  public readonly slot: FXSlotLayout;
 
   private readonly gl: WebGL2RenderingContext;
   private readonly programLease: FXKernelProgramLease;
@@ -68,8 +65,8 @@ export class FXTransformFeedbackSimulationHolder {
     // capability check.
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
     this.gl = gl;
-    this.layout = kernelSlotLayout(artifact.buffers);
-    assertFitsTransformFeedback(gl, this.layout);
+    this.slot = particleSlotLayout(artifact.buffers);
+    assertFitsTransformFeedback(gl, this.slot);
 
     // Shared by every holder of this kernel: safe, as every pass sets all of its uniforms.
     this.programLease = acquireKernelProgram(gl, artifact);
@@ -169,7 +166,7 @@ export class FXTransformFeedbackSimulationHolder {
     // dt 0: the spawn branch has no use for it, and nothing else runs in this pass.
     this.setUniforms(0, spawnRange, emitter, capacity);
 
-    const slotBytes = this.layout.stride * Float32Array.BYTES_PER_ELEMENT;
+    const slotBytes = this.slot.stride * Float32Array.BYTES_PER_ELEMENT;
     gl.enable(gl.RASTERIZER_DISCARD);
     for (const [first, count] of segments) {
       gl.bindBufferRange(
@@ -234,10 +231,10 @@ export class FXTransformFeedbackSimulationHolder {
     this.renderer.state.useProgram(this.programLease.program);
     gl.bindVertexArray(this.vao);
 
-    const slotBytes = this.layout.stride * Float32Array.BYTES_PER_ELEMENT;
+    const slotBytes = this.slot.stride * Float32Array.BYTES_PER_ELEMENT;
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.readBuffer());
     // A field's index is its input location (see FXSlotLayout).
-    this.layout.fields.forEach((field, location) => {
+    this.slot.fields.forEach((field, location) => {
       gl.vertexAttribPointer(
         location,
         field.components,

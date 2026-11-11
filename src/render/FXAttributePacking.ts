@@ -219,25 +219,3 @@ export function packConsecutive(
   close();
   return packed;
 }
-
-/**
- * No packing: one view per field, each over a buffer of its own (offset 0) - for a memory owner
- * that keeps every field in a separate array (the JS particle mesh), and for a budget that cannot
- * know the layout yet, which this bounds from above: {@link packConsecutive} never needs more views
- * than there are read fields.
- *
- * @param name - The attribute name of `field`'s view.
- */
-export function unpackedAttributes(
-  fields: readonly FXPackingField[],
-  name: (field: FXPackingField) => string,
-): FXPackedAttribute[] {
-  fields.forEach(assertComponents);
-  assertUniqueNames(fields);
-  return fields.map((field) => ({
-    name: name(field),
-    offset: 0,
-    components: field.components,
-    members: [{ name: field.name, components: field.components, componentOffset: 0 }],
-  }));
-}

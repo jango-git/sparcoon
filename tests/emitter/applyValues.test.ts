@@ -9,6 +9,7 @@ import {
 } from "../../src/coreLayout";
 import { unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
+import { fieldBehavior, fieldOf } from "../helpers/slots";
 
 // The render-uniform half of applyValues is FXArtifactMaterial.applyUniformValues
 // (render/materialContract.test.ts); the trail's share of it, trail.test.ts.
@@ -19,29 +20,26 @@ import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
  * read on the next tick.
  */
 function gravityBehavior(gravity: number): FXBehaviorArtifact {
-  return {
+  return fieldBehavior({
     buffers: [
       { name: FX_CORE_POSITION, stride: 3 },
-      { name: FX_CORE_LIFECYCLE, stride: 2 },
+      { name: FX_CORE_LIFECYCLE, stride: 3 },
     ],
-    attributeWrites: [],
     bindings: { b_gravity$0: { value: gravity } },
-    spawnWrittenBuffers: [FX_CORE_LIFECYCLE],
-    updateWrittenBuffers: [FX_CORE_POSITION],
-    spawn(buffers, start, count): void {
-      const lifecycle = buffers[FX_CORE_LIFECYCLE];
+    spawn(fields, start, count): void {
+      const lifecycle = fields[FX_CORE_LIFECYCLE];
       for (let i = start; i < start + count; i++) {
-        lifecycle[i * 2 + FX_LIFETIME] = 1000;
+        lifecycle[i * 3 + FX_LIFETIME] = 1000;
       }
     },
-    update(buffers, count, dt, bindings): void {
-      const position = buffers[FX_CORE_POSITION];
+    update(fields, count, dt, bindings): void {
+      const position = fields[FX_CORE_POSITION];
       const g = bindings["b_gravity$0"].value as number;
       for (let i = 0; i < count; i++) {
         position[i * 3 + FX_POSITION_Y] += g * dt;
       }
     },
-  };
+  });
 }
 
 describe("FXEmitter.applyValues - behavior bindings", () => {
@@ -50,8 +48,7 @@ describe("FXEmitter.applyValues - behavior bindings", () => {
     try {
       emitter.burst(1);
       landBirths(emitter);
-      const posY = (): number =>
-        particlesOf(emitter).propertyBuffers[FX_CORE_POSITION].array[FX_POSITION_Y];
+      const posY = (): number => fieldOf(particlesOf(emitter), FX_CORE_POSITION)[FX_POSITION_Y];
 
       tickEmitter(emitter, 1); // gravity -1 -> y = -1
       expect(posY()).toBeCloseTo(-1, 6);
@@ -72,9 +69,7 @@ describe("FXEmitter.applyValues - behavior bindings", () => {
       emitter.burst(1);
       landBirths(emitter);
       tickEmitter(emitter, 1);
-      expect(
-        particlesOf(emitter).propertyBuffers[FX_CORE_POSITION].array[FX_POSITION_Y],
-      ).toBeCloseTo(-1, 6);
+      expect(fieldOf(particlesOf(emitter), FX_CORE_POSITION)[FX_POSITION_Y]).toBeCloseTo(-1, 6);
     } finally {
       emitter.destroy();
     }

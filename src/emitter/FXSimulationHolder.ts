@@ -1,11 +1,6 @@
-import type {
-  FXAttributeDecl,
-  FXBehaviorArtifact,
-  FXBufferLayout,
-  FXEmitterTransform,
-  FXKernelBuffers,
-} from "../artifact/FXArtifact.js";
-import { isCoreBufferName } from "../coreLayout.js";
+import type { FXBehaviorArtifact, FXEmitterTransform } from "../artifact/FXArtifact.js";
+import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 
 /**
  * @internal The runtime's JS (CPU) behavior driver - the GPU sibling is
@@ -14,46 +9,34 @@ import { isCoreBufferName } from "../coreLayout.js";
  * `bindings` record is passed through on every call, so a value scrub is read next tick.
  */
 export class FXSimulationHolder {
-  constructor(private readonly artifact: FXBehaviorArtifact) {}
+  /** The particle slot the artifact's kernels index, by the mesh's property keys. */
+  public readonly slot: FXSlotLayout;
 
-  /** Declared buffers minus the fixed core `position`/`lifecycle` - one per user attribute. */
-  public get attributeBuffers(): readonly FXBufferLayout[] {
-    return this.artifact.buffers.filter((buffer) => !isCoreBufferName(buffer.name));
-  }
-
-  public get attributeWrites(): readonly FXAttributeDecl[] {
-    return this.artifact.attributeWrites;
+  constructor(private readonly artifact: FXBehaviorArtifact) {
+    this.slot = particleSlotLayout(artifact.buffers);
   }
 
   public get canSpawn(): boolean {
     return this.artifact.spawn !== undefined;
   }
 
-  public get spawnWrittenBuffers(): readonly string[] {
-    return this.artifact.spawnWrittenBuffers ?? [];
-  }
-
-  public get updateWrittenBuffers(): readonly string[] {
-    return this.artifact.updateWrittenBuffers;
-  }
-
   /** Seeds newborns `[begin, begin + count)`. No-op if the artifact is update-only. */
   public spawn(
-    buffers: FXKernelBuffers,
+    slots: Float32Array,
     begin: number,
     count: number,
     emitter?: FXEmitterTransform,
   ): void {
-    this.artifact.spawn?.(buffers, begin, count, this.artifact.bindings, emitter);
+    this.artifact.spawn?.(slots, begin, count, this.artifact.bindings, emitter);
   }
 
   public update(
-    buffers: FXKernelBuffers,
+    slots: Float32Array,
     count: number,
     deltaTime: number,
     emitter?: FXEmitterTransform,
   ): void {
-    this.artifact.update(buffers, count, deltaTime, this.artifact.bindings, emitter);
+    this.artifact.update(slots, count, deltaTime, this.artifact.bindings, emitter);
   }
 
   /** Behavior half of {@link FXEmitter.applyValues}: mutate each named slot in place; unknown name
