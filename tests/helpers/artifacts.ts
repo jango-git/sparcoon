@@ -104,6 +104,15 @@ export function surfaceReadsIn(code: string): FXSurfaceReads {
 }
 
 /** A minimal unlit render artifact (flat white albedo). Override any field. */
+/** The declarations of `declarations` whose uniform `code` reads (an external one through its
+ *  sampling function). */
+function declaredIn(code: string, declarations: readonly string[]): string[] {
+  return declarations.filter((declaration) => {
+    const name = /(\w+);$/.exec(declaration)?.[1] ?? "";
+    return new RegExp(`\\b(?:fxSample_)?${name}\\b`).test(code);
+  });
+}
+
 export function unlitArtifact(
   over: {
     attributeReads?: readonly FXAttributeDecl[];
@@ -124,6 +133,10 @@ export function unlitArtifact(
       .filter((slot) => VERTEX_OUTPUT_SLOTS.has(slot) === vertex)
       .map((slot) => outputs[slot]);
   const stage = (body: readonly string[], vertex: boolean): FXRenderArtifact["vertex"] => ({
+    // As the editor declares them: in each stage whose code reads them.
+    uniformDeclarations: declaredIn([...body, ...outputsOf(vertex)].join("\n"), [
+      ...(over.uniformDeclarations ?? []),
+    ]),
     helperFunctions: [],
     body,
     particleReads: particleReadsIn([...body, ...outputsOf(vertex)].join("\n"), attributeReads),
@@ -132,7 +145,6 @@ export function unlitArtifact(
     lightingIntrinsics: [],
     sceneDepth: false,
     geometry: over.geometry,
-    uniformDeclarations: over.uniformDeclarations ?? [],
     varyings: [],
     vertex: stage(vertexBody, true),
     fragment: {

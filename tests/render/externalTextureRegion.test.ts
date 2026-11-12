@@ -120,10 +120,15 @@ describe("external texture sampling variants", () => {
   const render = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     sceneDepth: false,
-    uniformDeclarations: [`uniform sampler2D ${SAMPLER};`],
     varyings: [],
-    vertex: { helperFunctions: [], body: [], particleReads: NO_PARTICLE_READS },
+    vertex: {
+      uniformDeclarations: [],
+      helperFunctions: [],
+      body: [],
+      particleReads: NO_PARTICLE_READS,
+    },
     fragment: {
+      uniformDeclarations: [`uniform sampler2D ${SAMPLER};`],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,

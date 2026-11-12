@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Material } from "three";
+import { Texture, type Material } from "three";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
-import { landBirths, particlesOf } from "../helpers/internals";
+import { emitterUniform, landBirths, particlesOf } from "../helpers/internals";
 import { fieldComponents, fieldOf } from "../helpers/slots";
 
 // FXEmitter.applyRenderArtifact: a render-only structural edit (new shader, geometry, shadow flags)
@@ -40,6 +40,46 @@ describe("FXEmitter.applyRenderArtifact", () => {
       // A box's base geometry has more vertices than the default plane - proves the swap landed.
       expect(mesh.geometry.getAttribute("position")).not.toBe(previousGeometry);
       expect(mesh.geometry.getAttribute("position").count).toBeGreaterThan(previousGeometry.count);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("starts the new material from the values applied to this emitter, not the artifact's", () => {
+    const sizeRender = () =>
+      unlitArtifact({
+        uniformDeclarations: ["uniform float u_param_size;"],
+        uniforms: { u_param_size: { type: "float", value: 0 } },
+      });
+    const emitter = FXEmitter.fromArtifacts(sizeRender(), behaviorArtifact());
+    try {
+      emitter.applyValues({ uniforms: { u_param_size: 4 } });
+      emitter.applyRenderArtifact(sizeRender());
+      expect(emitterUniform(emitter, "u_param_size")).toBe(4);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("binds external textures from the swap's own textures, not the values applied before", () => {
+    const sampled = () =>
+      unlitArtifact({
+        uniformDeclarations: ["uniform sampler2D u_param_sheet;"],
+        uniforms: { u_param_sheet: { type: "sampler2D", external: "u_param_sheet" } },
+        outputs: { albedo: "fxSample_u_param_sheet(vec2(0.5))" },
+      });
+    const region = { texture: new Texture(), uvTransform: [1, 0, 0, 0, 1, 0] as const };
+    const emitter = FXEmitter.fromArtifacts(sampled(), behaviorArtifact(), {
+      textures: { u_param_sheet: region },
+    });
+    try {
+      emitter.applyValues({
+        uniforms: { u_param_sheet: { ...region, uvTransform: [0.5, 0, 0, 0, 0.5, 0] } },
+      });
+      // A whole texture now: the applied region is of a variant this slot cannot take.
+      const sheet = new Texture();
+      emitter.applyRenderArtifact(sampled(), { textures: { u_param_sheet: sheet } });
+      expect(emitterUniform(emitter, "u_param_sheet")).toBe(sheet);
     } finally {
       emitter.destroy();
     }

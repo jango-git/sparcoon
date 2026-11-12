@@ -36,6 +36,8 @@ import {
 import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";
+import { ownSlot } from "../artifact/FXValueSlots.Internal.js";
+import type { FXDrawInputs } from "./FXDrawInputs.js";
 
 // Three declares `modelMatrix` in the vertex prefix only, yet sets it on every program it draws: a
 // fragment-stage read (`world-matrix`, `inverse-world-matrix` - the artifact's targets list it in
@@ -356,71 +358,103 @@ function projectFromModelPos(): string {
   ].join("\n");
 }
 
-/** Binds the artifact's live uniform slots into the Three shader (shared object -> live scrub). */
-function bindUniforms(
-  shader: { uniforms: Record<string, IUniform> },
+/**
+ * One material driver's live uniform slots: the clock and the object's motion it pushes each
+ * frame, the artifact's own uniforms (seeded from their initial values) and its external texture
+ * bindings. Every instance owns its set, so instances of one (module-scoped) artifact never share a
+ * value; the artifact's `uniforms` stay its initial values, which nothing writes.
+ */
+export interface FXMaterialSlots {
+  readonly time: FXFrameTimeUniform;
+  readonly deltaTime: FXFrameTimeUniform;
+  readonly velocity: FXFrameVec3Uniform;
+  readonly angularVelocity: FXFrameVec3Uniform;
+  /** The artifact's non-external uniforms, by name. */
+  readonly values: Readonly<Record<string, FXValueSlot<FXUniformValue>>>;
+  readonly external: FXExternalTextureBindings;
+}
+
+/** A fresh slot set for `render`: the clock at 0, at rest, each uniform at its initial value. */
+export function createMaterialSlots(
   render: FXRenderArtifact,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  externalSlots: FXExternalTextureBindings,
-): void {
-  shader.uniforms["u_time"] = timeUniform;
-  shader.uniforms["u_deltaTime"] = deltaUniform;
+  external: FXExternalTextureBindings = {},
+): FXMaterialSlots {
+  const values: Record<string, FXValueSlot<FXUniformValue>> = {};
   for (const name in render.uniforms) {
     const uniform = render.uniforms[name];
     if (!("external" in uniform)) {
-      // Share the artifact's slot object so a scrub of `render.uniforms[name].value` is picked up next frame.
-      shader.uniforms[name] = uniform;
+      values[name] = ownSlot<FXUniformValue>(uniform);
     }
   }
-  // External textures resolve per emitter: bind the material's durable slots (the sampler and, for a
-  // region, its window), not the shared module slot.
-  bindExternalTextures(shader.uniforms, externalSlots);
+  return {
+    time: { value: 0 },
+    deltaTime: { value: 0 },
+    velocity: { value: [0, 0, 0] },
+    angularVelocity: { value: [0, 0, 0] },
+    values,
+    external,
+  };
+}
+
+/** Wires `slots` into a material's uniforms by reference: a later write is drawn next frame. */
+function bindUniforms(uniforms: Record<string, IUniform>, slots: FXMaterialSlots): void {
+  uniforms["u_time"] = slots.time;
+  uniforms["u_deltaTime"] = slots.deltaTime;
+  uniforms["objectVelocity"] = slots.velocity;
+  uniforms["objectAngularVelocity"] = slots.angularVelocity;
+  for (const name in slots.values) {
+    uniforms[name] = slots.values[name];
+  }
+  bindExternalTextures(uniforms, slots.external);
 }
 
 /** Throws when any external texture in `values` cannot be a value edit of its slot (see
  *  {@link assertExternalTexture}); writes nothing. */
 export function assertArtifactUniformValues(
-  externalSlots: FXExternalTextureBindings,
+  slots: FXMaterialSlots,
   values: Readonly<Record<string, FXUniformValue>>,
 ): void {
   for (const name in values) {
-    if (name in externalSlots) {
-      assertExternalTexture(externalSlots[name], values[name] as FXExternalTexture, name);
+    if (name in slots.external) {
+      assertExternalTexture(slots.external[name], values[name] as FXExternalTexture, name);
     }
   }
 }
 
 /**
- * A value edit of a material's uniforms, the counterpart of {@link bindUniforms}: an external
- * uniform writes the material's own slot, any other the shared artifact slot (module-scoped).
- * Unknown name = no-op (an editor<->runtime name drift never corrupts values). All or nothing: every
- * value is checked before the first write.
+ * One tick's draw inputs into `slots`: the clock and motion the shaders read, and `render`'s draw
+ * stage (when it has one) computed from them into the instance's draw uniforms.
  */
-export function applyArtifactUniformValues(
+export function advanceMaterialSlots(
+  slots: FXMaterialSlots,
   render: FXRenderArtifact,
-  externalSlots: FXExternalTextureBindings,
-  values: Readonly<Record<string, FXUniformValue>>,
+  frame: FXDrawInputs,
 ): void {
-  assertArtifactUniformValues(externalSlots, values);
-  for (const name in values) {
-    const value = values[name];
-    if (name in externalSlots) {
-      writeExternalTexture(externalSlots[name], value as FXExternalTexture);
-    } else if (name in render.uniforms) {
-      (render.uniforms[name] as FXValueSlot<FXUniformValue>).value = value;
-    }
-  }
+  slots.time.value = frame.time;
+  slots.deltaTime.value = frame.deltaTime;
+  slots.velocity.value = frame.objectVelocity;
+  slots.angularVelocity.value = frame.objectAngularVelocity;
+  render.compute?.(frame, slots.values);
 }
 
-/** Binds `objectVelocity`/`objectAngularVelocity` into the Three shader. */
-function bindObjectMotionUniforms(
-  shader: { uniforms: Record<string, IUniform> },
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
+/**
+ * A value edit of a material's own slots, the counterpart of {@link bindUniforms}. Unknown name =
+ * no-op (an editor<->runtime name drift never corrupts values). All or nothing: every value is
+ * checked before the first write.
+ */
+export function applyArtifactUniformValues(
+  slots: FXMaterialSlots,
+  values: Readonly<Record<string, FXUniformValue>>,
 ): void {
-  shader.uniforms["objectVelocity"] = velocityUniform;
-  shader.uniforms["objectAngularVelocity"] = angularVelocityUniform;
+  assertArtifactUniformValues(slots, values);
+  for (const name in values) {
+    const value = values[name];
+    if (name in slots.external) {
+      writeExternalTexture(slots.external[name], value as FXExternalTexture);
+    } else if (name in slots.values) {
+      slots.values[name].value = value;
+    }
+  }
 }
 
 /** Deterministic djb2 hash of the artifact's GLSL - a content-addressed program cache key. */
@@ -436,13 +470,14 @@ function hashString(input: string): string {
 // slot is its own program variant): identical artifacts bound alike share one compiled program.
 export function fxRenderArtifactCacheKey(
   render: FXRenderArtifact,
-  externalSlots: FXExternalTextureBindings = {},
+  external: FXExternalTextureBindings = {},
 ): string {
   return hashString(
     [
-      externalSamplingKey(externalSlots),
+      externalSamplingKey(external),
       render.lightingIntrinsics.join(","),
-      render.uniformDeclarations.join("|"),
+      render.vertex.uniformDeclarations.join("|"),
+      render.fragment.uniformDeclarations.join("|"),
       graphVaryings(render),
       render.vertex.helperFunctions.join("|"),
       render.vertex.body.join("|"),
@@ -568,11 +603,7 @@ function colorMaterial(options: {
 export function buildUnlitArtifactMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -586,7 +617,7 @@ export function buildUnlitArtifactMaterial(
     fragmentVaryingDeclarations,
     vertexAssignments,
   } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
+  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -601,7 +632,7 @@ export function buildUnlitArtifactMaterial(
     frame.varyings,
     vertexVaryingDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
+    render.vertex.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     // `common` declares `vPosition` (under USE_ALPHAHASH); `fog_pars_vertex` declares `vFogDepth`.
     "#include <common>",
@@ -632,8 +663,8 @@ export function buildUnlitArtifactMaterial(
     frame.varyings,
     fragmentVaryingDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(externalSlots),
+    render.fragment.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -648,10 +679,9 @@ export function buildUnlitArtifactMaterial(
   ].join("\n");
 
   // ShaderMaterial does not auto-merge fog uniforms (unlike the built-in materials), so seed the fog
-  // slots here; `bindUniforms` then wires the live clock + artifact slots by reference (live scrub).
+  // slots here; `bindUniforms` then wires the instance's live slots by reference (live scrub).
   const uniforms: Record<string, IUniform> = { ...UniformsUtils.clone(UniformsLib.fog) };
-  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
-  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  bindUniforms(uniforms, slots);
 
   return colorMaterial({
     render,
@@ -676,11 +706,7 @@ export function buildUnlitArtifactMaterial(
 function buildLitArtifactMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -694,7 +720,7 @@ function buildLitArtifactMaterial(
     fragmentVaryingDeclarations,
     vertexAssignments,
   } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
+  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
   const frame = surfaceFrame(render.fragment.surfaceReads, true);
 
   const vertexShader = [
@@ -711,7 +737,7 @@ function buildLitArtifactMaterial(
     "varying vec3 vViewPosition;",
     vertexVaryingDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
+    render.vertex.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
@@ -747,8 +773,8 @@ function buildLitArtifactMaterial(
     frame.varyings,
     fragmentVaryingDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(externalSlots),
+    render.fragment.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -773,8 +799,7 @@ function buildLitArtifactMaterial(
     UniformsLib.lights,
     UniformsLib.fog,
   ]);
-  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
-  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  bindUniforms(uniforms, slots);
 
   return colorMaterial({
     render,
@@ -795,22 +820,10 @@ function buildLitArtifactMaterial(
 export function buildArtifactMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const build = isLitArtifact(render) ? buildLitArtifactMaterial : buildUnlitArtifactMaterial;
-  return build(
-    render,
-    layout,
-    timeUniform,
-    deltaUniform,
-    velocityUniform,
-    angularVelocityUniform,
-    externalSlots,
-  );
+  return build(render, layout, slots);
 }
 
 // VFX-mesh material path: a single, non-instanced mesh (compiled against the mesh render target).
@@ -857,11 +870,7 @@ function meshProjectFromModelPos(): string {
 // mesh's real normal, so fresnel/rim/normal-maps work with no lighting node present.
 function buildMeshUnlitArtifactMaterial(
   render: FXRenderArtifact,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -869,7 +878,7 @@ function buildMeshUnlitArtifactMaterial(
   if (!("albedo" in render.outputs)) {
     throw new Error("buildMeshUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
+  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -880,7 +889,7 @@ function buildMeshUnlitArtifactMaterial(
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
+    render.vertex.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
@@ -904,8 +913,8 @@ function buildMeshUnlitArtifactMaterial(
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(externalSlots),
+    render.fragment.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -920,8 +929,7 @@ function buildMeshUnlitArtifactMaterial(
   ].join("\n");
 
   const uniforms: Record<string, IUniform> = { ...UniformsUtils.clone(UniformsLib.fog) };
-  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
-  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  bindUniforms(uniforms, slots);
 
   return colorMaterial({
     render,
@@ -940,11 +948,7 @@ function buildMeshUnlitArtifactMaterial(
 // already carries the shaded color, so `main` uses the flat tail.
 function buildMeshLitArtifactMaterial(
   render: FXRenderArtifact,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -952,7 +956,7 @@ function buildMeshLitArtifactMaterial(
   if (!("albedo" in render.outputs)) {
     throw new Error("buildMeshLitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
+  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
   const frame = surfaceFrame(render.fragment.surfaceReads, true);
 
   const vertexShader = [
@@ -965,7 +969,7 @@ function buildMeshLitArtifactMaterial(
     frame.varyings,
     "varying vec3 vViewPosition;",
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
+    render.vertex.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
@@ -997,8 +1001,8 @@ function buildMeshLitArtifactMaterial(
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(externalSlots),
+    render.fragment.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -1022,8 +1026,7 @@ function buildMeshLitArtifactMaterial(
     UniformsLib.lights,
     UniformsLib.fog,
   ]);
-  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
-  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  bindUniforms(uniforms, slots);
 
   return colorMaterial({
     render,
@@ -1041,23 +1044,12 @@ function buildMeshLitArtifactMaterial(
 // No `varyings` argument - a VFX mesh has no per-particle instanced attributes.
 export function buildMeshArtifactMaterial(
   render: FXRenderArtifact,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const build = isLitArtifact(render)
     ? buildMeshLitArtifactMaterial
     : buildMeshUnlitArtifactMaterial;
-  return build(
-    render,
-    timeUniform,
-    deltaUniform,
-    velocityUniform,
-    angularVelocityUniform,
-    externalSlots,
-  );
+  return build(render, slots);
 }
 
 // The fragment tail that replaces the color output (opaque_fragment -> tonemapping -> ... ->
@@ -1083,11 +1075,7 @@ const DEPTH_FRAGMENT_TAIL = [
 export function buildArtifactDepthMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -1103,7 +1091,7 @@ export function buildArtifactDepthMaterial(
     fragmentVaryingDeclarations,
     vertexAssignments,
   } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
+  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -1120,7 +1108,7 @@ export function buildArtifactDepthMaterial(
     "varying vec2 vHighPrecisionZW;",
     vertexVaryingDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
+    render.vertex.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     frame.vertexPars,
@@ -1148,8 +1136,8 @@ export function buildArtifactDepthMaterial(
     "varying vec2 vHighPrecisionZW;",
     fragmentVaryingDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(externalSlots),
+    render.fragment.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(slots.external),
     cameraDepthStub(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -1170,8 +1158,7 @@ export function buildArtifactDepthMaterial(
   // of the color material's render mode (never `materialFlags`). DoubleSide so a two-sided billboard
   // or open mesh casts from both faces.
   const uniforms: Record<string, IUniform> = {};
-  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
-  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  bindUniforms(uniforms, slots);
 
   const material = new ShaderMaterial({
     name: "FXArtifactDepthMaterial",
@@ -1193,11 +1180,7 @@ export function buildArtifactDepthMaterial(
 // depth pack. The same lighting stubs. No `varyings` - a VFX mesh has no instanced attributes.
 export function buildMeshArtifactDepthMaterial(
   render: FXRenderArtifact,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
-  externalSlots: FXExternalTextureBindings = {},
+  slots: FXMaterialSlots,
 ): ShaderMaterial {
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
@@ -1207,7 +1190,7 @@ export function buildMeshArtifactDepthMaterial(
     throw new Error("buildMeshArtifactDepthMaterial: render artifact has no 'albedo' output");
   }
   const albedo = render.outputs["albedo"];
-  const cacheKey = fxRenderArtifactCacheKey(render, externalSlots);
+  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
   const frame = surfaceFrame(render.fragment.surfaceReads, false);
 
   const vertexShader = [
@@ -1219,7 +1202,7 @@ export function buildMeshArtifactDepthMaterial(
     frame.varyings,
     "varying vec2 vHighPrecisionZW;",
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
+    render.vertex.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     frame.vertexPars,
@@ -1243,8 +1226,8 @@ export function buildMeshArtifactDepthMaterial(
     frame.varyings,
     "varying vec2 vHighPrecisionZW;",
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(externalSlots),
+    render.fragment.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(slots.external),
     cameraDepthStub(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -1262,8 +1245,7 @@ export function buildMeshArtifactDepthMaterial(
   ].join("\n");
 
   const uniforms: Record<string, IUniform> = {};
-  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
-  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  bindUniforms(uniforms, slots);
 
   const material = new ShaderMaterial({
     name: "FXMeshArtifactDepthMaterial",
@@ -1534,12 +1516,8 @@ const TRAIL_AGE_LOOKUP = [
 export function buildTrailArtifactMaterial(
   render: FXRenderArtifact,
   layout: FXTrailLayout,
-  timeUniform: FXFrameTimeUniform,
-  deltaUniform: FXFrameTimeUniform,
-  velocityUniform: FXFrameVec3Uniform,
-  angularVelocityUniform: FXFrameVec3Uniform,
+  slots: FXMaterialSlots,
   trailUniforms: FXTrailUniforms,
-  externalSlots: FXExternalTextureBindings = {},
 ): ShaderMaterial {
   const renderMode = render.options?.renderMode ?? "blending";
   if (!("albedo" in render.outputs)) {
@@ -1590,7 +1568,7 @@ export function buildTrailArtifactMaterial(
         ]),
     properties.vertexDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
+    render.vertex.uniformDeclarations.join("\n"),
     render.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
@@ -1631,8 +1609,8 @@ export function buildTrailArtifactMaterial(
     ...sharedDeclarations,
     properties.fragmentDeclarations,
     graphVaryings(render),
-    render.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(externalSlots),
+    render.fragment.uniformDeclarations.join("\n"),
+    externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
     render.fragment.helperFunctions.join("\n"),
     "#include <common>",
@@ -1646,8 +1624,7 @@ export function buildTrailArtifactMaterial(
   ].join("\n");
 
   const uniforms: Record<string, IUniform> = { ...UniformsUtils.clone(UniformsLib.fog) };
-  bindUniforms({ uniforms }, render, timeUniform, deltaUniform, externalSlots);
-  bindObjectMotionUniforms({ uniforms }, velocityUniform, angularVelocityUniform);
+  bindUniforms(uniforms, slots);
   uniforms["u_trailHead"] = trailUniforms.head;
   uniforms["u_trailFrames"] = trailUniforms.frames;
   uniforms["u_trailSpan"] = trailUniforms.span;
@@ -1663,6 +1640,6 @@ export function buildTrailArtifactMaterial(
     fragmentShader,
     renderMode,
     lit: false,
-    cacheKey: `fx-trail-${layout.kind}_${fxRenderArtifactCacheKey(render, externalSlots)}`,
+    cacheKey: `fx-trail-${layout.kind}_${fxRenderArtifactCacheKey(render, slots.external)}`,
   });
 }

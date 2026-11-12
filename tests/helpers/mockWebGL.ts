@@ -57,11 +57,30 @@ const CONSTANTS = {
   TRANSFORM_FEEDBACK_BUFFER: 0x8c8e,
   COPY_READ_BUFFER: 0x8f36,
   COPY_WRITE_BUFFER: 0x8f37,
+  ACTIVE_UNIFORMS: 0x8b86,
+  FLOAT_VEC2: 0x8b50,
+  FLOAT_VEC3: 0x8b51,
+  FLOAT_VEC4: 0x8b52,
+  INT: 0x1404,
+  FLOAT_MAT2: 0x8b5a,
+  FLOAT_MAT3: 0x8b5b,
+  FLOAT_MAT4: 0x8b5c,
 } as const;
+
+// A declared uniform's type, as `getActiveUniform` reports it.
+const UNIFORM_TYPES: Readonly<Record<string, number>> = {
+  float: CONSTANTS.FLOAT,
+  vec2: CONSTANTS.FLOAT_VEC2,
+  vec3: CONSTANTS.FLOAT_VEC3,
+  vec4: CONSTANTS.FLOAT_VEC4,
+  int: CONSTANTS.INT,
+  mat2: CONSTANTS.FLOAT_MAT2,
+  mat3: CONSTANTS.FLOAT_MAT3,
+  mat4: CONSTANTS.FLOAT_MAT4,
+};
 
 // Calls with nothing to answer: recorded, and return nothing.
 const RECORDED_ONLY = [
-  "shaderSource",
   "compileShader",
   "deleteShader",
   "attachShader",
@@ -77,8 +96,12 @@ const RECORDED_ONLY = [
   "bindBufferBase",
   "bindBufferRange",
   "copyBufferSubData",
+  "uniformMatrix2fv",
+  "uniformMatrix3fv",
   "uniformMatrix4fv",
+  "uniform2fv",
   "uniform3fv",
+  "uniform4fv",
   "enable",
   "disable",
   "beginTransformFeedback",
@@ -92,6 +115,8 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
   const liveBuffers = new Set<unknown>();
   const uniformNames = new Map<unknown, string>();
   const shaderTypes = new Map<unknown, number>();
+  // Every uniform any shader source declares: the program's active uniforms (none compiled away).
+  const declaredUniforms: { readonly name: string; readonly type: number }[] = [];
   let nextId = 1;
 
   const record = (name: string, args: readonly unknown[]): void => {
@@ -138,7 +163,23 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
           shaderTypes.get(shader) === CONSTANTS.FRAGMENT_SHADER)
       ),
     getShaderInfoLog: () => "mock compile failure",
-    getProgramParameter: () => !(options.failLink ?? false),
+    shaderSource: (...args: unknown[]) => {
+      record("shaderSource", args);
+      for (const match of String(args[1]).matchAll(
+        /^\s*uniform\s+(?:\w+p\s+)?(\w+)\s+([\w$]+);/gm,
+      )) {
+        const type = UNIFORM_TYPES[match[1]];
+        if (type !== undefined && !declaredUniforms.some((uniform) => uniform.name === match[2])) {
+          declaredUniforms.push({ name: match[2], type });
+        }
+      }
+    },
+    getProgramParameter: (_program: unknown, name: number) =>
+      name === CONSTANTS.ACTIVE_UNIFORMS ? declaredUniforms.length : !(options.failLink ?? false),
+    getActiveUniform: (_program: unknown, index: number) => {
+      const uniform = declaredUniforms[index];
+      return uniform === undefined ? null : { name: uniform.name, type: uniform.type, size: 1 };
+    },
     getProgramInfoLog: () => "mock link failure",
     getUniformLocation: (_program: unknown, name: string) => {
       const location = handle();

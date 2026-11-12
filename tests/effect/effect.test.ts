@@ -10,7 +10,13 @@ import type {
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 import { effectSpec, emitterSpec as baseEmitterSpec, TestEffect } from "../helpers/effectSpecs";
-import { emitterVelocityOf, particlesOf, registeredObjectCount } from "../helpers/internals";
+import {
+  bindingValue,
+  emitterUniform,
+  emitterVelocityOf,
+  particlesOf,
+  registeredObjectCount,
+} from "../helpers/internals";
 
 type EmitterOverrides = Partial<Omit<FXEffectEmitterSpec, "render">> & {
   render?: FXRenderArtifact;
@@ -245,9 +251,28 @@ describe("FXEffect parameter drive", () => {
       }),
     );
     effect.play(); // driveFrame(0) samples size = 1
-    expect(render.uniforms["u_param_size"].value).toBe(1);
+    const size = (): unknown => emitterUniform(effect.getEmitter("e")!, "u_param_size");
+    expect(size()).toBe(1);
     world.update(0.5); // frame-stepped: size = 3 at t=0.5
-    expect(render.uniforms["u_param_size"].value).toBeCloseTo(3, 6);
+    expect(size()).toBeCloseTo(3, 6);
+    expect(render.uniforms["u_param_size"].value).toBe(0); // the artifact keeps its initial value
+  });
+
+  it("keeps two effects of one artifact apart: each draws and simulates its own values", () => {
+    const world = newWorld();
+    const render = sizeRender();
+    const behavior = { ...behaviorArtifact(), bindings: { b_param_size: { value: 0 } } };
+    const specification = effectSpec({ emitters: [emitterSpec("e", { render, behavior })] });
+    const first = makeEffect(world, specification);
+    const second = makeEffect(world, specification);
+    first.setEmitterParam("e", "size", 2);
+    second.setEmitterParam("e", "size", 7);
+    expect(emitterUniform(first.getEmitter("e")!, "u_param_size")).toBe(2);
+    expect(emitterUniform(second.getEmitter("e")!, "u_param_size")).toBe(7);
+    expect(bindingValue(first.getEmitter("e")!, "b_param_size")).toBe(2);
+    expect(bindingValue(second.getEmitter("e")!, "b_param_size")).toBe(7);
+    expect(render.uniforms["u_param_size"].value).toBe(0);
+    expect(behavior.bindings.b_param_size.value).toBe(0);
   });
 
   it("leaves every slot alone for an unknown emitter, mesh or parameter", () => {
@@ -257,7 +282,7 @@ describe("FXEffect parameter drive", () => {
     effect.setEmitterParam("missing", "size", 2);
     effect.setMeshParam("missing", "size", 2);
     effect.setEmitterParam("e", "missing", 2);
-    expect(render.uniforms["u_param_size"].value).toBe(0);
+    expect(emitterUniform(effect.getEmitter("e")!, "u_param_size")).toBe(0);
   });
 });
 
@@ -333,7 +358,7 @@ describe("FXEffect dispose", () => {
     effect.setEmitterParam("e", "size", 2);
     world.update(2);
     expect(emitter.particleCount).toBe(0);
-    expect(render.uniforms["u_param_size"].value).toBe(0);
+    expect(emitterUniform(emitter, "u_param_size")).toBe(0);
     expect(finished).toBe(0);
   });
 });
@@ -448,10 +473,11 @@ describe("FXEffect transform drive", () => {
       }),
     );
     effect.play();
+    const size = (): unknown => emitterUniform(effect.getEmitter("e")!, "u_param_size");
     world.update(1 / 120); // still frame 0 (t = 1/120 rounds to 0)
-    expect(render.uniforms["u_param_size"].value).toBe(0);
+    expect(size()).toBe(0);
     world.update(1 / 40); // t = 1/30: frame 1
-    expect(render.uniforms["u_param_size"].value).toBeCloseTo(1, 6);
+    expect(size()).toBeCloseTo(1, 6);
   });
 });
 

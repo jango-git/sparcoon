@@ -3,6 +3,8 @@ import type {
   FXGraphLambertMaterialOptions,
   FXGraphUnlitMaterialOptions,
 } from "../render/FXMaterialOptions.js";
+import type { FXDrawInputs } from "../render/FXDrawInputs.js";
+import type { FXUniformValue } from "../render/FXExternalTexture.js";
 
 /**
  * Frozen editor<->runtime boundary. The editor compiles a graph into a plain ESM module that
@@ -39,7 +41,16 @@ export interface FXEmitterTransform {
   readonly angularVelocity: readonly number[];
 }
 
-/** A live value slot (uniform/binding): the runtime mutates `value` in place. */
+/** What a GPU kernel's draw stage reads of one simulation pass: its timestep and the emitter's
+ *  pose and motion in it ({@link FXParticleKernelArtifact.compute}). */
+export interface FXKernelDrawInputs extends FXEmitterTransform {
+  readonly deltaTime: number;
+}
+
+/**
+ * A value slot (uniform/binding). An artifact's slots are seed values: every instance built from
+ * it takes its own copy, which the runtime and the draw stage then write in place.
+ */
 export interface FXValueSlot<T> {
   value: T;
 }
@@ -109,6 +120,9 @@ export interface FXVaryingDecl {
 
 /** One shader stage's spliceable source (matches the compiler's per-stage IR shape). */
 export interface FXShaderStageSource {
+  /** `uniform <type> <name>;` of each graph uniform this stage's code reads, and only those: a
+   *  stage declaring a sampler it never reads would still be charged a texture unit for it. */
+  readonly uniformDeclarations: readonly string[];
   readonly helperFunctions: readonly string[];
   readonly body: readonly string[];
   /** What this stage's code - its body and helper functions - reads of each particle. */
@@ -144,7 +158,6 @@ export interface FXRenderArtifact {
   /** Absent => `"plane"`. */
   readonly geometry?: FXGeometrySource;
   readonly options?: FXGraphUnlitMaterialOptions | FXGraphLambertMaterialOptions;
-  readonly uniformDeclarations: readonly string[];
   /** What the graph carries from its vertex stage to its fragment stage, declared in both. */
   readonly varyings: readonly FXVaryingDecl[];
   readonly vertex: FXShaderStageSource;
@@ -163,6 +176,17 @@ export interface FXRenderArtifact {
    * with the sim's write set. What each stage's code actually reads is its `particleReads`.
    */
   readonly attributeReads: readonly FXAttributeDecl[];
+  /**
+   * The draw stage: what is one for the whole draw, computed once per tick on the CPU instead of
+   * per vertex or fragment on the GPU. Reads the tick's `inputs` and the instance's own uniform
+   * values (its parameters among them), and writes the draw uniforms (declared and seeded like
+   * any other) into the same `uniforms`. Writes every value in place and allocates nothing: it
+   * runs every tick. Authored by the editor - absent when the graph has nothing to lift.
+   */
+  readonly compute?: (
+    inputs: FXDrawInputs,
+    uniforms: Readonly<Record<string, FXValueSlot<FXUniformValue>>>,
+  ) => void;
 }
 
 /**
@@ -250,9 +274,26 @@ export interface FXParticleKernelArtifact {
   readonly buffers: readonly FXBufferLayout[];
   /** Varying names for `gl.transformFeedbackVaryings`, one per {@link buffers} entry, same order. */
   readonly transformFeedbackVaryings: readonly string[];
-  /** Live-tunable uniform values (graph-authored params only - the fixed contract uniforms in
-   *  `behaviorTransformFeedbackLayout.ts` are always declared and are the runtime's own
-   *  responsibility to set every tick, not part of this map). Float32Array is reserved for a
-   *  future sampler2D-backed (LUT) uniform; no standard-tier node produces one yet. */
-  readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
+  /**
+   * The program's own uniforms with their values: its live-tunable parameters, and the draw
+   * uniforms {@link compute} fills (declared and seeded, at zero, like any other). The fixed
+   * contract uniforms in `behaviorTransformFeedbackLayout.ts` are the runtime's own to set every
+   * pass, not part of this map. Each uploads by the type the program declares it as.
+   * Float32Array is reserved for a future sampler2D-backed (LUT) uniform; no standard-tier node
+   * produces one yet.
+   */
+  readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
+  /**
+   * The draw stage, as {@link FXRenderArtifact.compute} is for a render: computes, once per pass
+   * on the CPU, the values one for the whole pass from `inputs` and the emitter's own bindings,
+   * into its draw uniforms in the same `uniforms` - instead of once per particle on the GPU.
+   * Writes every value in place and allocates nothing: it runs every pass.
+   */
+  readonly compute?: (
+    inputs: FXKernelDrawInputs,
+    uniforms: Readonly<Record<string, FXValueSlot<FXKernelUniformValue>>>,
+  ) => void;
 }
+
+/** A GPU kernel uniform's value: a float, a vector or matrix (column-major), or a LUT. */
+export type FXKernelUniformValue = number | number[] | Float32Array;

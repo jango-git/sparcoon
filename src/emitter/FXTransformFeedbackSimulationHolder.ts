@@ -1,5 +1,12 @@
 import type { WebGLRenderer } from "three";
-import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
+import type {
+  FXEmitterTransform,
+  FXKernelDrawInputs,
+  FXKernelUniformValue,
+  FXParticleKernelArtifact,
+  FXValueSlot,
+} from "../artifact/FXArtifact.js";
+import { ownSlots } from "../artifact/FXValueSlots.Internal.js";
 import {
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
@@ -41,6 +48,14 @@ export class FXTransformFeedbackSimulationHolder {
   private readonly programLease: FXKernelProgramLease;
   private readonly vao: WebGLVertexArrayObject;
   private readonly uniformLocations: Record<string, WebGLUniformLocation | null> = {};
+  // This emitter's own bindings - its parameters and draw uniforms - never the shared artifact's.
+  private readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
+  // Each binding the program uses, resolved once: a pass only walks this.
+  private readonly uploads: readonly FXBindingUpload[];
+  // Filled in place each pass (see setUniforms).
+  private readonly drawFrame: { -readonly [K in keyof FXKernelDrawInputs]: FXKernelDrawInputs[K] } =
+    { deltaTime: 0, worldMatrix: [], velocity: [], angularVelocity: [] };
+  private readonly compute: FXParticleKernelArtifact["compute"];
 
   // A fresh, monotonic seed every tick - decorrelates `rand()` draws across ticks (and, crucially,
   // across a buffer slot's successive rebirths under the cursor/overwrite scheme - see the `rand`
@@ -57,7 +72,7 @@ export class FXTransformFeedbackSimulationHolder {
 
   constructor(
     private readonly renderer: WebGLRenderer,
-    private readonly artifact: FXParticleKernelArtifact,
+    artifact: FXParticleKernelArtifact,
   ) {
     // Every emitter driven by this class already required the live render tier to be "standard"
     // (a real WebGL2 context) before this class is ever constructed (FXEmitter.fromArtifacts's
@@ -75,9 +90,9 @@ export class FXTransformFeedbackSimulationHolder {
     for (const name of FIXED_UNIFORM_NAMES) {
       this.uniformLocations[name] = gl.getUniformLocation(program, name);
     }
-    for (const name of Object.keys(artifact.bindings)) {
-      this.uniformLocations[name] = gl.getUniformLocation(program, name);
-    }
+    this.bindings = ownSlots(artifact.bindings);
+    this.uploads = bindingUploads(gl, program, this.bindings);
+    this.compute = artifact.compute;
 
     // A dedicated VAO for this simulation pass only - never one three.js's own WebGLBindingStates
     // manages, so raw attribute setup here can never corrupt a mesh's cached vertex state. This
@@ -214,8 +229,8 @@ export class FXTransformFeedbackSimulationHolder {
    *  either backend may be the active one. */
   public applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void {
     for (const name in values) {
-      if (name in this.artifact.bindings) {
-        this.artifact.bindings[name].value = values[name];
+      if (name in this.bindings) {
+        this.bindings[name].value = values[name];
       }
     }
   }
@@ -272,19 +287,30 @@ export class FXTransformFeedbackSimulationHolder {
     );
     gl.uniform1i(this.uniformLocations[FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM], capacity);
     gl.uniform1f(this.uniformLocations[FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM], deltaTime);
-    gl.uniformMatrix4fv(this.uniformLocations[FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM], false, [
-      ...emitter.worldMatrix,
-    ]);
-    gl.uniform3fv(this.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM], [
-      ...emitter.velocity,
-    ]);
-    gl.uniform3fv(this.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM], [
-      ...emitter.angularVelocity,
-    ]);
-    for (const [name, slot] of Object.entries(this.artifact.bindings)) {
-      // Float32Array-valued (sampler2D/LUT) bindings are reserved for a future node - see
-      // FXParticleKernelArtifact.bindings's own doc comment - never produced by any node today.
-      gl.uniform1f(this.uniformLocations[name], slot.value as number);
+    // WebGL reads a plain array as it is: nothing to copy.
+    gl.uniformMatrix4fv(
+      this.uniformLocations[FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM],
+      false,
+      emitter.worldMatrix as number[],
+    );
+    gl.uniform3fv(
+      this.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM],
+      emitter.velocity as number[],
+    );
+    gl.uniform3fv(
+      this.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM],
+      emitter.angularVelocity as number[],
+    );
+    if (this.compute !== undefined) {
+      const frame = this.drawFrame;
+      frame.deltaTime = deltaTime;
+      frame.worldMatrix = emitter.worldMatrix;
+      frame.velocity = emitter.velocity;
+      frame.angularVelocity = emitter.angularVelocity;
+      this.compute(frame, this.bindings);
+    }
+    for (const entry of this.uploads) {
+      entry.upload(gl, entry.location, entry.slot.value);
     }
   }
 }
@@ -337,4 +363,78 @@ function assertFitsTransformFeedback(gl: WebGL2RenderingContext, layout: FXSlotL
         `${String(maxInputs)} vertex inputs`,
     );
   }
+}
+
+/** One binding a pass uploads: where the program reads it, its slot, how its type uploads. */
+interface FXBindingUpload {
+  readonly location: WebGLUniformLocation;
+  readonly slot: FXValueSlot<FXKernelUniformValue>;
+  readonly upload: FXUniformUpload;
+}
+
+type FXUniformUpload = (
+  gl: WebGL2RenderingContext,
+  location: WebGLUniformLocation,
+  value: FXKernelUniformValue,
+) => void;
+
+const UPLOAD_FLOAT: FXUniformUpload = (gl, location, value) => {
+  gl.uniform1f(location, value as number);
+};
+const UPLOAD_VEC2: FXUniformUpload = (gl, location, value) => {
+  gl.uniform2fv(location, value as number[]);
+};
+const UPLOAD_VEC3: FXUniformUpload = (gl, location, value) => {
+  gl.uniform3fv(location, value as number[]);
+};
+const UPLOAD_VEC4: FXUniformUpload = (gl, location, value) => {
+  gl.uniform4fv(location, value as number[]);
+};
+const UPLOAD_MAT2: FXUniformUpload = (gl, location, value) => {
+  gl.uniformMatrix2fv(location, false, value as number[]);
+};
+const UPLOAD_MAT3: FXUniformUpload = (gl, location, value) => {
+  gl.uniformMatrix3fv(location, false, value as number[]);
+};
+const UPLOAD_MAT4: FXUniformUpload = (gl, location, value) => {
+  gl.uniformMatrix4fv(location, false, value as number[]);
+};
+
+/**
+ * The upload of each binding of `bindings` that `program` uses, by the type the program declares
+ * it as - a binding it does not use (compiled away) uploads nothing. A float takes a number; a
+ * vector or matrix an array (column-major). A sampler is no binding a node produces yet.
+ */
+function bindingUploads(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  bindings: Readonly<Record<string, FXValueSlot<FXKernelUniformValue>>>,
+): FXBindingUpload[] {
+  const byType = new Map<number, FXUniformUpload>([
+    [gl.FLOAT, UPLOAD_FLOAT],
+    [gl.FLOAT_VEC2, UPLOAD_VEC2],
+    [gl.FLOAT_VEC3, UPLOAD_VEC3],
+    [gl.FLOAT_VEC4, UPLOAD_VEC4],
+    [gl.FLOAT_MAT2, UPLOAD_MAT2],
+    [gl.FLOAT_MAT3, UPLOAD_MAT3],
+    [gl.FLOAT_MAT4, UPLOAD_MAT4],
+  ]);
+  const types = new Map<string, number>();
+  const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS) as number;
+  for (let index = 0; index < count; index += 1) {
+    const info = gl.getActiveUniform(program, index);
+    if (info !== null) {
+      types.set(info.name, info.type);
+    }
+  }
+  const uploads: FXBindingUpload[] = [];
+  for (const name in bindings) {
+    const type = types.get(name);
+    const upload = type === undefined ? undefined : byType.get(type);
+    const location = gl.getUniformLocation(program, name);
+    if (upload !== undefined && location !== null) {
+      uploads.push({ location, slot: bindings[name], upload });
+    }
+  }
+  return uploads;
 }

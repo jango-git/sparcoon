@@ -32,6 +32,7 @@ export type { FXFromMeshArtifactOptions } from "../render/FXMesh.js";
 
 // Lower-level pieces FXMesh is built from - kept for tooling that assembles a mesh by hand.
 export { FXMeshMaterial } from "../render/FXMeshMaterial.js";
+export { FX_DRAW_INPUTS, type FXDrawInput } from "../render/FXDrawInputs.js";
 export { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 
 // What a play's rate counts per, for the editor's inspector, loader and agent to offer and read.
@@ -54,16 +55,18 @@ export {
   vectorFromValue,
 } from "../effect/FXEffectSampling.Internal.js";
 
-// What a render artifact's materials take of a GPU's vertex attributes and varyings, against the
-// least each tier guarantees - so the editor can refuse an effect some GPUs could not draw.
+// What a render artifact's materials take of a GPU's attributes, varyings, uniforms and texture
+// units, against the least each tier guarantees - so the editor can refuse an effect some GPUs could not draw.
 export {
   FX_RENDER_BUDGET_MINIMUMS,
   fxEmitterRenderBudget,
+  fxGraphUniformAllowance,
   fxGraphVaryingAllowance,
   fxMeshRenderBudget,
   fxTrailRenderBudget,
-  fxVaryingShape,
-  packedVaryingVectors,
+  fxPackedShape,
+  packedVectors,
+  type FXPackedShape,
 } from "../render/FXRenderBudget.js";
 export type { FXGLSLRenderTier } from "../artifact/FXArtifact.js";
 export type {

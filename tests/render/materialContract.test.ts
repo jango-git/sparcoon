@@ -4,6 +4,7 @@ import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
 import { layoutOf, unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
+import type { FXDrawInputs } from "../../src/render/FXDrawInputs";
 
 /**
  * What the particle material (FXArtifactMaterial) and the VFX mesh material (FXMeshMaterial) share,
@@ -12,13 +13,22 @@ import { layoutOf, unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/
  * materials, depthMaterialSplice.test.ts.
  */
 
-type Vec3 = readonly [number, number, number];
+/** A tick's draw inputs: at rest at the origin unless `over` says otherwise. */
+function frame(over: Partial<FXDrawInputs> = {}): FXDrawInputs {
+  return {
+    time: 0,
+    deltaTime: 0,
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    objectVelocity: [0, 0, 0],
+    objectAngularVelocity: [0, 0, 0],
+    ...over,
+  };
+}
 
 interface MaterialUnderTest {
   build(): ShaderMaterial;
   buildDepth(): ShaderMaterial;
-  setObjectVelocity(velocity: Vec3): void;
-  setObjectAngularVelocity(angularVelocity: Vec3): void;
+  advance(frame: FXDrawInputs): void;
   applyUniformValues(values: Readonly<Record<string, number | Texture>>): void;
 }
 
@@ -32,8 +42,7 @@ const MATERIALS = [
       return {
         build: () => material.buildThreeMaterial(CORE_LAYOUT) as ShaderMaterial,
         buildDepth: () => material.buildThreeDepthMaterial(CORE_LAYOUT) as ShaderMaterial,
-        setObjectVelocity: (velocity) => material.setObjectVelocity(velocity),
-        setObjectAngularVelocity: (velocity) => material.setObjectAngularVelocity(velocity),
+        advance: (frame) => material.advance(frame),
         applyUniformValues: (values) => material.applyUniformValues(values),
       };
     },
@@ -45,8 +54,7 @@ const MATERIALS = [
       return {
         build: () => material.buildThreeMaterial() as ShaderMaterial,
         buildDepth: () => material.buildThreeDepthMaterial() as ShaderMaterial,
-        setObjectVelocity: (velocity) => material.setObjectVelocity(velocity),
-        setObjectAngularVelocity: (velocity) => material.setObjectAngularVelocity(velocity),
+        advance: (frame) => material.advance(frame),
         applyUniformValues: (values) => material.applyUniformValues(values),
       };
     },
@@ -72,19 +80,47 @@ describe.each(MATERIALS)("$kind material object-velocity/object-angular-velocity
     expect(litMaterial.fragmentShader).toContain("uniform vec3 objectAngularVelocity;");
   });
 
-  it("defaults both to zero and updates them live through the setters, depth material too", () => {
+  it("defaults both to zero and updates them live each tick, depth material too", () => {
     const material = create(unlitArtifact());
     const built = material.build();
     const depth = material.buildDepth();
     expect(built.uniforms["objectVelocity"].value).toEqual([0, 0, 0]);
     expect(built.uniforms["objectAngularVelocity"].value).toEqual([0, 0, 0]);
 
-    material.setObjectVelocity([1, 2, 3]);
-    material.setObjectAngularVelocity([4, 5, 6]);
+    material.advance(frame({ objectVelocity: [1, 2, 3], objectAngularVelocity: [4, 5, 6] }));
     for (const shader of [built, depth]) {
       expect(shader.uniforms["objectVelocity"].value).toEqual([1, 2, 3]);
       expect(shader.uniforms["objectAngularVelocity"].value).toEqual([4, 5, 6]);
     }
+  });
+});
+
+describe.each(MATERIALS)("$kind material draw stage", ({ create }) => {
+  it("computes the draw uniforms each tick from the inputs and its own values", () => {
+    const render = unlitArtifact({
+      uniformDeclarations: ["uniform float u_param_speed;", "uniform vec2 u_draw_0;"],
+      uniforms: {
+        u_param_speed: { type: "float", value: 2 },
+        u_draw_0: { type: "vec2", value: [0, 0] },
+      },
+    });
+    const withCompute: FXRenderArtifact = {
+      ...render,
+      compute: (inputs, uniforms) => {
+        const speed = uniforms["u_param_speed"]!.value as number;
+        const out = uniforms["u_draw_0"]!.value as number[];
+        out[0] = inputs.time * speed;
+        out[1] = inputs.modelMatrix[12]!;
+      },
+    };
+    const material = create(withCompute);
+    const built = material.build();
+    material.applyUniformValues({ u_param_speed: 3 });
+    const pose = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 0, 1];
+    material.advance(frame({ time: 2, modelMatrix: pose }));
+    expect(built.uniforms["u_draw_0"].value).toEqual([6, 5]);
+    expect(built.uniforms["u_time"].value).toBe(2);
+    expect(render.uniforms["u_draw_0"]).toHaveProperty("value", [0, 0]); // the artifact's own
   });
 });
 
@@ -130,7 +166,7 @@ describe.each(MATERIALS)("$kind material value edits", ({ create }) => {
     expect(() => create(valuesRender())).toThrow(/no texture supplied for external slot "flame"/);
   });
 
-  it("scrubs a uniform through the artifact slot the built material shares", () => {
+  it("scrubs a uniform through its own slot, leaving the artifact's initial value", () => {
     const render = valuesRender();
     const material = create(render, { flame: new Texture() });
     const bound = material.build().uniforms["u_speed"];
@@ -138,7 +174,19 @@ describe.each(MATERIALS)("$kind material value edits", ({ create }) => {
 
     material.applyUniformValues({ u_speed: 0.9 });
     expect(bound.value).toBe(0.9);
-    expect(render.uniforms["u_speed"]).toHaveProperty("value", 0.9);
+    expect(render.uniforms["u_speed"]).toHaveProperty("value", 0.5);
+  });
+
+  it("keeps each instance's values apart, though they share one artifact", () => {
+    const render = valuesRender();
+    const first = create(render, { flame: new Texture() });
+    const second = create(render, { flame: new Texture() });
+    const firstBound = first.build().uniforms["u_speed"];
+    const secondBound = second.build().uniforms["u_speed"];
+
+    first.applyUniformValues({ u_speed: 0.9 });
+    expect(firstBound.value).toBe(0.9);
+    expect(secondBound.value).toBe(0.5);
   });
 
   it("binds a supplied external texture, and retargets it in its own slot, not the artifact's", () => {

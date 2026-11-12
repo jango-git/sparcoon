@@ -98,7 +98,7 @@ describe("FXEffect mesh values", () => {
     const { effect } = meshEffect({ render: renderForBothTargets(render) });
     effect.setMeshParam("mesh0", "glow", 0.5);
     effect.setMeshParam("mesh0", "missing", 2);
-    expect(render.uniforms["u_param_glow"]).toHaveProperty("value", 0.5);
+    expect(uniformsOf(effect)["u_param_glow"].value).toBe(0.5);
     expect(uniformsOf(effect)["u_param_missing"]).toBeUndefined();
   });
 
@@ -118,7 +118,7 @@ describe("FXEffect mesh values", () => {
     });
     effect.play();
     world.update(0.5); // frame 15
-    expect((render.uniforms["u_param_glow"] as { value: number }).value).toBeCloseTo(15, 6);
+    expect(uniformsOf(effect)["u_param_glow"].value as number).toBeCloseTo(15, 6);
   });
 
   it("runs the mesh clock while playing, and holds it while stopped", () => {

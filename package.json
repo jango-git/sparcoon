@@ -1,6 +1,6 @@
 {
   "name": "sparcoon",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Three.js runtime for visual effects authored in the Sparcoon Editor - precompiled artifacts, one draw call per emitter, no eval.",
   "keywords": [
     "three",
@@ -79,6 +79,7 @@
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.14.0",
     "prettier": "^3.9.5",
+    "three": "^0.157.0",
     "typescript": "^5.8.3",
     "vitest": "^4.1.9"
   }

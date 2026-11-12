@@ -64,14 +64,15 @@ describe("render artifact - generated & external textures", () => {
   const withGeneratedTexture = (texture: Texture): FXRenderArtifact => ({
     lightingIntrinsics: [],
     sceneDepth: false,
-    uniformDeclarations: ["uniform sampler2D u_grad$0;"],
     varyings: [],
     vertex: {
+      uniformDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
+      uniformDeclarations: ["uniform sampler2D u_grad$0;"],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
@@ -85,14 +86,15 @@ describe("render artifact - generated & external textures", () => {
   const withExternalTexture = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     sceneDepth: false,
-    uniformDeclarations: ["uniform sampler2D u_flame$0;"],
     varyings: [],
     vertex: {
+      uniformDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
+      uniformDeclarations: ["uniform sampler2D u_flame$0;"],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
@@ -121,14 +123,15 @@ describe("render artifact - generated & external textures", () => {
     const render: FXRenderArtifact = {
       lightingIntrinsics: [],
       sceneDepth: false,
-      uniformDeclarations: ["uniform sampler2D u_grad$0;", "uniform sampler2D u_flame$1;"],
       varyings: [],
       vertex: {
+        uniformDeclarations: [],
         helperFunctions: [],
         body: [],
         particleReads: NO_PARTICLE_READS,
       },
       fragment: {
+        uniformDeclarations: ["uniform sampler2D u_grad$0;", "uniform sampler2D u_flame$1;"],
         helperFunctions: [],
         body: [],
         particleReads: NO_PARTICLE_READS,

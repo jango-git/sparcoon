@@ -1,8 +1,6 @@
 import {
   Group,
   Mesh,
-  Quaternion,
-  Vector3,
   type BufferGeometry,
   type Camera,
   type Material,
@@ -23,6 +21,12 @@ import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 import { compilePrograms } from "../render/FXProgramCompile.Internal.js";
 import { FXWorld } from "../world/FXWorld.js";
+import { ownValue } from "../artifact/FXValueSlots.Internal.js";
+import {
+  createDrawFrame,
+  fillObjectDrawFrame,
+  type FXDrawFrame,
+} from "../render/FXDrawFrame.Internal.js";
 import {
   assertDeathReactionAction,
   connectDeathReaction,
@@ -156,46 +160,6 @@ function writeParameterSlots(
   }
 }
 
-/** A value slot (render uniform or behavior binding) whose `value` the value drive overwrites. */
-interface FXBakedSlot {
-  value?: unknown;
-}
-
-// Each slot's value as baked into the artifact, captured before anything drives it: the value
-// drive writes into the artifact's own slot (see FXArtifactMaterial.applyUniformValues), so the
-// slot itself only holds the last driven value. Keyed by slot, so every effect built from one
-// (module-scoped, shared) artifact restores the same baked value - the first one seen.
-const BAKED_VALUES = new WeakMap<FXBakedSlot, unknown>();
-
-/** A copy of `value` no later write can reach into (an array value is replaced, never mutated). */
-function copyValue<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return [...(value as unknown[])] as T;
-  }
-  return value instanceof Float32Array ? (new Float32Array(value) as T) : value;
-}
-
-/** Captures the baked value of every uniform of `render` and binding of `behavior` not yet seen. */
-function snapshotBakedValues(
-  renders: readonly FXRenderArtifact[],
-  behavior: FXBehaviorArtifact,
-): void {
-  const slots: FXBakedSlot[] = [
-    ...renders.flatMap((render) => Object.values(render.uniforms) as FXBakedSlot[]),
-    ...(Object.values(behavior.bindings) as FXBakedSlot[]),
-  ];
-  for (const slot of slots) {
-    if (!BAKED_VALUES.has(slot)) {
-      BAKED_VALUES.set(slot, copyValue(slot.value));
-    }
-  }
-}
-
-/** `slot`'s baked value - see {@link snapshotBakedValues} - as a fresh copy. */
-function bakedValue(slot: FXBakedSlot): unknown {
-  return copyValue(BAKED_VALUES.has(slot) ? BAKED_VALUES.get(slot) : slot.value);
-}
-
 /** Restores one parameter's baked baseline (a parameter that stopped being driven this frame). */
 function writeParameterBaseline(
   renders: readonly FXRenderArtifact[],
@@ -214,7 +178,7 @@ function writeParameterBaseline(
     if (uniform === undefined || !("value" in uniform)) {
       continue;
     }
-    const baked = bakedValue(uniform);
+    const baked: unknown = ownValue(uniform.value);
     if (baked !== undefined) {
       uniforms[uniformKey] = baked as number | number[];
       break;
@@ -223,7 +187,7 @@ function writeParameterBaseline(
   const bindingKey = PARAMETER_BINDING_PREFIX + name;
   for (const key in behavior.bindings) {
     if (key === bindingKey || key.startsWith(bindingKey + "_")) {
-      bindings[key] = bakedValue(behavior.bindings[key]) as number | Float32Array;
+      bindings[key] = ownValue(behavior.bindings[key].value);
     }
   }
 }
@@ -270,6 +234,8 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
   private lastTime = 0;
   private lastFrame = -1;
   private meshClock = 0;
+  // Filled in place for each mesh each frame (see advanceFrame).
+  private readonly meshDrawFrame: FXDrawFrame = createDrawFrame();
   private playing = false;
   // This playback's loop choice (see play()), and whether a once-through timeline has ended: its
   // timeline then holds the last frame while particles and mesh clocks run on.
@@ -278,12 +244,6 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
   // `"drained"` went out for this playback.
   private drained = false;
   private disposed = false;
-
-  // Reused decompose scratch for the per-mesh motion diff (avoids a per-tick allocation); scale
-  // is discarded.
-  private readonly meshPositionScratch = new Vector3();
-  private readonly meshQuaternionScratch = new Quaternion();
-  private readonly meshScaleScratch = new Vector3();
 
   protected constructor(
     specification: FXEffectSpec,
@@ -313,8 +273,6 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
               sampleInterval: emitterSpec.trail.sampleInterval,
             };
       const renders = trail === undefined ? [render] : [render, trail.render];
-      // Before anything below drives a value into these artifacts' slots.
-      snapshotBakedValues(renders, emitterSpec.behavior);
       const emitter = FXEmitter.fromArtifacts(
         render,
         emitterSpec.behavior,
@@ -382,7 +340,6 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       this.add(mesh);
       this.meshIndexByName.set(meshSpec.name, this.meshes.length);
       this.meshes.push(mesh);
-      snapshotBakedValues([render], NO_BEHAVIOR_BINDINGS);
       this.meshRenders.push(render);
       this.meshMaterials.push(material);
       this.meshMotionTrackers.push(new FXObjectMotionTracker());
@@ -449,33 +406,15 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       // matrixWorld (posed by `advance()` -> `poseAt()` above, or by a host live-driving it
       // directly through `getMesh()`) - never from PARTICLE_POSITION-style local state, since a
       // mesh is a single non-instanced object with no such thing.
-      mesh.updateWorldMatrix(true, false);
-      mesh.matrixWorld.decompose(
-        this.meshPositionScratch,
-        this.meshQuaternionScratch,
-        this.meshScaleScratch,
+      this.meshMaterials[i].advance(
+        fillObjectDrawFrame(
+          this.meshDrawFrame,
+          this.meshMotionTrackers[i],
+          mesh,
+          this.meshClock,
+          simulationDelta,
+        ),
       );
-      const motion = this.meshMotionTrackers[i].sample(
-        {
-          position: [
-            this.meshPositionScratch.x,
-            this.meshPositionScratch.y,
-            this.meshPositionScratch.z,
-          ],
-          quaternion: [
-            this.meshQuaternionScratch.x,
-            this.meshQuaternionScratch.y,
-            this.meshQuaternionScratch.z,
-            this.meshQuaternionScratch.w,
-          ],
-        },
-        simulationDelta,
-      );
-      const material = this.meshMaterials[i];
-      material.setElapsedTime(this.meshClock);
-      material.setDeltaTime(simulationDelta);
-      material.setObjectVelocity(motion.velocity);
-      material.setObjectAngularVelocity(motion.angularVelocity);
     }
   }
 

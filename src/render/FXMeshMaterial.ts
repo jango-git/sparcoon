@@ -1,14 +1,16 @@
 import type { Material } from "three";
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
+import type { FXDrawInputs } from "./FXDrawInputs.js";
 import {
+  advanceMaterialSlots,
   applyArtifactUniformValues,
   buildMeshArtifactDepthMaterial,
   buildMeshArtifactMaterial,
+  createMaterialSlots,
 } from "./FXArtifactMaterial.Internal.js";
+import type { FXMaterialSlots } from "./FXArtifactMaterial.Internal.js";
 import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
-import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
-import type { FXFrameTimeUniform, FXFrameVec3Uniform } from "./FXArtifactMaterial.Internal.js";
 
 /**
  * Runtime material driver for a **VFX mesh**: the mesh twin of {@link FXArtifactMaterial}. Wraps a
@@ -18,14 +20,8 @@ import type { FXFrameTimeUniform, FXFrameVec3Uniform } from "./FXArtifactMateria
  * host builds the material once and pushes the shared clock each frame.
  */
 export class FXMeshMaterial {
-  private readonly elapsedTime: FXFrameTimeUniform = { value: 0 };
-  private readonly deltaTime: FXFrameTimeUniform = { value: 0 };
-  private readonly velocity: FXFrameVec3Uniform = { value: [0, 0, 0] };
-  private readonly angularVelocity: FXFrameVec3Uniform = { value: [0, 0, 0] };
-
-  // Durable per-mesh slots for `external` texture uniforms: an external uniform resolves per mesh, so
-  // it binds its own live-scrubbable slot (non-external uniforms bind the shared artifact slot).
-  private readonly externalSlots: FXExternalTextureBindings;
+  // This mesh's own live slots, bound by reference into both of its materials.
+  private readonly slots: FXMaterialSlots;
 
   /**
    * @param textures - App-supplied external textures by slot name. A missing one fails fast here
@@ -35,23 +31,19 @@ export class FXMeshMaterial {
     private readonly artifact: FXRenderArtifact,
     textures: Readonly<Record<string, FXExternalTexture>> = {},
   ) {
-    this.externalSlots = createExternalTextureBindings(
+    this.slots = createMaterialSlots(
       artifact,
-      textures,
-      "FXMeshMaterial",
-      "pass it via the mesh host's textures",
+      createExternalTextureBindings(
+        artifact,
+        textures,
+        "FXMeshMaterial",
+        "pass it via the mesh host's textures",
+      ),
     );
   }
 
   public buildThreeMaterial(): Material {
-    return buildMeshArtifactMaterial(
-      this.artifact,
-      this.elapsedTime,
-      this.deltaTime,
-      this.velocity,
-      this.angularVelocity,
-      this.externalSlots,
-    );
+    return buildMeshArtifactMaterial(this.artifact, this.slots);
   }
 
   /**
@@ -60,41 +52,25 @@ export class FXMeshMaterial {
    * when the mesh opts into `castShadow`.
    */
   public buildThreeDepthMaterial(): Material {
-    return buildMeshArtifactDepthMaterial(
-      this.artifact,
-      this.elapsedTime,
-      this.deltaTime,
-      this.velocity,
-      this.angularVelocity,
-      this.externalSlots,
-    );
-  }
-
-  public setElapsedTime(seconds: number): void {
-    this.elapsedTime.value = seconds;
-  }
-
-  public setDeltaTime(seconds: number): void {
-    this.deltaTime.value = seconds;
-  }
-
-  public setObjectVelocity(velocity: readonly [number, number, number]): void {
-    this.velocity.value = velocity;
-  }
-
-  public setObjectAngularVelocity(angularVelocity: readonly [number, number, number]): void {
-    this.angularVelocity.value = angularVelocity;
+    return buildMeshArtifactDepthMaterial(this.artifact, this.slots);
   }
 
   /**
-   * Applies a value edit (a rebind, no rebuild). A non-external uniform mutates its shared artifact
-   * slot; an external uniform mutates this mesh's own slot. Unknown name = no-op (an editor<->runtime
-   * name drift never corrupts values).
+   * This tick's draw inputs: the clock and motion the shaders read, and the artifact's draw stage
+   * (when it has one) computed from them into this instance's draw uniforms.
+   */
+  public advance(frame: FXDrawInputs): void {
+    advanceMaterialSlots(this.slots, this.artifact, frame);
+  }
+
+  /**
+   * Applies a value edit (a rebind, no rebuild) to this mesh's own slots, never the artifact.
+   * Unknown name = no-op (an editor<->runtime name drift never corrupts values).
    * @throws When an external texture is of a variant its slot was not built with; nothing is
    * written then.
    */
   public applyUniformValues(values: Readonly<Record<string, FXUniformValue>>): void {
-    applyArtifactUniformValues(this.artifact, this.externalSlots, values);
+    applyArtifactUniformValues(this.slots, values);
   }
 
   // No-op: the artifact owns no per-mesh resources (generated textures are module-scoped; external

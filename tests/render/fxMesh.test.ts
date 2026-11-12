@@ -3,6 +3,7 @@ import type { Material, ShaderMaterial } from "three";
 import { FXMesh } from "../../src/render/FXMesh";
 import { FXWorld } from "../../src/world/FXWorld";
 import { unlitArtifact } from "../helpers/artifacts";
+import { uniformValue } from "../helpers/internals";
 
 // FXMesh is the mesh twin of FXEmitter: built from one render artifact, self-subscribed to a world,
 // and driven by FXWorld.update - including the object velocity/angular velocity a mesh render graph
@@ -54,7 +55,7 @@ describe("FXMesh world drive", () => {
     const render = glowRender();
     const mesh = FXMesh.fromArtifact(render, {}, world);
     mesh.applyValues({ u_param_glow: 0.7 });
-    expect((render.uniforms["u_param_glow"] as { value: number }).value).toBeCloseTo(0.7, 6);
+    expect(uniformValue(mesh, "u_param_glow") as number).toBeCloseTo(0.7, 6);
     world.dispose();
   });
 });

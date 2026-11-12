@@ -172,14 +172,15 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
   const lit = (intrinsics: readonly string[]): FXRenderArtifact => ({
     lightingIntrinsics: intrinsics,
     sceneDepth: false,
-    uniformDeclarations: [],
     varyings: [],
     vertex: {
+      uniformDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
+      uniformDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
@@ -234,14 +235,15 @@ describe("render mode + additivity blend tail", () => {
   const artifact = (over: Partial<FXRenderArtifact>): FXRenderArtifact => ({
     lightingIntrinsics: [],
     sceneDepth: false,
-    uniformDeclarations: [],
     varyings: [],
     vertex: {
+      uniformDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,
     },
     fragment: {
+      uniformDeclarations: [],
       helperFunctions: [],
       body: [],
       particleReads: NO_PARTICLE_READS,

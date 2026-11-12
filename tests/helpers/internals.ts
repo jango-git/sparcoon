@@ -1,4 +1,5 @@
-import type { Mesh } from "three";
+import type { FXRangedBuffer } from "../../src/render/FXBufferUpload.Internal";
+import type { Mesh, ShaderMaterial } from "three";
 import type { FXEffect } from "../../src/effect/FXEffect";
 import type { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
@@ -14,6 +15,9 @@ import type { FXWorld } from "../../src/world/FXWorld";
 
 interface EmitterInternals {
   readonly mesh: FXInstancedParticle | FXTransformFeedbackParticle;
+  readonly driver: {
+    readonly simulation: { readonly bindings: Record<string, { readonly value: unknown }> };
+  };
   readonly trail: TrailInternals | undefined;
   readonly emitterTransform: { readonly velocity: readonly number[] };
   tick(deltaTime: number): void;
@@ -47,6 +51,22 @@ export function particlesOf(emitter: FXEmitter): FXInstancedParticle {
   return internalsOf(emitter).mesh as FXInstancedParticle;
 }
 
+/** The live value of uniform `name` in `mesh`'s own material - the instance's slot, not the
+ *  artifact's initial value. */
+export function uniformValue(mesh: Mesh, name: string): unknown {
+  return (mesh.material as ShaderMaterial).uniforms[name]?.value;
+}
+
+/** {@link uniformValue} in the particle material of a JS-driven `emitter`. */
+export function emitterUniform(emitter: FXEmitter, name: string): unknown {
+  return uniformValue(particlesOf(emitter), name);
+}
+
+/** The live value of behavior binding `name` in `emitter`'s own simulation - not the artifact's. */
+export function bindingValue(emitter: FXEmitter, name: string): unknown {
+  return internalsOf(emitter).driver.simulation.bindings[name]?.value;
+}
+
 /** The transform-feedback mesh of a GPU-driven emitter. */
 export function gpuParticlesOf(emitter: FXEmitter): FXTransformFeedbackParticle {
   return internalsOf(emitter).mesh as FXTransformFeedbackParticle;
@@ -74,10 +94,7 @@ export interface TrailInternals {
     readonly capacity: number;
     readonly frames: number;
     readonly layout: FXTrailLayout;
-    readonly buffer: {
-      updateRanges: { start: number; count: number }[];
-      needsUpdate: boolean;
-    };
+    readonly buffer: FXRangedBuffer;
   };
   readonly uniforms: {
     readonly head: { value: number };

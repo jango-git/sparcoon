@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearRanges, pendingRanges } from "../helpers/uploadRanges";
 import type { InterleavedBufferAttribute, ShaderMaterial, WebGLRenderer } from "three";
 import { PerspectiveCamera, Texture } from "three";
 import type {
@@ -16,6 +17,7 @@ import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 import { effectSpec, emitterSpec, TestEffect } from "../helpers/effectSpecs";
 import {
+  bindingValue,
   driveEmitterValues,
   landBirths,
   particlesOf,
@@ -158,20 +160,17 @@ describe("trail history - JS backend", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 3 }), 2);
     try {
       const { buffer, stride } = trailOf(emitter).history;
-      // three >= 0.159 keeps a list, as the dev dependency's three this suite runs on does.
-      const ranges = buffer.updateRanges;
-      expect(ranges).toBeDefined();
       const frame = 2 * stride;
       emitter.burst(2);
-      ranges.length = 0;
+      clearRanges(buffer);
       tickEmitter(emitter, 0.01); // head 0: the mirror only
-      expect(ranges).toEqual([{ start: 3 * frame, count: frame }]);
-      ranges.length = 0;
+      expect(pendingRanges(buffer)).toEqual([{ start: 3 * frame, count: frame }]);
+      clearRanges(buffer);
       tickEmitter(emitter, 0.1); // moves to 1: frames 0 and 1
-      expect(ranges).toEqual([{ start: 0, count: 2 * frame }]);
-      ranges.length = 0;
+      expect(pendingRanges(buffer)).toEqual([{ start: 0, count: 2 * frame }]);
+      clearRanges(buffer);
       tickEmitter(emitter, 0.01); // head 1 again
-      expect(ranges).toEqual([{ start: frame, count: frame }]);
+      expect(pendingRanges(buffer)).toEqual([{ start: frame, count: frame }]);
     } finally {
       emitter.destroy();
     }
@@ -230,12 +229,11 @@ describe("trail history - JS backend", () => {
   it("uploads nothing while no particle was ever born", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 3 }), 2);
     try {
-      const ranges = trailOf(emitter).history.buffer.updateRanges;
-      expect(ranges).toBeDefined();
-      ranges.length = 0;
+      const { buffer } = trailOf(emitter).history;
+      clearRanges(buffer);
       tickEmitter(emitter, 0.05);
       tickEmitter(emitter, 0.2);
-      expect(ranges).toEqual([]);
+      expect(pendingRanges(buffer)).toEqual([]);
     } finally {
       emitter.destroy();
     }
@@ -354,6 +352,55 @@ describe("trail history - JS backend", () => {
       expect(material.uniforms["u_param_glow"].value).toBe(0.75);
       // A name the new trail does not declare is not added to it.
       expect(material.uniforms["u_param_other"]).toBeUndefined();
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("binds a swapped-in trail's external textures from the swap, not the values applied before", () => {
+    const sampled = (): FXRenderArtifact =>
+      unlitArtifact({
+        uniformDeclarations: ["uniform sampler2D u_param_sheet;"],
+        uniforms: { u_param_sheet: { type: "sampler2D", external: "u_param_sheet" } },
+        outputs: { albedo: "fxSample_u_param_sheet(vec2(0.5))" },
+      });
+    const region = { texture: new Texture(), uvTransform: [1, 0, 0, 0, 1, 0] as const };
+    const emitter = FXEmitter.fromArtifacts(sampled(), movingBehavior(), {
+      textures: { u_param_sheet: region },
+      trail: trailOptions({ render: sampled() }),
+    });
+    try {
+      emitter.applyValues({
+        uniforms: { u_param_sheet: { ...region, uvTransform: [0.5, 0, 0, 0, 0.5, 0] } },
+      });
+      // A whole texture now: the applied region is of a variant this slot cannot take.
+      const sheet = new Texture();
+      emitter.applyTrailArtifact(trailOptions({ render: sampled() }), { u_param_sheet: sheet });
+      expect(
+        (trailOf(emitter).mesh.material as ShaderMaterial).uniforms["u_param_sheet"].value,
+      ).toBe(sheet);
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("scrubs a material's own values into it alone, and never into a later swap", () => {
+    // Both graphs named a value of their own `_0`: the same name, two different uniforms.
+    const own = (): FXRenderArtifact =>
+      unlitArtifact({
+        uniformDeclarations: ["uniform float _0;"],
+        uniforms: { _0: { type: "float", value: 0 } },
+      });
+    const emitter = FXEmitter.fromArtifacts(own(), movingBehavior(), {
+      trail: trailOptions({ render: own() }),
+    });
+    try {
+      emitter.applyValues({ particleMaterial: { _0: 1 }, trailMaterial: { _0: 2 } });
+      const particles = particlesOf(emitter).material as ShaderMaterial;
+      expect(particles.uniforms["_0"].value).toBe(1);
+      expect((trailOf(emitter).mesh.material as ShaderMaterial).uniforms["_0"].value).toBe(2);
+      emitter.applyTrailArtifact(trailOptions({ render: own() }));
+      expect((trailOf(emitter).mesh.material as ShaderMaterial).uniforms["_0"].value).toBe(0);
     } finally {
       emitter.destroy();
     }
@@ -762,11 +809,12 @@ describe("trail in an effect", () => {
       drive(new Map([["glow", 0.5]]));
       drive(new Map([["glow", 0.75]]));
       expect(particles.uniforms["u_param_glow"].value).toBe(0.75);
-      expect(behavior.bindings.b_param_glow.value).toBe(0.75);
+      expect(bindingValue(sparks, "b_param_glow")).toBe(0.75);
       drive(new Map());
       expect(particles.uniforms["u_param_glow"].value).toBe(0.25);
       expect(trail.uniforms["u_param_glow"].value).toBe(0.25);
-      expect(behavior.bindings.b_param_glow.value).toBe(3);
+      expect(bindingValue(sparks, "b_param_glow")).toBe(3);
+      expect(behavior.bindings.b_param_glow.value).toBe(3); // never written
     } finally {
       effect.dispose();
     }

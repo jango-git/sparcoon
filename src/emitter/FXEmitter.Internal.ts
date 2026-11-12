@@ -3,16 +3,26 @@ import type { FXUniformValue } from "../render/FXExternalTexture.js";
 
 /**
  * Argument to {@link FXEmitter.applyValues}: values to scrub into uniform/binding slots by name.
- * Both maps optional; an unknown name is a safe no-op. Only reaches parameters the compiled
+ * Every map optional; an unknown name is a safe no-op. Only reaches slots the compiled
  * GLSL/kernel already declared - a structural edit is a fresh {@link FXEmitter.fromArtifacts}.
+ *
+ * A uniform value is a scalar/vector, or a `Texture` for a `sampler2D`. It mutates this emitter's
+ * own slot, never the artifact's; an `external` texture also takes a region when it was bound to
+ * one (see {@link FXExternalTexture}).
  */
 export interface FXApplyValues {
   /**
-   * Scalar/vector, or a `Texture` for a `sampler2D`. Mutates the shared artifact slot, or this
-   * emitter's own slot for an `external` texture - which also takes a region when it was bound to
-   * one (see {@link FXExternalTexture}).
+   * Parameters: one namespace per emitter, so a name drives every material declaring it - the
+   * particles' and the trail's. A trail or particle material swapped in later starts from them.
    */
   readonly uniforms?: Readonly<Record<string, FXUniformValue>>;
+  /**
+   * The particle material's own uniforms, by its render artifact's names - a tool scrubbing what
+   * it recompiled. A generated name is the graph's own, so it never reaches the trail.
+   */
+  readonly particleMaterial?: Readonly<Record<string, FXUniformValue>>;
+  /** The trail material's own uniforms, by its render artifact's names (see `particleMaterial`). */
+  readonly trailMaterial?: Readonly<Record<string, FXUniformValue>>;
   /** A `number`, or a `Float32Array` curve LUT. */
   readonly bindings?: Readonly<Record<string, number | Float32Array>>;
 }

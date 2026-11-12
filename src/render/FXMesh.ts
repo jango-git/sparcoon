@@ -1,10 +1,11 @@
-import { Mesh, Quaternion, Vector3, type BufferGeometry, type Material } from "three";
+import { Mesh, type BufferGeometry, type Material } from "three";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import { FXWorld } from "../world/FXWorld.js";
 import { FXMeshMaterial } from "./FXMeshMaterial.js";
+import { createDrawFrame, fillObjectDrawFrame, type FXDrawFrame } from "./FXDrawFrame.Internal.js";
 
 /** Options for {@link FXMesh.fromArtifact}. */
 export interface FXFromMeshArtifactOptions {
@@ -34,16 +35,13 @@ export class FXMesh extends Mesh {
   private readonly world: FXWorld;
   private readonly driver: FXMeshMaterial;
   private readonly motionTracker = new FXObjectMotionTracker();
+  // Filled in place each tick (see onWorldTick).
+  private readonly drawFrame: FXDrawFrame = createDrawFrame();
   // A built-in primitive is ours to dispose; an app-supplied custom geometry is the caller's.
   private readonly ownsGeometry: boolean;
   // The depth material we built for a shadow caster (undefined when not casting), kept so `destroy`
   // can free it without reading the loosely typed inherited `customDepthMaterial`.
   private readonly depthMaterial?: Material;
-
-  // Reused decompose scratch (avoids a per-tick allocation); scale is discarded.
-  private readonly motionPositionScratch = new Vector3();
-  private readonly motionQuaternionScratch = new Quaternion();
-  private readonly motionScaleScratch = new Vector3();
 
   private destroyed = false;
 
@@ -94,32 +92,9 @@ export class FXMesh extends Mesh {
 
   /** @internal Driven by {@link FXWorld.update}. */
   public onWorldTick(deltaTime: number, elapsedTime: number): void {
-    this.updateWorldMatrix(true, false);
-    this.matrixWorld.decompose(
-      this.motionPositionScratch,
-      this.motionQuaternionScratch,
-      this.motionScaleScratch,
+    this.driver.advance(
+      fillObjectDrawFrame(this.drawFrame, this.motionTracker, this, elapsedTime, deltaTime),
     );
-    const motion = this.motionTracker.sample(
-      {
-        position: [
-          this.motionPositionScratch.x,
-          this.motionPositionScratch.y,
-          this.motionPositionScratch.z,
-        ],
-        quaternion: [
-          this.motionQuaternionScratch.x,
-          this.motionQuaternionScratch.y,
-          this.motionQuaternionScratch.z,
-          this.motionQuaternionScratch.w,
-        ],
-      },
-      deltaTime,
-    );
-    this.driver.setElapsedTime(elapsedTime);
-    this.driver.setDeltaTime(deltaTime);
-    this.driver.setObjectVelocity(motion.velocity);
-    this.driver.setObjectAngularVelocity(motion.angularVelocity);
   }
 
   /** Scrubs live uniform values by name (picked up next frame). Unknown name = safe no-op. */

@@ -9,6 +9,8 @@ export type {
   FXBufferLayout,
   FXFragmentStageSource,
   FXGeometrySource,
+  FXKernelDrawInputs,
+  FXKernelUniformValue,
   FXParticleKernelArtifact,
   FXParticleReads,
   FXRenderArtifact,
@@ -18,6 +20,7 @@ export type {
   FXValueSlot,
   FXVaryingDecl,
 } from "./artifact/FXArtifact.js";
+export type { FXDrawInputs } from "./render/FXDrawInputs.js";
 
 export {
   FX_AGE,

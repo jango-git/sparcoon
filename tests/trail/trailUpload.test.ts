@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { clearRanges, pendingRanges } from "../helpers/uploadRanges";
 import { FX_CORE_POSITION } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { markRange, type FXRangedBuffer } from "../../src/render/FXBufferUpload.Internal";
@@ -55,13 +56,12 @@ class GPUView {
   /** What a render now uploads; returns the marked ranges. */
   public render(): { start: number; count: number }[] {
     const { buffer, array } = this.trail.history;
-    const ranges = [...buffer.updateRanges];
+    const ranges = pendingRanges(buffer);
     for (const range of ranges) {
       this.data.set(array.subarray(range.start, range.start + range.count), range.start);
       this.uploads += 1;
     }
-    buffer.updateRanges.length = 0;
-    buffer.needsUpdate = false;
+    clearRanges(buffer);
     return ranges;
   }
 
@@ -168,7 +168,7 @@ describe("trail history uploads (JS backend)", () => {
     }
   });
 
-  it("merges every tick before a render into one upload range (three >= 0.159)", () => {
+  it("merges every tick before a render into one upload range", () => {
     const emitter = trailEmitter(5, 4, 1000);
     try {
       const view = new GPUView(trailOf(emitter));
@@ -177,7 +177,7 @@ describe("trail history uploads (JS backend)", () => {
       for (let i = 0; i < 40; i++) {
         tickEmitter(emitter, TICK);
       }
-      expect(trailOf(emitter).history.buffer.updateRanges).toHaveLength(1);
+      expect(pendingRanges(trailOf(emitter).history.buffer)).toHaveLength(1);
       view.render();
       expect(view.data).toEqual(trailOf(emitter).history.array);
     } finally {

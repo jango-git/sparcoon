@@ -6,6 +6,66 @@ break the artifact format, and an exported effect module plays only on the minor
 The `sparcoon/editor` entry is tooling for the Sparcoon Editor and carries no semver guarantees;
 its changes are listed only where they explain a change to the runtime.
 
+## 0.17.0 - unreleased
+
+### Fixed
+
+- Every emitter, trail and VFX mesh owns its uniform and binding values: instances built from one
+  artifact (a pool of one effect) no longer draw and simulate with the last instance's Timeline
+  Values. The artifact's `uniforms` and `bindings` keep their initial values and are never
+  written.
+- `FXEmitter.applyRenderArtifact` and `applyTrailArtifact` start the new material from the
+  parameters applied to the emitter; external textures come from the swap's own `textures`, so a
+  trail swap no longer fails (and leaks the trail it built) on a texture bound another way before.
+- A textured trail is no longer skipped on a GPU without vertex texture units: a stage declares
+  only the uniforms its code reads, so a sampler only the fragment stage reads costs the vertex
+  stage nothing.
+
+### Added
+
+- The draw stage: a render artifact may carry `compute(inputs, uniforms)`, which the editor writes
+  for what is one for the whole draw (the clock, the pose, the object's motion, parameters). The
+  runtime calls it once per tick into the instance's draw uniforms, declared and seeded among its
+  `uniforms`, so the shaders read the result instead of computing it per vertex or fragment.
+  `FXDrawInputs` is what it reads. No code is built at run time: `compute` is an ordinary function
+  in the exported module.
+- The draw stage for GPU-driven emitters: a kernel artifact may carry `compute(inputs, uniforms)`
+  for what depends only on the pass (the timestep, the emitter's pose and motion, bindings); its
+  draw uniforms are declared and seeded among its `bindings`. The transform-feedback simulation
+  calls it before each tick and spawn pass with that pass's `FXKernelDrawInputs`, so a burst sees
+  its own pose. A binding uploads by the type its program declares it as (a float, a vector or a
+  matrix, `FXKernelUniformValue`).
+- `FXApplyValues.particleMaterial` and `trailMaterial`: one material's own uniform values, by its
+  artifact's names - for a tool scrubbing what it recompiled, since a generated name belongs to
+  its graph alone. `uniforms` stays the emitter's parameters, driving every material that declares
+  them.
+- `sparcoon/editor`: `FXRenderBudget` also counts uniform vectors and texture units per stage,
+  against `FX_RENDER_BUDGET_MINIMUMS` (Baseline: the least iOS device's 128 vertex / 64 fragment
+  vectors and 8 units a stage), and measures every uniform type GLSL ES 3.00 has without throwing.
+- A trail past what the device offers of any resource - attributes, varying vectors, uniform
+  vectors or texture units of a stage - is skipped with a warning, as it already was for attributes
+  and varyings. Each limit the renderer reports is checked on its own; one it does not report is
+  not checked.
+
+### Performance
+
+- A GPU-driven emitter resolves each binding's upload once, when it is built: a simulation pass
+  does no string lookups and copies no pose arrays.
+- A trail no longer recomputes its parents' world matrices every tick; the emitter's tick already
+  did.
+
+### Changed
+
+- **Breaking:** every exported effect must be re-exported (the artifact gains the draw stage, and
+  `FXRenderArtifact.uniformDeclarations` moves into each stage: `vertex.uniformDeclarations` and
+  `fragment.uniformDeclarations`).
+- `sparcoon/editor`: the material drivers' `setElapsedTime`, `setDeltaTime`, `setObjectVelocity`
+  and `setObjectAngularVelocity` are one `advance(frame)`; `packedVaryingVectors` is
+  `packedVectors` and `fxVaryingShape` is `fxPackedShape` (uniforms pack by the same rule);
+  `fxGraphVaryingAllowance` takes the graph's lighting; `fxGraphUniformAllowance` and
+  `FX_DRAW_INPUTS` are new. A budget counts an external texture bound the heaviest way (a masked
+  region).
+
 ## 0.16.0 - 2026-11-11
 
 ### Changed

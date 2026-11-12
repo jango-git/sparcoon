@@ -10,7 +10,7 @@ import {
   meshSpec as baseMeshSpec,
   TestEffect,
 } from "../helpers/effectSpecs";
-import { particlesOf } from "../helpers/internals";
+import { emitterUniform, particlesOf } from "../helpers/internals";
 
 // Only `capabilities.isWebGL2` is ever read off the renderer, so a minimal stand-in is enough -
 // building a real WebGLRenderer needs an actual GL context, unavailable under headless vitest.
@@ -100,6 +100,6 @@ describe("FXEffect render-target selection", () => {
       renderer: rendererWithCapability(true),
     });
     effect.setEmitterParam("e", "size", 5);
-    expect(standardRender.uniforms["u_param_size"].value).toBe(5);
+    expect(emitterUniform(effect.getEmitter("e")!, "u_param_size")).toBe(5);
   });
 });

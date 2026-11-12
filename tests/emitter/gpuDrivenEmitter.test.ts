@@ -31,8 +31,19 @@ function kernel(
   ],
   bindings: FXParticleKernelArtifact["bindings"] = {},
 ): FXParticleKernelArtifact {
+  // The program declares each binding at the type its value has.
+  const declarations = Object.entries(bindings).map(([name, slot]) => {
+    const value = slot.value;
+    const type =
+      typeof value === "number"
+        ? "float"
+        : value.length === 16
+          ? "mat4"
+          : `vec${String(value.length)}`;
+    return `uniform ${type} ${name};\n`;
+  });
   return {
-    vertexSource: "#version 300 es\nvoid main(){}",
+    vertexSource: `#version 300 es\n${declarations.join("")}void main(){}`,
     fragmentSource: "#version 300 es\nvoid main(){}",
     buffers,
     transformFeedbackVaryings: buffers.map((buffer) => `out_${buffer.name}`),
@@ -393,8 +404,51 @@ describe("FXEmitter GPU driver", () => {
     emitter.applyValues({ bindings: { b_gravity$0: 5, b_unknown$1: 1 } });
     world.update(1 / 60);
     expect(mock.gl.uniforms.get("b_gravity$0")).toBe(5);
-    expect(gravity.bindings["b_gravity$0"].value).toBe(5);
+    expect(gravity.bindings["b_gravity$0"].value).toBe(-2); // the artifact keeps its initial value
     expect(mock.gl.uniforms.has("b_unknown$1")).toBe(false);
+  });
+
+  it("computes its draw uniforms each pass from the pass's timestep, pose and its own bindings", () => {
+    const mock = mockRenderer();
+    const drawn: FXParticleKernelArtifact = {
+      ...kernel(undefined, {
+        b_param_k: { value: 2 },
+        u_updateDraw_0: { value: 0 },
+        u_spawnDraw_1: { value: 0 },
+      }),
+      compute: (inputs, uniforms) => {
+        uniforms["u_updateDraw_0"]!.value =
+          inputs.deltaTime * (uniforms["b_param_k"]!.value as number);
+        uniforms["u_spawnDraw_1"]!.value = inputs.worldMatrix[12]!;
+      },
+    };
+    const { emitter, world } = emitterOn(mock, { gpuKernel: drawn });
+    emitter.position.set(3, 0, 0);
+    emitter.burst(1);
+    world.update(0.5);
+    expect(mock.gl.uniforms.get("u_updateDraw_0")).toBeCloseTo(1, 6);
+    expect(mock.gl.uniforms.get("u_spawnDraw_1")).toBe(3);
+    emitter.applyValues({ bindings: { b_param_k: 4 } });
+    world.update(0.25);
+    expect(mock.gl.uniforms.get("u_updateDraw_0")).toBeCloseTo(1, 6);
+    expect(drawn.bindings["b_param_k"]?.value).toBe(2); // the artifact's own, never written
+  });
+
+  it("uploads a vector draw uniform by the type its program declares it as", () => {
+    const mock = mockRenderer();
+    const drawn: FXParticleKernelArtifact = {
+      ...kernel(undefined, { _0: { value: [0, 0, 0] } }),
+      compute: (inputs, uniforms) => {
+        const value = uniforms["_0"]!.value as number[];
+        value[0] = 7;
+        value[1] = inputs.deltaTime;
+      },
+    };
+    const { emitter, world } = emitterOn(mock, { gpuKernel: drawn });
+    emitter.burst(1);
+    world.update(0.5);
+    const uploaded = callsNamed(mock.gl, "uniform3fv").map((call) => call.args[1]);
+    expect(uploaded).toContainEqual([7, 0.5, 0]);
   });
 
   it("warns once that it cannot depth sort, and keeps ticking", () => {

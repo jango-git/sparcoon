@@ -1,18 +1,19 @@
 import type { Material, ShaderMaterial } from "three";
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
+import type { FXDrawInputs } from "./FXDrawInputs.js";
 import {
+  advanceMaterialSlots,
   applyArtifactUniformValues,
   assertArtifactUniformValues,
   buildArtifactDepthMaterial,
   buildArtifactMaterial,
   buildTrailArtifactMaterial,
+  createMaterialSlots,
 } from "./FXArtifactMaterial.Internal.js";
 import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
-import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import type {
-  FXFrameTimeUniform,
-  FXFrameVec3Uniform,
+  FXMaterialSlots,
   FXParticleLayout,
   FXTrailLayout,
   FXTrailUniforms,
@@ -25,15 +26,8 @@ import type {
  * The emitter owns one, calls {@link buildThreeMaterial} once, and pushes the shared clock each frame.
  */
 export class FXArtifactMaterial {
-  private readonly elapsedTime: FXFrameTimeUniform = { value: 0 };
-  private readonly deltaTime: FXFrameTimeUniform = { value: 0 };
-  private readonly velocity: FXFrameVec3Uniform = { value: [0, 0, 0] };
-  private readonly angularVelocity: FXFrameVec3Uniform = { value: [0, 0, 0] };
-
-  // Durable per-emitter slots for `external` texture uniforms. Unlike non-external uniforms (which
-  // bind the shared artifact slot directly), an external uniform resolves per emitter, so it gets
-  // its own slot here - and that slot is what gets bound, keeping it live-scrubbable.
-  private readonly externalSlots: FXExternalTextureBindings;
+  // This emitter's own live slots, bound by reference into every material it builds.
+  private readonly slots: FXMaterialSlots;
 
   /**
    * @param textures - App-supplied external textures by slot name. A missing one fails fast here
@@ -44,25 +38,20 @@ export class FXArtifactMaterial {
     public readonly artifact: FXRenderArtifact,
     textures: Readonly<Record<string, FXExternalTexture>> = {},
   ) {
-    this.externalSlots = createExternalTextureBindings(
+    this.slots = createMaterialSlots(
       artifact,
-      textures,
-      "FXArtifactMaterial",
-      "pass it via FXEmitter.fromArtifacts({ textures })",
+      createExternalTextureBindings(
+        artifact,
+        textures,
+        "FXArtifactMaterial",
+        "pass it via FXEmitter.fromArtifacts({ textures })",
+      ),
     );
   }
 
   /** The particle material over a mesh of `layout` (its driver's, see `particleLayout`). */
   public buildThreeMaterial(layout: FXParticleLayout): Material {
-    return buildArtifactMaterial(
-      this.artifact,
-      layout,
-      this.elapsedTime,
-      this.deltaTime,
-      this.velocity,
-      this.angularVelocity,
-      this.externalSlots,
-    );
+    return buildArtifactMaterial(this.artifact, layout, this.slots);
   }
 
   /**
@@ -71,15 +60,7 @@ export class FXArtifactMaterial {
    * {@link buildArtifactDepthMaterial}). Built only when the emitter opts into `castShadow`.
    */
   public buildThreeDepthMaterial(layout: FXParticleLayout): Material {
-    return buildArtifactDepthMaterial(
-      this.artifact,
-      layout,
-      this.elapsedTime,
-      this.deltaTime,
-      this.velocity,
-      this.angularVelocity,
-      this.externalSlots,
-    );
+    return buildArtifactDepthMaterial(this.artifact, layout, this.slots);
   }
 
   /** The trail material over a history of `layout` (see {@link buildTrailArtifactMaterial}). */
@@ -87,32 +68,15 @@ export class FXArtifactMaterial {
     layout: FXTrailLayout,
     trailUniforms: FXTrailUniforms,
   ): ShaderMaterial {
-    return buildTrailArtifactMaterial(
-      this.artifact,
-      layout,
-      this.elapsedTime,
-      this.deltaTime,
-      this.velocity,
-      this.angularVelocity,
-      trailUniforms,
-      this.externalSlots,
-    );
+    return buildTrailArtifactMaterial(this.artifact, layout, this.slots, trailUniforms);
   }
 
-  public setElapsedTime(seconds: number): void {
-    this.elapsedTime.value = seconds;
-  }
-
-  public setDeltaTime(seconds: number): void {
-    this.deltaTime.value = seconds;
-  }
-
-  public setObjectVelocity(velocity: readonly [number, number, number]): void {
-    this.velocity.value = velocity;
-  }
-
-  public setObjectAngularVelocity(angularVelocity: readonly [number, number, number]): void {
-    this.angularVelocity.value = angularVelocity;
+  /**
+   * This tick's draw inputs: the clock and motion the shaders read, and the artifact's draw stage
+   * (when it has one) computed from them into this instance's draw uniforms.
+   */
+  public advance(frame: FXDrawInputs): void {
+    advanceMaterialSlots(this.slots, this.artifact, frame);
   }
 
   /**
@@ -121,16 +85,16 @@ export class FXArtifactMaterial {
    * materials both before either changes.
    */
   public assertUniformValues(values: Readonly<Record<string, FXUniformValue>>): void {
-    assertArtifactUniformValues(this.externalSlots, values);
+    assertArtifactUniformValues(this.slots, values);
   }
 
   /**
-   * Render half of {@link FXEmitter.applyValues}. A non-external uniform mutates its shared artifact
-   * slot (module-scoped); an external uniform mutates this emitter's own slot. Unknown name = no-op.
+   * Render half of {@link FXEmitter.applyValues}: writes this emitter's own slots, never the
+   * artifact. Unknown name = no-op.
    * @throws See {@link assertUniformValues}; nothing is written then.
    */
   public applyUniformValues(values: Readonly<Record<string, FXUniformValue>>): void {
-    applyArtifactUniformValues(this.artifact, this.externalSlots, values);
+    applyArtifactUniformValues(this.slots, values);
   }
 
   // No-op: the artifact owns no per-emitter resources. Generated textures are module-scoped and

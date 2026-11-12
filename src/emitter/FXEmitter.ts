@@ -1,12 +1,14 @@
 import type { Camera, Mesh, WebGLRenderer } from "three";
 import type { FXUniformValue } from "../render/FXExternalTexture.js";
-import { Object3D, Quaternion, Vector3 } from "three";
+import { createDrawFrame, type FXDrawFrame } from "../render/FXDrawFrame.Internal.js";
+import { Object3D, Vector3 } from "three";
 import type { FXEmitterTransform } from "../artifact/FXArtifact.js";
 import type { FXBehaviorArtifact, FXRenderArtifact } from "../artifact/FXArtifact.js";
 import type { FXApplyRenderArtifactOptions } from "./FXApplyRenderArtifactOptions.js";
 import type { FXFromArtifactsOptions } from "./FXFromArtifactsOptions.js";
 import { FXWorld } from "../world/FXWorld.js";
 import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
+import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import {
   assertValidNonNegativeNumber,
@@ -16,7 +18,7 @@ import {
 } from "../miscellaneous/asserts.js";
 import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import { flushStateResets } from "../render/FXDeferredStateReset.Internal.js";
-import type { FXRenderBudget } from "../render/FXRenderBudget.js";
+import { fxBudgetOverruns, type FXRenderBudget } from "../render/FXRenderBudget.js";
 import type { FXTrailOptions } from "../trail/FXTrail.js";
 import { assertValidTrailOptions, FXTrail } from "../trail/FXTrail.js";
 import { trailReadFields } from "../trail/FXTrailFields.Internal.js";
@@ -79,9 +81,12 @@ export class FXEmitter extends Object3D {
   private readonly limits: FXRenderBudget | undefined;
   // A trail past those limits is skipped - warned once per emitter, not on every swap.
   private readonly trailLimitWarning: { warned: boolean };
-  // The last value applyValues set per uniform name, for a trail built later (applyTrailArtifact)
-  // to start from the values its parameters are being driven with, not its baked ones.
+  // The last value applyValues set per parameter, for a material swapped in later
+  // (applyRenderArtifact, applyTrailArtifact) to start from the values its parameters are being
+  // driven with, not its baked ones.
   private readonly appliedUniforms: Record<string, FXUniformValue> = {};
+  // Filled in place for each material each tick (see advanceMaterial).
+  private readonly drawFrame: FXDrawFrame = createDrawFrame();
 
   private nextHandler = 0;
   // The schedule - what will spawn later: delayed bursts and plays, each with its handler. `stop`
@@ -134,15 +139,11 @@ export class FXEmitter extends Object3D {
     velocity: number[];
     angularVelocity: number[];
   } = {
-    worldMatrix: new Array<number>(16).fill(0),
+    worldMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
     velocity: [0, 0, 0],
     angularVelocity: [0, 0, 0],
   };
 
-  // Reused decompose scratch (avoids a per-tick allocation); scale is discarded.
-  private readonly motionPositionScratch = new Vector3();
-  private readonly motionQuaternionScratch = new Quaternion();
-  private readonly motionScaleScratch = new Vector3();
   private readonly motionTracker = new FXObjectMotionTracker();
 
   private destroyed = false;
@@ -325,8 +326,9 @@ export class FXEmitter extends Object3D {
 
   /**
    * Builds a trail, or skips it (`undefined`, with a warning once per emitter) when its material
-   * takes more attributes or varying vectors than `limits` - a program past them fails to link,
-   * so the trail would never draw anyway, and the particles still do without it.
+   * takes more of any resource than `limits` - attributes, varying vectors, uniform vectors or
+   * texture units of a stage: a program past them fails to link, so the trail would never draw
+   * anyway, and the particles still do without it.
    */
   private static buildTrail(
     driver: FXEmitterDriver,
@@ -344,19 +346,16 @@ export class FXEmitter extends Object3D {
       history.destroy();
       throw error;
     }
-    if (
-      limits !== undefined &&
-      (trail.budget.attributes > limits.attributes ||
-        trail.budget.varyingVectors > limits.varyingVectors)
-    ) {
+    const overruns = limits === undefined ? [] : fxBudgetOverruns(trail.budget, limits);
+    if (overruns.length > 0) {
       trail.destroy();
       if (!warning.warned) {
         warning.warned = true;
-        console.warn(
-          `FXEmitter: the trail is skipped - its material needs ${String(trail.budget.attributes)} ` +
-            `vertex attributes and ${String(trail.budget.varyingVectors)} varying vectors, the ` +
-            `GPU offers ${String(limits.attributes)} and ${String(limits.varyingVectors)}.`,
+        const needs = overruns.map(
+          (overrun) =>
+            `${String(overrun.used)} ${overrun.resource} (the GPU offers ${String(overrun.limit)})`,
         );
+        console.warn(`FXEmitter: the trail is skipped - its material needs ${needs.join(", ")}.`);
       }
       return undefined;
     }
@@ -369,9 +368,22 @@ export class FXEmitter extends Object3D {
    */
   public onWorldTick(deltaTime: number, elapsedTime: number): void {
     this.onRendering(deltaTime);
-    this.pushFrameUniforms(this.artifactMaterial, deltaTime, elapsedTime);
+    // The pose the tick sampled (see worldTransform): the particles' mesh's, and the trail's own.
+    this.advanceMaterial(
+      this.artifactMaterial,
+      deltaTime,
+      elapsedTime,
+      this.emitterTransform.worldMatrix,
+    );
     if (this.trail !== undefined) {
-      this.pushFrameUniforms(this.trail.artifactMaterial, deltaTime, elapsedTime);
+      // Its parents' matrices are this tick's already (the tick sampled the emitter's motion).
+      this.trail.mesh.updateWorldMatrix(false, false);
+      this.advanceMaterial(
+        this.trail.artifactMaterial,
+        deltaTime,
+        elapsedTime,
+        this.trail.mesh.matrixWorld.elements,
+      );
     }
   }
 
@@ -667,15 +679,30 @@ export class FXEmitter extends Object3D {
     if (this.destroyed) {
       return;
     }
-    if (values.uniforms !== undefined) {
-      // Both materials checked before either changes, and before the values are kept for a later
-      // trail: a rejected edit must not leave the trail out of step or poison applyTrailArtifact.
-      this.artifactMaterial.assertUniformValues(values.uniforms);
-      this.trail?.artifactMaterial.assertUniformValues(values.uniforms);
-      Object.assign(this.appliedUniforms, values.uniforms);
-      this.artifactMaterial.applyUniformValues(values.uniforms);
+    const { uniforms, particleMaterial, trailMaterial } = values;
+    // Both materials checked before either changes, and before the parameters are kept for a
+    // later swap: a rejected edit must not leave the trail out of step or poison a swap.
+    for (const own of [uniforms, particleMaterial]) {
+      if (own !== undefined) {
+        this.artifactMaterial.assertUniformValues(own);
+      }
+    }
+    for (const own of [uniforms, trailMaterial]) {
+      if (own !== undefined) {
+        this.trail?.artifactMaterial.assertUniformValues(own);
+      }
+    }
+    if (uniforms !== undefined) {
+      Object.assign(this.appliedUniforms, uniforms);
       // One parameter namespace per emitter: a name the trail graph declares too drives both.
-      this.trail?.artifactMaterial.applyUniformValues(values.uniforms);
+      this.artifactMaterial.applyUniformValues(uniforms);
+      this.trail?.artifactMaterial.applyUniformValues(uniforms);
+    }
+    if (particleMaterial !== undefined) {
+      this.artifactMaterial.applyUniformValues(particleMaterial);
+    }
+    if (trailMaterial !== undefined) {
+      this.trail?.artifactMaterial.applyUniformValues(trailMaterial);
     }
     if (values.bindings !== undefined) {
       this.driver.applyBindingValues(values.bindings);
@@ -704,6 +731,7 @@ export class FXEmitter extends Object3D {
       return;
     }
     const material = new FXArtifactMaterial(render, options.textures);
+    this.carryParameters(material, render);
     const baseGeometry = resolveGeometrySource(render.geometry, options.geometries ?? {});
     // Throws (leaving this emitter untouched) before anything below mutates it - see this
     // method's own @throws doc.
@@ -727,8 +755,9 @@ export class FXEmitter extends Object3D {
    * simulation and the playback schedule untouched. The new trail starts empty and fills in from
    * the next tick on, with every uniform value {@link applyValues} has set on this emitter (those
    * the new trail graph declares) carried over - a driven parameter keeps its value across the
-   * swap, as the particle material keeps it. For tooling (the editor swaps the trail on a
-   * trail-graph edit); an exported effect builds its trail once in {@link fromArtifacts}.
+   * swap, as the particle material's does (see {@link applyRenderArtifact}). For tooling (the
+   * editor swaps the trail on a trail-graph edit); an exported effect builds its trail once in
+   * {@link fromArtifacts}.
    * @throws When the new trail cannot be built; the current trail is then left in place.
    */
   public applyTrailArtifact(
@@ -738,12 +767,25 @@ export class FXEmitter extends Object3D {
     if (this.destroyed) {
       return;
     }
-    // Built first: a throw leaves the current trail in place.
-    const next =
-      options === undefined
-        ? undefined
-        : FXEmitter.buildTrail(this.driver, options, textures, this.limits, this.trailLimitWarning);
-    next?.artifactMaterial.applyUniformValues(this.appliedUniforms);
+    // Built and started first: a throw leaves the current trail in place.
+    let next: FXTrail | undefined;
+    if (options !== undefined) {
+      next = FXEmitter.buildTrail(
+        this.driver,
+        options,
+        textures,
+        this.limits,
+        this.trailLimitWarning,
+      );
+      try {
+        if (next !== undefined) {
+          this.carryParameters(next.artifactMaterial, options.render);
+        }
+      } catch (error) {
+        next?.destroy();
+        throw error;
+      }
+    }
     this.trail?.destroy();
     this.trail = next;
     if (next !== undefined) {
@@ -751,20 +793,32 @@ export class FXEmitter extends Object3D {
     }
   }
 
-  // The clock and this tick's object motion, for one of this emitter's materials.
-  private pushFrameUniforms(
+  /**
+   * Starts `material`, swapped in for `render`, from the parameters this emitter is driven with,
+   * not the artifact's: a driven parameter keeps its value across the swap. Not its external
+   * textures: the swap binds those afresh, and an older value of another variant (a region where a
+   * whole texture is bound now) could not even be written.
+   */
+  private carryParameters(material: FXArtifactMaterial, render: FXRenderArtifact): void {
+    material.applyUniformValues(withoutExternalUniforms(render, this.appliedUniforms));
+  }
+
+  /** This tick's draw inputs for one of this emitter's materials, drawn with `modelMatrix`. */
+  private advanceMaterial(
     material: FXArtifactMaterial,
     deltaTime: number,
     elapsedTime: number,
+    modelMatrix: ArrayLike<number>,
   ): void {
-    material.setElapsedTime(elapsedTime);
-    material.setDeltaTime(deltaTime);
+    const frame = this.drawFrame;
+    frame.time = elapsedTime;
+    frame.deltaTime = deltaTime;
+    frame.modelMatrix = modelMatrix;
     // emitterTransform.velocity/angularVelocity are always length 3 (see its declaration) -
     // computed once per tick in onRendering -> tick.
-    material.setObjectVelocity(this.emitterTransform.velocity as [number, number, number]);
-    material.setObjectAngularVelocity(
-      this.emitterTransform.angularVelocity as [number, number, number],
-    );
+    frame.objectVelocity = this.emitterTransform.velocity as [number, number, number];
+    frame.objectAngularVelocity = this.emitterTransform.angularVelocity as [number, number, number];
+    material.advance(frame);
   }
 
   private setSortFraction(value: number, context: string): void {
@@ -785,6 +839,11 @@ export class FXEmitter extends Object3D {
   // the pose a graph places its particles by. `Matrix4.elements` is already column-major.
   private worldTransform(): FXEmitterTransform {
     this.mesh.updateWorldMatrix(true, false);
+    return this.copyWorldMatrix();
+  }
+
+  // worldTransform without updating `matrixWorld`: for a caller that just did.
+  private copyWorldMatrix(): FXEmitterTransform {
     const world = this.mesh.matrixWorld.elements;
     const transform = this.emitterTransform;
     for (let i = 0; i < 16; i += 1) {
@@ -799,40 +858,20 @@ export class FXEmitter extends Object3D {
     // worldTransform() several times this tick, and diffing per-call instead of per-tick would
     // corrupt the value on a frame with more than one of those (each call would diff against a
     // baseline the previous call already advanced).
-    this.mesh.updateWorldMatrix(true, false);
-    this.mesh.matrixWorld.decompose(
-      this.motionPositionScratch,
-      this.motionQuaternionScratch,
-      this.motionScaleScratch,
-    );
-    const motion = this.motionTracker.sample(
-      {
-        position: [
-          this.motionPositionScratch.x,
-          this.motionPositionScratch.y,
-          this.motionPositionScratch.z,
-        ],
-        quaternion: [
-          this.motionQuaternionScratch.x,
-          this.motionQuaternionScratch.y,
-          this.motionQuaternionScratch.z,
-          this.motionQuaternionScratch.w,
-        ],
-      },
-      deltaTime,
-    );
+    const motion = sampleObjectMotion(this.motionTracker, this.mesh, deltaTime);
     this.emitterTransform.velocity[0] = motion.velocity[0];
     this.emitterTransform.velocity[1] = motion.velocity[1];
     this.emitterTransform.velocity[2] = motion.velocity[2];
     this.emitterTransform.angularVelocity[0] = motion.angularVelocity[0];
     this.emitterTransform.angularVelocity[1] = motion.angularVelocity[1];
     this.emitterTransform.angularVelocity[2] = motion.angularVelocity[2];
+    // Sampling the motion updated `matrixWorld`; a settled emitter's draw stage reads the pose too.
+    const transform = this.copyWorldMatrix();
 
     if (this.isSettled) {
       return;
     }
 
-    const transform = this.worldTransform();
     // Paused (dt == 0): skip the simulation step entirely - no JS age/kernel update, no GPU
     // transform-feedback dispatch, no schedule advance - the emitter keeps rendering whatever
     // particle state the last active tick left behind. Births already due still land, each seeded
@@ -1089,16 +1128,40 @@ function assertValidOrigin(origin: FXSpawnOrigin, subject: string): void {
 }
 
 /**
- * What `renderer`'s GPU offers a material: its vertex attribute and varying vector counts, or
- * `undefined` without a renderer (or a stand-in that reports neither) - nothing is checked then.
+ * What `renderer`'s GPU offers a material, resource by resource (see {@link FXRenderBudget}), or
+ * `undefined` without a renderer - nothing is checked then. A resource the renderer (or a
+ * stand-in) does not report is not checked either.
  */
 function deviceLimits(renderer: WebGLRenderer | undefined): FXRenderBudget | undefined {
-  const capabilities = renderer?.capabilities as
-    { maxAttributes?: unknown; maxVaryings?: unknown } | undefined;
-  const attributes = capabilities?.maxAttributes;
-  const varyingVectors = capabilities?.maxVaryings;
-  if (typeof attributes !== "number" || typeof varyingVectors !== "number") {
+  if (renderer === undefined) {
     return undefined;
   }
-  return { attributes, varyingVectors };
+  const capabilities = renderer.capabilities as unknown as Record<string, unknown>;
+  const limit = (name: string): number => {
+    const value = capabilities[name];
+    return typeof value === "number" ? value : Number.POSITIVE_INFINITY;
+  };
+  return {
+    attributes: limit("maxAttributes"),
+    varyingVectors: limit("maxVaryings"),
+    vertexUniformVectors: limit("maxVertexUniforms"),
+    fragmentUniformVectors: limit("maxFragmentUniforms"),
+    vertexSamplers: limit("maxVertexTextures"),
+    fragmentSamplers: limit("maxTextures"),
+  };
+}
+
+/** `values` less those `render` binds to an external texture. */
+function withoutExternalUniforms(
+  render: FXRenderArtifact,
+  values: Readonly<Record<string, FXUniformValue>>,
+): Record<string, FXUniformValue> {
+  const kept: Record<string, FXUniformValue> = {};
+  for (const name in values) {
+    const uniform = render.uniforms[name] as FXRenderArtifact["uniforms"][string] | undefined;
+    if (uniform === undefined || !("external" in uniform)) {
+      kept[name] = values[name];
+    }
+  }
+  return kept;
 }
