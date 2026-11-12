@@ -1,22 +1,23 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { PerspectiveCamera } from "three";
-import { FXEmitter } from "../../src/emitter/FXEmitter";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import type { FXBufferLayout, FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
 import {
   FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../../src/behaviorTransformFeedbackLayout";
+import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
-import { emitterSpec, effectSpec, TestEffect } from "../helpers/effectSpecs";
+import { effectSpec, emitterSpec, TestEffect } from "../helpers/effectSpecs";
 import { gpuParticlesOf, isGPUDriven } from "../helpers/internals";
 import {
   callsNamed,
-  mockRenderer,
   type MockGL,
   type MockGLOptions,
   type MockRenderer,
+  mockRenderer,
 } from "../helpers/mockWebGL";
 
 // FXEmitter.fromArtifacts's driver-selection rule end to end: a GPU kernel + renderer picks the

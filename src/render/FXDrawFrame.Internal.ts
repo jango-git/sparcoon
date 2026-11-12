@@ -1,4 +1,5 @@
 import type { Object3D } from "three";
+
 import type { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { sampleObjectMotion } from "../emitter/FXObjectMotionSample.Internal.js";
 import type { FXDrawInputs } from "./FXDrawInputs.js";

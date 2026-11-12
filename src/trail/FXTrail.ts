@@ -1,13 +1,14 @@
 import type { Material } from "three";
 import { BufferAttribute, InstancedBufferGeometry, Mesh } from "three";
-import type { FXExternalTexture } from "../render/FXExternalTexture.js";
+
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
-import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import {
   createTrailUniforms,
   FX_TRAIL_MAX_FRAMES,
   type FXTrailUniforms,
 } from "../render/FXArtifactMaterial.Internal.js";
+import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import { type FXRenderBudget, trailMaterialBudget } from "../render/FXRenderBudget.js";
 import type { FXTrailHistory } from "./FXTrailHistory.Internal.js";
 

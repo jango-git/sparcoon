@@ -1,21 +1,22 @@
-import { describe, expect, it } from "vitest";
 import {
+  type Camera,
   DepthTexture,
   LessEqualCompare,
   OrthographicCamera,
   PerspectiveCamera,
   Scene,
-  Vector2,
-  type Camera,
   type ShaderMaterial,
+  Vector2,
   type WebGLRenderer,
   type WebGLRenderTarget,
 } from "three";
+import { describe, expect, it } from "vitest";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
-import { fxSetCameraDepth } from "../../src/render/FXCameraDepth";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
-import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
+import { fxSetCameraDepth } from "../../src/render/FXCameraDepth";
 import type { FXRenderMode } from "../../src/render/FXMaterialOptions";
+import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
 import { layoutOf, unlitArtifact } from "../helpers/artifacts";
 
 const layout = layoutOf({});

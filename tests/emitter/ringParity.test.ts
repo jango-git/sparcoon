@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InterleavedBufferAttribute } from "three";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import type { FXBehaviorArtifact } from "../../src/artifact/FXArtifact";
-import { FXEmitter } from "../../src/emitter/FXEmitter";
 import {
   FX_AGE,
   FX_CORE_LIFECYCLE,
@@ -9,10 +9,11 @@ import {
   FX_ID,
   FX_POSITION_X,
 } from "../../src/coreLayout";
+import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
-import { fieldOf, setField } from "../helpers/slots";
 import type { FieldBuffers } from "../helpers/slots";
+import { fieldOf, setField } from "../helpers/slots";
 
 /**
  * The JS backend kept step-for-step with the GPU backend's fused transform-feedback pass: one

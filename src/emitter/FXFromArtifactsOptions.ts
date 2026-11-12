@@ -1,8 +1,9 @@
 import type { BufferGeometry, WebGLRenderer } from "three";
-import type { FXExternalTexture } from "../render/FXExternalTexture.js";
+
 import type { FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
-import type { FXEmitterOptions } from "./FXEmitter.Internal.js";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import type { FXTrailOptions } from "../trail/FXTrail.js";
+import type { FXEmitterOptions } from "./FXEmitter.Internal.js";
 
 /**
  * Options for {@link FXEmitter.fromArtifacts}: the emitter options plus external textures by slot -

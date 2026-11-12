@@ -1,10 +1,11 @@
 import type { Texture } from "three";
+
+import type { FXDrawInputs } from "../render/FXDrawInputs.js";
+import type { FXUniformValue } from "../render/FXExternalTexture.js";
 import type {
   FXGraphLambertMaterialOptions,
   FXGraphUnlitMaterialOptions,
 } from "../render/FXMaterialOptions.js";
-import type { FXDrawInputs } from "../render/FXDrawInputs.js";
-import type { FXUniformValue } from "../render/FXExternalTexture.js";
 
 /**
  * Frozen editor<->runtime boundary. The editor compiles a graph into a plain ESM module that

@@ -1,4 +1,5 @@
 import type { BufferGeometry, Mesh, Vector3 } from "three";
+
 import type {
   FXAttributeDecl,
   FXEmitterTransform,
@@ -11,11 +12,11 @@ import {
   FX_CORE_POSITION_STRIDE,
   meshPropertyKeyFor,
 } from "../coreLayout.js";
-import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
-import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
 import { renderReadProperties } from "../render/FXArtifactMaterial.Internal.js";
+import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import { floatGLSLType, packConsecutive } from "../render/FXAttributePacking.js";
 import type { FXTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 

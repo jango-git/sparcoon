@@ -1,5 +1,6 @@
 import type { BufferGeometry } from "three";
 import { BoxGeometry, PlaneGeometry, SphereGeometry } from "three";
+
 import type { FXGeometryPrimitive, FXGeometrySource } from "../artifact/FXArtifact.js";
 
 /**

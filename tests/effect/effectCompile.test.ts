@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { PerspectiveCamera, Scene, type WebGLRenderer } from "three";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { FXWorld } from "../../src/world/FXWorld";
 import { effectSpec, emitterSpec, TestEffect } from "../helpers/effectSpecs";
 

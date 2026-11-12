@@ -1,6 +1,12 @@
 import type { Material, ShaderMaterial } from "three";
+
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
-import type { FXDrawInputs } from "./FXDrawInputs.js";
+import type {
+  FXMaterialSlots,
+  FXParticleLayout,
+  FXTrailLayout,
+  FXTrailUniforms,
+} from "./FXArtifactMaterial.Internal.js";
 import {
   advanceMaterialSlots,
   applyArtifactUniformValues,
@@ -10,14 +16,9 @@ import {
   buildTrailArtifactMaterial,
   createMaterialSlots,
 } from "./FXArtifactMaterial.Internal.js";
+import type { FXDrawInputs } from "./FXDrawInputs.js";
 import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
-import type {
-  FXMaterialSlots,
-  FXParticleLayout,
-  FXTrailLayout,
-  FXTrailUniforms,
-} from "./FXArtifactMaterial.Internal.js";
 
 /**
  * @internal Runtime material driver: wraps a precompiled {@link FXRenderArtifact} and builds the

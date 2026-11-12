@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { FXWorld } from "../../src/world/FXWorld";
 import { effectSpec, emitterSpec, TestEffect } from "../helpers/effectSpecs";
 

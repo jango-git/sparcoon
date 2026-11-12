@@ -1,5 +1,6 @@
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
 
 export default [
   {
@@ -128,6 +129,14 @@ export default [
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/explicit-function-return-type": "off",
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    },
+  },
+  {
+    files: ["src/**/*.ts", "tests/**/*.ts"],
+    plugins: { "simple-import-sort": simpleImportSort },
+    rules: {
+      "simple-import-sort/imports": "error",
+      "simple-import-sort/exports": "error",
     },
   },
 ];

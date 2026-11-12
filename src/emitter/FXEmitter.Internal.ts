@@ -1,4 +1,5 @@
 import type { Camera } from "three";
+
 import type { FXUniformValue } from "../render/FXExternalTexture.js";
 
 /**

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
+import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
 import { unlitArtifact } from "../helpers/artifacts";
 
 interface AssembledMaterial {

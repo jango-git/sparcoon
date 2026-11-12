@@ -1,5 +1,6 @@
+import { type Material, Texture } from "three";
 import { describe, expect, it } from "vitest";
-import { Texture, type Material } from "three";
+
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { emitterUniform, landBirths, particlesOf } from "../helpers/internals";

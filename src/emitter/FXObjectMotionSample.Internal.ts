@@ -1,5 +1,6 @@
 import type { Object3D } from "three";
 import { Quaternion, Vector3 } from "three";
+
 import type { FXObjectMotion, FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
 
 // One sample's decomposition, read back before the sample returns.

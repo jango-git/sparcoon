@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
 import { FX_CORE_LIFECYCLE, FX_CORE_POSITION } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";

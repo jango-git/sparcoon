@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { fxFract, fxMix, fxMod, fxSampleLut, fxSmoothstep } from "../../src/miscellaneous/fxMath";
 
 // These are the CPU twins of the compiler's GLSL builtins and a frozen ABI: the editor's

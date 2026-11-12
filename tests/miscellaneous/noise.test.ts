@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { fxCurl2, fxCurl3 } from "../../src/miscellaneous/noise/fxCurlNoise";
 import {
   fxFbm,
@@ -7,13 +8,13 @@ import {
   fxFractal2,
   fxFractal3,
 } from "../../src/miscellaneous/noise/fxFractalNoise";
-import { fxNoise1, fxNoise2, fxNoise3 } from "../../src/miscellaneous/noise/fxValueNoise";
 import {
   fxSeedHash1,
   fxSeedHash2,
   fxSeedHash3,
   fxSeedHash4,
 } from "../../src/miscellaneous/noise/fxSeedHash";
+import { fxNoise1, fxNoise2, fxNoise3 } from "../../src/miscellaneous/noise/fxValueNoise";
 import { fxVoronoi2, fxVoronoi3 } from "../../src/miscellaneous/noise/fxVoronoiNoise";
 
 // Golden values pin the arithmetic: compiled kernels call these by name, so a silent formula

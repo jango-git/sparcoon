@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+
 import type { FXEmitterTransform } from "../../src/artifact/FXArtifact";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FXWorld } from "../../src/world/FXWorld";

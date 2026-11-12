@@ -1,10 +1,11 @@
-import type { FXRangedBuffer } from "../../src/render/FXBufferUpload.Internal";
 import type { Mesh, ShaderMaterial } from "three";
+
 import type { FXEffect } from "../../src/effect/FXEffect";
 import type { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import type { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import type { FXTrailLayout } from "../../src/render/FXArtifactMaterial.Internal";
+import type { FXRangedBuffer } from "../../src/render/FXBufferUpload.Internal";
 import type { FXWorld } from "../../src/world/FXWorld";
 
 /**

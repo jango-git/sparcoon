@@ -78,6 +78,7 @@
     "@typescript-eslint/parser": "^8.72.1",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.14.0",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
     "prettier": "^3.9.5",
     "three": "^0.157.0",
     "typescript": "^5.8.3",

@@ -1,11 +1,12 @@
-import { Mesh, type BufferGeometry, type Material } from "three";
-import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
+import { type BufferGeometry, type Material, Mesh } from "three";
+
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import { FXWorld } from "../world/FXWorld.js";
-import { FXMeshMaterial } from "./FXMeshMaterial.js";
 import { createDrawFrame, fillObjectDrawFrame, type FXDrawFrame } from "./FXDrawFrame.Internal.js";
+import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
+import { FXMeshMaterial } from "./FXMeshMaterial.js";
 
 /** Options for {@link FXMesh.fromArtifact}. */
 export interface FXFromMeshArtifactOptions {

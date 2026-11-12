@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+
 import type { FXBehaviorArtifact, FXEmitterTransform } from "../../src/artifact/FXArtifact";
 import { connectDeathReaction, fireSpawnAction } from "../../src/effect/FXSpawnAction";
 import { FXEmitter } from "../../src/emitter/FXEmitter";

@@ -1,13 +1,14 @@
+import { Group, PerspectiveCamera, type ShaderMaterial, Texture } from "three";
 import { afterEach, describe, expect, it } from "vitest";
-import { Group, PerspectiveCamera, Texture, type ShaderMaterial } from "three";
-import { FXWorld } from "../../src/world/FXWorld";
-import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
+
+import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type {
   FXEffectEmitterSpec,
   FXEffectReaction,
   FXEffectSpec,
 } from "../../src/effect/FXEffectSpec";
-import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
+import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
+import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 import { effectSpec, emitterSpec as baseEmitterSpec, TestEffect } from "../helpers/effectSpecs";
 import {

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import type { InterleavedBufferAttribute, Mesh, ShaderMaterial } from "three";
+import { describe, expect, it } from "vitest";
+
 import type {
   FXAttributeDecl,
   FXBufferLayout,

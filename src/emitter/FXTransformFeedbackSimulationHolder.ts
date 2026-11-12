@@ -1,4 +1,5 @@
 import type { WebGLRenderer } from "three";
+
 import type {
   FXEmitterTransform,
   FXKernelDrawInputs,
@@ -18,7 +19,7 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../behaviorTransformFeedbackLayout.js";
-import { particleSlotLayout, type FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
 import {

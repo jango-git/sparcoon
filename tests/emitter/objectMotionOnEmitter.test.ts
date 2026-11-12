@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import type { FXBehaviorArtifact, FXEmitterTransform } from "../../src/artifact/FXArtifact";
 import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_LIFETIME } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";

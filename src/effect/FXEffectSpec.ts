@@ -1,4 +1,5 @@
 import type { Camera, Object3DEventMap, WebGLRenderer } from "three";
+
 import type {
   FXBehaviorArtifact,
   FXGeometrySource,

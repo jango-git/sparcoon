@@ -1,5 +1,6 @@
 import type { Camera, IUniform, Scene, ShaderMaterial, Texture, WebGLRenderer } from "three";
 import { Vector2, Vector3, Vector4 } from "three";
+
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { cameraDepthOf } from "./FXCameraDepth.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";

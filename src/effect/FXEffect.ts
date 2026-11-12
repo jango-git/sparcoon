@@ -1,37 +1,39 @@
 import {
-  Group,
-  Mesh,
   type BufferGeometry,
   type Camera,
+  Group,
   type Material,
+  Mesh,
   type Object3D,
   type WebGLRenderer,
 } from "three";
-import type { FXExternalTexture } from "../render/FXExternalTexture.js";
-import { checkRuntimeVersion } from "./FXRuntimeVersion.Internal.js";
+
 import type {
   FXBehaviorArtifact,
   FXRenderArtifact,
   FXRenderArtifactsByGLSLTier,
 } from "../artifact/FXArtifact.js";
+import { ownValue } from "../artifact/FXValueSlots.Internal.js";
 import { FXEmitter } from "../emitter/FXEmitter.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import { warnInDevelopment } from "../miscellaneous/asserts.js";
-import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
-import { compilePrograms } from "../render/FXProgramCompile.Internal.js";
-import { FXWorld } from "../world/FXWorld.js";
-import { ownValue } from "../artifact/FXValueSlots.Internal.js";
 import {
   createDrawFrame,
   fillObjectDrawFrame,
   type FXDrawFrame,
 } from "../render/FXDrawFrame.Internal.js";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
+import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
+import { compilePrograms } from "../render/FXProgramCompile.Internal.js";
+import { FXWorld } from "../world/FXWorld.js";
 import {
-  assertDeathReactionAction,
-  connectDeathReaction,
-  fireSpawnAction,
-} from "./FXSpawnAction.js";
+  frameOfTime,
+  normalizeQuaternion,
+  sampleTracks,
+  sampleTransform,
+  timeOfFrame,
+} from "./FXEffectSampling.Internal.js";
 import type {
   FXEffectEventMap,
   FXEffectOptions,
@@ -40,13 +42,12 @@ import type {
   FXTransform,
   FXTransformChannel,
 } from "./FXEffectSpec.js";
+import { checkRuntimeVersion } from "./FXRuntimeVersion.Internal.js";
 import {
-  frameOfTime,
-  normalizeQuaternion,
-  sampleTracks,
-  sampleTransform,
-  timeOfFrame,
-} from "./FXEffectSampling.Internal.js";
+  assertDeathReactionAction,
+  connectDeathReaction,
+  fireSpawnAction,
+} from "./FXSpawnAction.js";
 
 const VECTOR_COMPONENTS: readonly ["x", "y", "z", "w"] = ["x", "y", "z", "w"];
 const PARAMETER_UNIFORM_PREFIX = "u_param_";

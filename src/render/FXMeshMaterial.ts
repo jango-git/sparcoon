@@ -1,6 +1,7 @@
 import type { Material } from "three";
+
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
-import type { FXDrawInputs } from "./FXDrawInputs.js";
+import type { FXMaterialSlots } from "./FXArtifactMaterial.Internal.js";
 import {
   advanceMaterialSlots,
   applyArtifactUniformValues,
@@ -8,7 +9,7 @@ import {
   buildMeshArtifactMaterial,
   createMaterialSlots,
 } from "./FXArtifactMaterial.Internal.js";
-import type { FXMaterialSlots } from "./FXArtifactMaterial.Internal.js";
+import type { FXDrawInputs } from "./FXDrawInputs.js";
 import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 

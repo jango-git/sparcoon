@@ -1,5 +1,6 @@
 import type { ShaderMaterial } from "three";
 import { describe, expect, it } from "vitest";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import { FX_LIGHTING_INTRINSIC } from "../../src/render/FXLightingIntrinsics.Internal";

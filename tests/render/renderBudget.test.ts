@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
 import { ShaderChunk, type ShaderMaterial } from "three";
+import { describe, expect, it } from "vitest";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
+import { particleLayout, varyingsFromComponents } from "../../src/emitter/FXEmitterDriver.Internal";
+import { particleSlotLayout } from "../../src/instancedParticle/FXParticleSlot";
 import {
   buildArtifactDepthMaterial,
   buildArtifactMaterial,
@@ -18,8 +21,6 @@ import {
   packedVectors,
   trailMaterialBudget,
 } from "../../src/render/FXRenderBudget";
-import { particleLayout, varyingsFromComponents } from "../../src/emitter/FXEmitterDriver.Internal";
-import { particleSlotLayout } from "../../src/instancedParticle/FXParticleSlot";
 import { layoutOf, unlitArtifact } from "../helpers/artifacts";
 
 /** Live slots for a material under test: what they hold never changes what it declares. */

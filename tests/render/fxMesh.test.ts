@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import type { Material, ShaderMaterial } from "three";
+import { describe, expect, it } from "vitest";
+
 import { FXMesh } from "../../src/render/FXMesh";
 import { FXWorld } from "../../src/world/FXWorld";
 import { unlitArtifact } from "../helpers/artifacts";

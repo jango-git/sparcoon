@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
 import type { Material } from "three";
-import { FXEmitter } from "../../src/emitter/FXEmitter";
-import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
-import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
+import { describe, expect, it, vi } from "vitest";
+
 import { FX_AGE, FX_LIFETIME } from "../../src/coreLayout";
+import { FXEmitter } from "../../src/emitter/FXEmitter";
+import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
+import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { particlesOf, tickEmitter } from "../helpers/internals";
 import { fieldOf } from "../helpers/slots";

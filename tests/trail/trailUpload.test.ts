@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { clearRanges, pendingRanges } from "../helpers/uploadRanges";
+
 import { FX_CORE_POSITION } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
-import { markRange, type FXRangedBuffer } from "../../src/render/FXBufferUpload.Internal";
+import { type FXRangedBuffer, markRange } from "../../src/render/FXBufferUpload.Internal";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
-import { tickEmitter, trailOf, type TrailInternals } from "../helpers/internals";
+import { tickEmitter, type TrailInternals, trailOf } from "../helpers/internals";
+import { clearRanges, pendingRanges } from "../helpers/uploadRanges";
 
 /**
  * What the GPU sees of a JS trail history: only the ranges it marks for upload, per tick - so a

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { BoxGeometry, BufferGeometry, PlaneGeometry, SphereGeometry } from "three";
+import { describe, expect, it } from "vitest";
+
 import { resolveGeometrySource } from "../../src/instancedParticle/primitiveGeometry";
 
 describe("resolveGeometrySource", () => {

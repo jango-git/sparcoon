@@ -1,16 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type {
-  FXKeyframe,
-  FXQuat,
-  FXTrack,
-  FXTransform,
-  FXTransformTrack,
-} from "../../src/effect/FXEffectSpec";
+
 import {
   asKeyEase,
   easeFraction,
-  FX_KEY_EASES,
   frameOfTime,
+  FX_KEY_EASES,
   keyframeSegment,
   normalizeQuaternion,
   quaternionFromValue,
@@ -21,6 +15,13 @@ import {
   timeOfFrame,
   vectorFromValue,
 } from "../../src/effect/FXEffectSampling.Internal";
+import type {
+  FXKeyframe,
+  FXQuat,
+  FXTrack,
+  FXTransform,
+  FXTransformTrack,
+} from "../../src/effect/FXEffectSpec";
 
 const keys = (...pairs: [number, number | number[]][]): FXKeyframe[] =>
   pairs.map(([time, value]) => ({ time, value }));

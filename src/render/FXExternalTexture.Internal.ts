@@ -1,4 +1,5 @@
 import type { IUniform, Texture } from "three";
+
 import type { FXRenderArtifact, FXValueSlot } from "../artifact/FXArtifact.js";
 import type { FXExternalTexture, FXTextureRegion } from "./FXExternalTexture.js";
 

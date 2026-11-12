@@ -1,11 +1,12 @@
+import { type InterleavedBufferAttribute, MeshBasicMaterial, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
-import { MeshBasicMaterial, Vector3, type InterleavedBufferAttribute } from "three";
-import { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
-import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
-import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
+
 import { FX_AGE, FX_LIFETIME, FX_POSITION_Z } from "../../src/coreLayout";
-import { allViews, fieldOf, setField } from "../helpers/slots";
+import { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
+import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
+import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
 import { packConsecutive } from "../../src/render/FXAttributePacking";
+import { allViews, fieldOf, setField } from "../helpers/slots";
 
 /**
  * A ring of `capacity` slots with the two fixed core fields (position vec3 + lifecycle vec3

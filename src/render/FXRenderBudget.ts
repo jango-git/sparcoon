@@ -1,14 +1,15 @@
-import { Texture, type ShaderMaterial } from "three";
-import { trailHistoryLayout, trailReadFields } from "../trail/FXTrailFields.Internal.js";
-import { FX_CORE_BUFFERS } from "../coreLayout.js";
+import { type ShaderMaterial, Texture } from "three";
+
 import type {
   FXBufferLayout,
   FXGLSLRenderTier,
   FXRenderArtifact,
   FXSurfaceReads,
 } from "../artifact/FXArtifact.js";
+import { FX_CORE_BUFFERS } from "../coreLayout.js";
 import { particleLayout } from "../emitter/FXEmitterDriver.Internal.js";
 import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import { trailHistoryLayout, trailReadFields } from "../trail/FXTrailFields.Internal.js";
 import {
   buildArtifactDepthMaterial,
   buildArtifactMaterial,

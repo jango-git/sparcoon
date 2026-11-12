@@ -1,17 +1,18 @@
+import { type ShaderMaterial, Texture } from "three";
 import { describe, expect, it } from "vitest";
-import { Texture, type ShaderMaterial } from "three";
-import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
-import type { FXTextureRegion } from "../../src/render/FXExternalTexture";
-import { fxAtlasRegion } from "../../src/miscellaneous/texture/fxAtlasRegion";
-import { fxExternalSampleFunction } from "../../src/render/FXExternalTexture.Internal";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
+import { fxAtlasRegion } from "../../src/miscellaneous/texture/fxAtlasRegion";
+import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
+import type { FXTextureRegion } from "../../src/render/FXExternalTexture";
+import { fxExternalSampleFunction } from "../../src/render/FXExternalTexture.Internal";
 import {
+  layoutOf,
   NO_PARTICLE_READS,
   NO_SURFACE_READS,
   VEC2_VARYING,
   VEC3_VARYING,
-  layoutOf,
 } from "../helpers/artifacts";
 
 const ATLAS_W = 100;

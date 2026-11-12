@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearRanges, pendingRanges } from "../helpers/uploadRanges";
 import type { InterleavedBufferAttribute, ShaderMaterial, WebGLRenderer } from "three";
 import { PerspectiveCamera, Texture } from "three";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import type {
   FXAttributeDecl,
   FXParticleKernelArtifact,
@@ -26,6 +26,7 @@ import {
 } from "../helpers/internals";
 import { callsNamed, mockRenderer } from "../helpers/mockWebGL";
 import { behaviorSlot } from "../helpers/slots";
+import { clearRanges, pendingRanges } from "../helpers/uploadRanges";
 
 const GLSL_FLOAT_TYPES = ["float", "vec2", "vec3", "vec4"];
 

@@ -1,11 +1,13 @@
 import type { IUniform } from "three";
 import { DoubleSide, NormalBlending, ShaderMaterial, UniformsLib, UniformsUtils } from "three";
+
 import type {
   FXParticleReads,
   FXRenderArtifact,
   FXSurfaceReads,
   FXValueSlot,
 } from "../artifact/FXArtifact.js";
+import { ownSlot } from "../artifact/FXValueSlots.Internal.js";
 import {
   FX_CORE_LIFECYCLE,
   FX_CORE_PARTICLE_DEFINES,
@@ -14,18 +16,15 @@ import {
 } from "../coreLayout.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXPackedAttribute, FXPackedMember } from "./FXAttributePacking.js";
+import { floatGLSLType } from "./FXAttributePacking.js";
 import {
   assertCameraDepthMode,
   bindCameraDepth,
   cameraDepthFunctions,
   cameraDepthStub,
 } from "./FXCameraDepth.Internal.js";
-import {
-  isLitArtifact,
-  lightingFunctions,
-  lightingStubs,
-} from "./FXLightingIntrinsics.Internal.js";
-import { floatGLSLType } from "./FXAttributePacking.js";
+import type { FXDrawInputs } from "./FXDrawInputs.js";
+import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import {
   assertExternalTexture,
   bindExternalTextures,
@@ -33,11 +32,13 @@ import {
   externalSamplingKey,
   writeExternalTexture,
 } from "./FXExternalTexture.Internal.js";
-import type { FXExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
+import {
+  isLitArtifact,
+  lightingFunctions,
+  lightingStubs,
+} from "./FXLightingIntrinsics.Internal.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";
-import { ownSlot } from "../artifact/FXValueSlots.Internal.js";
-import type { FXDrawInputs } from "./FXDrawInputs.js";
 
 // Three declares `modelMatrix` in the vertex prefix only, yet sets it on every program it draws: a
 // fragment-stage read (`world-matrix`, `inverse-world-matrix` - the artifact's targets list it in

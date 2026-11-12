@@ -5,11 +5,12 @@ import {
   InstancedInterleavedBuffer,
   InterleavedBufferAttribute,
 } from "three";
+
 import { FX_AGE, FX_ID, FX_LIFETIME } from "../coreLayout.js";
 import type { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle.js";
+import { mountPacked } from "../instancedParticle/FXMeshGeometry.Internal.js";
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { FXInterleavedGLAttribute } from "../instancedParticle/FXTransformFeedbackParticle.js";
-import { mountPacked } from "../instancedParticle/FXMeshGeometry.Internal.js";
 import type { FXTrailLayout } from "../render/FXArtifactMaterial.Internal.js";
 import {
   FX_TRAIL_CPU_POINT,

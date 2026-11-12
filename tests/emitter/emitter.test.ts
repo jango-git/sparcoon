@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { FXEmitter } from "../../src/emitter/FXEmitter";
+
 import { FX_POSITION_Y } from "../../src/coreLayout";
+import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
 import { fieldComponents, fieldOf } from "../helpers/slots";

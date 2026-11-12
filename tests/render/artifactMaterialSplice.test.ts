@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
+import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import {
+  layoutOf,
   NO_PARTICLE_READS,
   NO_SURFACE_READS,
+  unlitArtifact,
   VEC2_VARYING,
   VEC3_VARYING,
-  layoutOf,
-  unlitArtifact,
 } from "../helpers/artifacts";
 
 /** The two fixed core buffers plus any named attribute varyings the outputs reference. */

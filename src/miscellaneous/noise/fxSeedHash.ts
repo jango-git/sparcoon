@@ -1,5 +1,5 @@
-import { argumentsChanged, createKey } from "./fxNoiseMemo.js";
 import { pcg, seedKey, unit } from "./fxNoiseHash.js";
+import { argumentsChanged, createKey } from "./fxNoiseMemo.js";
 
 /**
  * Seed hash: 1-4 independent [0, 1) values of a point `(x, y, z)` and a `salt` - a stable random

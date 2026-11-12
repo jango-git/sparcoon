@@ -1,14 +1,8 @@
 import type { Camera, Mesh, WebGLRenderer } from "three";
-import type { FXUniformValue } from "../render/FXExternalTexture.js";
-import { createDrawFrame, type FXDrawFrame } from "../render/FXDrawFrame.Internal.js";
 import { Object3D, Vector3 } from "three";
+
 import type { FXEmitterTransform } from "../artifact/FXArtifact.js";
 import type { FXBehaviorArtifact, FXRenderArtifact } from "../artifact/FXArtifact.js";
-import type { FXApplyRenderArtifactOptions } from "./FXApplyRenderArtifactOptions.js";
-import type { FXFromArtifactsOptions } from "./FXFromArtifactsOptions.js";
-import { FXWorld } from "../world/FXWorld.js";
-import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
-import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import {
   assertValidNonNegativeNumber,
@@ -18,13 +12,14 @@ import {
 } from "../miscellaneous/asserts.js";
 import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import { flushStateResets } from "../render/FXDeferredStateReset.Internal.js";
+import { createDrawFrame, type FXDrawFrame } from "../render/FXDrawFrame.Internal.js";
+import type { FXUniformValue } from "../render/FXExternalTexture.js";
 import { fxBudgetOverruns, type FXRenderBudget } from "../render/FXRenderBudget.js";
 import type { FXTrailOptions } from "../trail/FXTrail.js";
 import { assertValidTrailOptions, FXTrail } from "../trail/FXTrail.js";
 import { trailReadFields } from "../trail/FXTrailFields.Internal.js";
-import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
-import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
-import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
+import { FXWorld } from "../world/FXWorld.js";
+import type { FXApplyRenderArtifactOptions } from "./FXApplyRenderArtifactOptions.js";
 import type {
   FXApplyValues,
   FXEmissionBasis,
@@ -36,14 +31,20 @@ import type {
 } from "./FXEmitter.Internal.js";
 import {
   asEmissionBasis,
-  FX_EMISSION_BASES,
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
   EMITTER_DEFAULT_PREWARM_MAX_STEP_COUNT,
   EMITTER_DEFAULT_PREWARM_MIN_STEP_DURATION,
   EMITTER_DEFAULT_RECEIVE_SHADOW,
   EMITTER_DEFAULT_SORT_FRACTION,
+  FX_EMISSION_BASES,
 } from "./FXEmitter.Internal.js";
+import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
+import type { FXFromArtifactsOptions } from "./FXFromArtifactsOptions.js";
+import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
+import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
+import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
+import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
 
 /**
  * Particle emitter - one instanced billboard/mesh draw call, per-particle state driven by a

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
 import { acquireKernelProgram } from "../../src/emitter/FXKernelProgramCache.Internal";
 import { callsNamed, mockWebGL } from "../helpers/mockWebGL";

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
+
+import * as editor from "../../src/editor/index";
+import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
 import type {
   FXPackedAttribute,
   FXPackingField,
   FXPlacedField,
 } from "../../src/render/FXAttributePacking";
 import { packConsecutive, packingOrder } from "../../src/render/FXAttributePacking";
-import * as editor from "../../src/editor/index";
-import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
 
 const pack = (index: number): string => `pack${String(index)}`;
 

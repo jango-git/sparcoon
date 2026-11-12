@@ -6,16 +6,17 @@ import {
   Mesh,
   StreamDrawUsage,
 } from "three";
+
 import { FX_AGE, FX_LIFETIME, FX_POSITION_X, FX_POSITION_Y, FX_POSITION_Z } from "../coreLayout.js";
+import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
 import { markRange } from "../render/FXBufferUpload.Internal.js";
-import type { FXCoreOffsets, FXSlotLayout } from "./FXParticleSlot.js";
-import { coreOffsets } from "./FXParticleSlot.js";
 import {
   attachBaseGeometry,
   detachBaseGeometry,
   remountParticleViews,
 } from "./FXMeshGeometry.Internal.js";
-import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
+import type { FXCoreOffsets, FXSlotLayout } from "./FXParticleSlot.js";
+import { coreOffsets } from "./FXParticleSlot.js";
 
 /** One contiguous run of ring slots `[start, start + count)` claimed by {@link FXInstancedParticle.claim}. */
 export interface FXSlotRange {

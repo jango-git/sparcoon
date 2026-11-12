@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
 import { PerspectiveCamera } from "three";
-import { FXEmitter } from "../../src/emitter/FXEmitter";
+import { describe, expect, it, vi } from "vitest";
+
 import { FX_POSITION_X, FX_POSITION_Z } from "../../src/coreLayout";
+import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, renderFrame } from "../helpers/internals";
 import { fieldOf, setField } from "../helpers/slots";

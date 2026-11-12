@@ -1,13 +1,13 @@
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { FX_CORE_LIFECYCLE, FX_CORE_POSITION } from "../coreLayout.js";
 import { slotFields, varyingsFromComponents } from "../emitter/FXEmitterDriver.Internal.js";
-import type { FXTrailLayout } from "../render/FXArtifactMaterial.Internal.js";
-import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { coreOffsets } from "../instancedParticle/FXParticleSlot.js";
+import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
+import type { FXTrailLayout } from "../render/FXArtifactMaterial.Internal.js";
+import { renderReadProperties } from "../render/FXArtifactMaterial.Internal.js";
 import type { FXPackingField, FXPlacedField } from "../render/FXAttributePacking.js";
 import { packConsecutive, packingOrder } from "../render/FXAttributePacking.js";
-import { renderReadProperties } from "../render/FXArtifactMaterial.Internal.js";
 
 /**
  * @internal The particle fields a trail's render reads off the recorded path, by property key: the

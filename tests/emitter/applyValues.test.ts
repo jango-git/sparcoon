@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FXEmitter } from "../../src/emitter/FXEmitter";
+
 import type { FXBehaviorArtifact } from "../../src/artifact/FXArtifact";
 import {
   FX_CORE_LIFECYCLE,
@@ -7,6 +7,7 @@ import {
   FX_LIFETIME,
   FX_POSITION_Y,
 } from "../../src/coreLayout";
+import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { unlitArtifact } from "../helpers/artifacts";
 import { landBirths, particlesOf, tickEmitter } from "../helpers/internals";
 import { fieldBehavior, fieldOf } from "../helpers/slots";

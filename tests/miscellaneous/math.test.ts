@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { linearToSRGB, srgbToLinear } from "../../src/miscellaneous/math";
 
 // The sRGB <-> linear transfer must match three's GLSL curve exactly, since colors baked in one

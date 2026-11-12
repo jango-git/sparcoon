@@ -1,12 +1,13 @@
 import type { BufferGeometry, Material } from "three";
 import { InstancedBufferGeometry, Mesh } from "three";
+
 import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
-import type { FXSlotLayout } from "./FXParticleSlot.js";
 import {
   attachBaseGeometry,
   detachBaseGeometry,
   remountParticleViews,
 } from "./FXMeshGeometry.Internal.js";
+import type { FXSlotLayout } from "./FXParticleSlot.js";
 
 /**
  * @internal One packed view of the interleaved slot, as three's renderer reads it: per instance, at

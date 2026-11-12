@@ -1,4 +1,5 @@
 import type { BufferGeometry, InstancedBufferGeometry, InterleavedBufferAttribute } from "three";
+
 import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
 import type { FXInterleavedGLAttribute } from "./FXTransformFeedbackParticle.js";
 

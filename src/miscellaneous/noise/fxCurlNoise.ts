@@ -1,4 +1,4 @@
-import { octaveCount, OCTAVE_SHIFT } from "./fxFractalNoise.js";
+import { OCTAVE_SHIFT, octaveCount } from "./fxFractalNoise.js";
 import { argumentsChanged, createKey } from "./fxNoiseMemo.js";
 import { fxNoised2, fxNoised3, noisedOut } from "./fxValueNoise.js";
 

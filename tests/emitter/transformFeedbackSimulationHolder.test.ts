@@ -1,8 +1,7 @@
-import { describe, expect, it } from "vitest";
 import { BufferAttribute, BufferGeometry, MeshBasicMaterial } from "three";
+import { describe, expect, it } from "vitest";
+
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
-import { FXTransformFeedbackSimulationHolder } from "../../src/emitter/FXTransformFeedbackSimulationHolder";
-import { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import {
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
@@ -11,9 +10,11 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../../src/behaviorTransformFeedbackLayout";
+import { FXTransformFeedbackSimulationHolder } from "../../src/emitter/FXTransformFeedbackSimulationHolder";
+import { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import { flushStateResets } from "../../src/render/FXDeferredStateReset.Internal";
 import { IDENTITY_EMITTER_TRANSFORM } from "../helpers/artifacts";
-import { callsNamed, mockRenderer, type MockRenderer } from "../helpers/mockWebGL";
+import { callsNamed, type MockRenderer, mockRenderer } from "../helpers/mockWebGL";
 import { allViews } from "../helpers/slots";
 
 // The mock context proves the JS-side orchestration: call order (useProgram before bindVertexArray,

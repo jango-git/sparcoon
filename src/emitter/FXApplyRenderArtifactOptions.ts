@@ -1,4 +1,5 @@
 import type { BufferGeometry } from "three";
+
 import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 
 /**

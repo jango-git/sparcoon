@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
 import { BufferAttribute, BufferGeometry, MeshBasicMaterial } from "three";
+import { describe, expect, it } from "vitest";
+
 import { slotLayout } from "../../src/instancedParticle/FXParticleSlot";
 import { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
-import { callsNamed, mockWebGL, type MockGL } from "../helpers/mockWebGL";
+import { callsNamed, type MockGL, mockWebGL } from "../helpers/mockWebGL";
 import { allViews } from "../helpers/slots";
 
 // The mock context proves the ping-pong bookkeeping (index flipping, buffer pairing,

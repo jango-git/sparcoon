@@ -1,24 +1,25 @@
-import { describe, expect, it } from "vitest";
 import {
   FloatType,
   LinearFilter,
   NearestFilter,
   RepeatWrapping,
-  Texture,
   type ShaderMaterial,
+  Texture,
 } from "three";
-import { FXEmitter } from "../../src/emitter/FXEmitter";
-import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
+import { describe, expect, it } from "vitest";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
-import { fxDataTexture } from "../../src/miscellaneous/texture/fxDataTexture";
+import { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
+import { fxDataTexture } from "../../src/miscellaneous/texture/fxDataTexture";
+import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
 import {
+  behaviorArtifact,
+  layoutOf,
   NO_PARTICLE_READS,
   NO_SURFACE_READS,
   VEC2_VARYING,
   VEC3_VARYING,
-  behaviorArtifact,
-  layoutOf,
 } from "../helpers/artifacts";
 import { particlesOf } from "../helpers/internals";
 

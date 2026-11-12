@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import type { FXEffectSpec } from "../../src/effect/FXEffectSpec";
 import { checkRuntimeVersion } from "../../src/effect/FXRuntimeVersion.Internal";
 import { FX_RUNTIME_VERSION } from "../../src/version";

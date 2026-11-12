@@ -1,8 +1,9 @@
+import { BufferGeometry, type Material, type ShaderMaterial, Texture } from "three";
 import { afterEach, describe, expect, it } from "vitest";
-import { BufferGeometry, Texture, type Material, type ShaderMaterial } from "three";
-import { FXWorld } from "../../src/world/FXWorld";
-import type { FXEffectMeshSpec } from "../../src/effect/FXEffectSpec";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
+import type { FXEffectMeshSpec } from "../../src/effect/FXEffectSpec";
+import { FXWorld } from "../../src/world/FXWorld";
 import { renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 import { effectSpec, meshSpec, TestEffect } from "../helpers/effectSpecs";
 

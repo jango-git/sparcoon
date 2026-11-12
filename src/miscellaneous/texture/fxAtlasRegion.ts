@@ -1,4 +1,5 @@
 import type { Texture } from "three";
+
 import type { FXTextureRegion } from "../../render/FXExternalTexture.js";
 
 /** A rectangle in texture pixels, origin top-left (as texture packers write it). */

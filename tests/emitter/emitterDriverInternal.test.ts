@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+
 import type { FXAttributeDecl, FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import { particleLayout } from "../../src/emitter/FXEmitterDriver.Internal";
-import type { FXParticleLayout } from "../../src/render/FXArtifactMaterial.Internal";
 import { particleSlotLayout, slotLayout } from "../../src/instancedParticle/FXParticleSlot";
+import type { FXParticleLayout } from "../../src/render/FXArtifactMaterial.Internal";
 import { unlitArtifact, VEC3_VARYING } from "../helpers/artifacts";
 
 // The JS behavior's slot: the two core buffers and a float `seed`, by raw kernel name.

@@ -1,9 +1,10 @@
 import type { ShaderMaterial } from "three";
 import { describe, expect, it } from "vitest";
-import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
-import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
+import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
+import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
 import { layoutOf, unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
 
 /** The two fixed core buffers the particle depth material needs declared as varyings. */

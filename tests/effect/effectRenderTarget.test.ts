@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
 import type { ShaderMaterial, WebGLRenderer } from "three";
+import { afterEach, describe, expect, it } from "vitest";
+
 import type { FXEffect } from "../../src/effect/FXEffect";
-import { FXWorld } from "../../src/world/FXWorld";
 import type { FXEffectEmitterSpec, FXEffectMeshSpec } from "../../src/effect/FXEffectSpec";
+import { FXWorld } from "../../src/world/FXWorld";
 import { unlitArtifact } from "../helpers/artifacts";
 import {
   effectSpec,

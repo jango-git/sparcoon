@@ -1,15 +1,16 @@
 import type { BufferGeometry, WebGLRenderer } from "three";
+
 import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
-import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
-import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
+import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
+import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
-import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
-import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 
 /**
  * @internal The GPU (WebGL2 transform-feedback) particle-simulation backend: a fixed-capacity

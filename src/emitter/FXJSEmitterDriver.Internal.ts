@@ -1,4 +1,5 @@
 import type { BufferGeometry, Vector3 } from "three";
+
 import type { FXBehaviorArtifact, FXEmitterTransform } from "../artifact/FXArtifact.js";
 import {
   FX_CORE_POSITION_STRIDE,
@@ -9,14 +10,14 @@ import {
 } from "../coreLayout.js";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
-import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
+import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
+import { FXCPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
-import { warnInDevelopment } from "../miscellaneous/asserts.js";
-import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
-import { FXCPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 
 /**
  * @internal The CPU (JS) particle-simulation backend: a fixed-capacity ring `FXInstancedParticle`

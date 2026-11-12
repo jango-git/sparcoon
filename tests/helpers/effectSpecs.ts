@@ -1,6 +1,6 @@
 import type { BufferGeometry, Texture } from "three";
+
 import { FXEffect } from "../../src/effect/FXEffect";
-import { FX_RUNTIME_VERSION } from "../../src/version";
 import type {
   FXEffectEmitterSpec,
   FXEffectMeshSpec,
@@ -8,6 +8,7 @@ import type {
   FXEffectSpec,
   FXTransform,
 } from "../../src/effect/FXEffectSpec";
+import { FX_RUNTIME_VERSION } from "../../src/version";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "./artifacts";
 
 /** Hand-written effect specs - what an editor-emitted module hands `FXEffect` - for the effect tests. */

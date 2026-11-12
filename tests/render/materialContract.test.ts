@@ -1,10 +1,11 @@
+import { type ShaderMaterial, Texture } from "three";
 import { describe, expect, it } from "vitest";
-import { Texture, type ShaderMaterial } from "three";
+
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
+import type { FXDrawInputs } from "../../src/render/FXDrawInputs";
 import { FXMeshMaterial } from "../../src/render/FXMeshMaterial";
 import { layoutOf, unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
-import type { FXDrawInputs } from "../../src/render/FXDrawInputs";
 
 /**
  * What the particle material (FXArtifactMaterial) and the VFX mesh material (FXMeshMaterial) share,
