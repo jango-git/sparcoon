@@ -9,6 +9,8 @@ import type {
 } from "../artifact/FXArtifact.js";
 import { ownSlots } from "../artifact/FXValueSlots.Internal.js";
 import {
+  FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM,
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
   FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM,
@@ -22,10 +24,22 @@ import {
 import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
+import type { FXAgedBirths } from "./FXBirthAges.Internal.js";
 import {
   acquireKernelProgram,
   type FXKernelProgramLease,
 } from "./FXKernelProgramCache.Internal.js";
+
+/**
+ * @internal A pass's births under the ring's cursor/overwrite scheme: `count` slots from `start`, the
+ * last `aged.count` of them born earlier in the tick, as old as `aged.ages` says - the rest at its
+ * end, age 0.
+ */
+export interface FXKernelSpawnRange {
+  readonly start: number;
+  readonly count: number;
+  readonly aged?: FXAgedBirths;
+}
 
 /** WebGL's cap on a vertex attribute stride, in bytes - one particle's slot is that stride. */
 const MAX_VERTEX_STRIDE_BYTES = 255;
@@ -106,12 +120,12 @@ export class FXTransformFeedbackSimulationHolder {
    * Runs one transform-feedback pass: reads `mesh`'s current half, writes the fused spawn+update
    * program's result into the other half of the ping-pong pair, then swaps. `spawnRange`
    * is this tick's birth range under the buffer's cursor/overwrite scheme - `count === 0` is a
-   * valid, ordinary "no births this tick" case, not skipped specially.
+   * valid, ordinary "no births this tick" case, not skipped specially - with its aged tail.
    */
   public tick(
     mesh: FXTransformFeedbackParticle,
     deltaTime: number,
-    spawnRange: { readonly start: number; readonly count: number },
+    spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
   ): void {
     const gl = this.gl;
@@ -158,7 +172,7 @@ export class FXTransformFeedbackSimulationHolder {
    */
   public spawn(
     mesh: FXTransformFeedbackParticle,
-    spawnRange: { readonly start: number; readonly count: number },
+    spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
     births: number = spawnRange.count,
   ): void {
@@ -265,7 +279,7 @@ export class FXTransformFeedbackSimulationHolder {
 
   private setUniforms(
     deltaTime: number,
-    spawnRange: { readonly start: number; readonly count: number },
+    spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
     capacity: number,
   ): void {
@@ -285,6 +299,16 @@ export class FXTransformFeedbackSimulationHolder {
     gl.uniform1i(
       this.uniformLocations[FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM],
       this.spawnIdBase,
+    );
+    gl.uniform1i(
+      this.uniformLocations[FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM],
+      spawnRange.aged?.count ?? 0,
+    );
+    const ages = spawnRange.aged?.ages;
+    gl.uniform2f(
+      this.uniformLocations[FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM],
+      ages?.first ?? 0,
+      ages?.step ?? 0,
     );
     gl.uniform1i(this.uniformLocations[FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM], capacity);
     gl.uniform1f(this.uniformLocations[FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM], deltaTime);
@@ -321,6 +345,8 @@ const FIXED_UNIFORM_NAMES: readonly string[] = [
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM,
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
   FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM,

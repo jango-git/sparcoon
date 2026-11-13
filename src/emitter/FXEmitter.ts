@@ -20,6 +20,8 @@ import { assertValidTrailOptions, FXTrail } from "../trail/FXTrail.js";
 import { trailReadFields } from "../trail/FXTrailFields.Internal.js";
 import { FXWorld } from "../world/FXWorld.js";
 import type { FXApplyRenderArtifactOptions } from "./FXApplyRenderArtifactOptions.js";
+import type { FXBirthAges } from "./FXBirthAges.Internal.js";
+import { playBirthAges, spreadBirthAges } from "./FXBirthAges.Internal.js";
 import type {
   FXApplyValues,
   FXEmissionBasis,
@@ -458,7 +460,10 @@ export class FXEmitter extends Object3D {
   /**
    * Starts continuous emission at `rate` particles per second, or per world unit the emitter
    * travels (`options.over`), from this emitter's pose as each tick finds it, or from
-   * `options.origin` for the whole play.
+   * `options.origin` for the whole play. Following the pose, every tick after its first emitting
+   * one spreads its births over it: each as old as how long before the tick's end it fell, from
+   * where the emitter stood then, so a fast emitter leaves an even stream rather than one clump a
+   * tick.
    * @returns Handler for {@link stop} to cancel.
    */
   public play(rate: number, options: Partial<FXEmitterPlayOptions> = {}): number {
@@ -888,8 +893,9 @@ export class FXEmitter extends Object3D {
     this.sinceLastBirth += deltaTime;
 
     // One order on both backends: update, then the births at this tick's pose (on the GPU, one
-    // range of the tick's single pass), then every birth at another pose (one GPU pass each) -
-    // so the two number their particles alike, and no newborn is updated in its own tick.
+    // range of the tick's single pass; the ones born through the tick last, its tail), then every
+    // birth at another pose (one GPU pass each) - so the two number their particles alike, and no
+    // newborn is updated in its own tick.
     this.driver.beginTick(deltaTime, transform);
     const elsewhere = this.birthsElsewhere;
 
@@ -917,6 +923,13 @@ export class FXEmitter extends Object3D {
     const velocity = this.emitterTransform.velocity;
     const speed = Math.hypot(velocity[0], velocity[1], velocity[2]);
 
+    // The births of plays that emitted through the tick before as well, at this tick's pose: born
+    // through the tick, not at its end, so they spread along the way the emitter came (see
+    // FXBirthAges). Gathered and seeded last, as one run - the tail of the GPU pass - so two such
+    // plays in one tick share an even spread (`sweptAges` undefined) instead of each its own.
+    let sweptCount = 0;
+    let sweptAges: FXBirthAges | undefined;
+
     for (let i = this.activePlays.length - 1; i >= 0; i--) {
       const play = this.activePlays[i];
       let effectiveDeltaTime = deltaTime;
@@ -942,18 +955,32 @@ export class FXEmitter extends Object3D {
       const emitDeltaTime = expired
         ? Math.max(0, play.duration - previousElapsed)
         : effectiveDeltaTime;
-      play.accumulator +=
-        play.rate * (play.over === "distance" ? speed * emitDeltaTime : emitDeltaTime);
+      const carried = play.accumulator;
+      const gained = play.rate * (play.over === "distance" ? speed * emitDeltaTime : emitDeltaTime);
+      play.accumulator += gained;
       const particlesToSpawn = Math.floor(play.accumulator);
 
       if (particlesToSpawn > 0) {
-        this.spawnScheduled(particlesToSpawn, play.origin, transform);
         play.accumulator -= particlesToSpawn;
+        // A play's first emitting tick is born at its end: where the emitter stood the tick
+        // before is no way it came while this play emitted - a host moves an emitter into place
+        // and starts it.
+        if (play.origin === undefined && previousElapsed > 0) {
+          sweptAges =
+            sweptCount === 0 ? playBirthAges(carried, gained, emitDeltaTime, deltaTime) : undefined;
+          sweptCount += particlesToSpawn;
+        } else {
+          this.spawnScheduled(particlesToSpawn, play.origin, transform);
+        }
       }
 
       if (expired) {
         this.activePlays.splice(i, 1);
       }
+    }
+
+    if (sweptCount > 0) {
+      this.seed(sweptCount, transform, sweptAges ?? spreadBirthAges(sweptCount, deltaTime));
     }
 
     this.driver.endTick(deltaTime, transform);
@@ -967,10 +994,10 @@ export class FXEmitter extends Object3D {
     }
   }
 
-  private seed(count: number, transform: FXEmitterTransform): void {
+  private seed(count: number, transform: FXEmitterTransform, ages?: FXBirthAges): void {
     this.settled = false;
     this.sinceLastBirth = 0;
-    this.driver.spawn(count, transform);
+    this.driver.spawn(count, transform, ages);
   }
 
   private hasScheduledBirths(): boolean {

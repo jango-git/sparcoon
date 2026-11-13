@@ -225,11 +225,6 @@ export function behaviorArtifact(
 }
 
 /**
- * A behavior placing each newborn at the translation of the pose it spawns from (as a graph reading
- * `world-matrix` would), recording that pose into `poses`, and moving every live particle +`speed`
- * along x per second.
- */
-/**
  * {@link placingBehavior} whose update also kills a live particle once it reaches `killX` - the
  * way an editor-emitted kernel kills: `age = max(age, lifetime)`, after its writes.
  */
@@ -246,6 +241,12 @@ export function killingBehavior(lifetime: number, killX: number, speed = 2): FXB
   });
 }
 
+/**
+ * A behavior placing each newborn at the translation of the pose it spawns from as of its birth (as
+ * a graph reading `world-matrix` would: moved back along the emitter's velocity by the age it was
+ * seeded with), recording that pose into `poses`, and moving every live particle +`speed` along x
+ * per second.
+ */
 export function placingBehavior(
   lifetime: number,
   poses: FXEmitterTransform[] = [],
@@ -277,9 +278,13 @@ function placingFields(
         });
       }
       for (let i = start; i < start + count; i++) {
-        lifecycle[i * FX_CORE_LIFECYCLE_STRIDE + FX_LIFETIME] = lifetime;
+        const row = i * FX_CORE_LIFECYCLE_STRIDE;
+        lifecycle[row + FX_LIFETIME] = lifetime;
         for (let c = 0; c < 3; c++) {
-          position[i * 3 + c] = emitter?.worldMatrix[12 + c] ?? 0;
+          position[i * 3 + c] =
+            emitter === undefined
+              ? 0
+              : emitter.worldMatrix[12 + c] - emitter.velocity[c] * lifecycle[row + FX_AGE];
         }
       }
     },

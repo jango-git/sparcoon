@@ -2,6 +2,7 @@ import type { BufferGeometry, Vector3 } from "three";
 
 import type { FXBehaviorArtifact, FXEmitterTransform } from "../artifact/FXArtifact.js";
 import {
+  FX_AGE,
   FX_CORE_POSITION_STRIDE,
   FX_ID,
   FX_POSITION_X,
@@ -15,6 +16,8 @@ import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js"
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
 import { FXCPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
+import type { FXBirthAges } from "./FXBirthAges.Internal.js";
+import { birthAgeAt } from "./FXBirthAges.Internal.js";
 import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
@@ -108,7 +111,7 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     }
   }
 
-  public spawn(count: number, transform: FXEmitterTransform): void {
+  public spawn(count: number, transform: FXEmitterTransform, ages?: FXBirthAges): void {
     // Host-owned, like age: no write slot exists for id (the editor's FXParticleBehaviorTarget.ts
     // scalarWriteSlots never lists it), so no graph can ever collide with this assignment.
     //
@@ -116,14 +119,21 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     // `capacity` slots, `firstId + 0..capacity-1` in claim order, yet consumes `count` ids - exactly
     // as the GPU kernel numbers a spawn range (`u_fxSpawnIdBase + relative index`, the base then
     // advanced by the whole count), so the two backends hand out the same ids.
+    //
+    // Age is host-owned too, and written before the spawn kernel runs: the kernel places a birth
+    // by it (the emitter's pose that long ago), as the GPU kernel places it by the age it seeds.
     const { slots } = this.mesh;
     const { stride } = this.mesh.slot;
     const idOffset = this.mesh.core.lifecycle + FX_ID;
+    const ageOffset = this.mesh.core.lifecycle + FX_AGE;
     const firstId = this.nextParticleId;
     this.nextParticleId += count;
     let nextId = firstId;
     for (const range of this.mesh.claim(count)) {
       for (let i = range.start; i < range.start + range.count; i++) {
+        if (ages !== undefined) {
+          slots[i * stride + ageOffset] = birthAgeAt(ages, nextId - firstId);
+        }
         slots[i * stride + idOffset] = nextId++;
       }
       // Re-checked (defensive): no spawn function would leave the freshly zeroed rows born dead.

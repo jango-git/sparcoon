@@ -1,217 +1,156 @@
 # Changelog
 
-Every notable change to sparcoon. Versions follow semver; while the major is 0, a minor release may
-break the artifact format, and an exported effect module plays only on the minor it was built for.
+Every notable change to sparcoon, as it affects a game playing effects exported from the
+[Sparcoon Editor](https://jango-git.github.io/sparcoon-editor/). Versions follow semver; while the
+major is 0, a minor release may change what an exported effect is made of, and an effect plays only
+on the minor it was built for - after such an update, re-export every effect.
 
-The `sparcoon/editor` entry is tooling for the Sparcoon Editor and carries no semver guarantees;
-its changes are listed only where they explain a change to the runtime.
-
-## 0.17.0 - unreleased
-
-### Fixed
-
-- Every emitter, trail and VFX mesh owns its uniform and binding values: instances built from one
-  artifact (a pool of one effect) no longer draw and simulate with the last instance's Timeline
-  Values. The artifact's `uniforms` and `bindings` keep their initial values and are never
-  written.
-- `FXEmitter.applyRenderArtifact` and `applyTrailArtifact` start the new material from the
-  parameters applied to the emitter; external textures come from the swap's own `textures`, so a
-  trail swap no longer fails (and leaks the trail it built) on a texture bound another way before.
-- A textured trail is no longer skipped on a GPU without vertex texture units: a stage declares
-  only the uniforms its code reads, so a sampler only the fragment stage reads costs the vertex
-  stage nothing.
-
-### Added
-
-- The draw stage: a render artifact may carry `compute(inputs, uniforms)`, which the editor writes
-  for what is one for the whole draw (the clock, the pose, the object's motion, parameters). The
-  runtime calls it once per tick into the instance's draw uniforms, declared and seeded among its
-  `uniforms`, so the shaders read the result instead of computing it per vertex or fragment.
-  `FXDrawInputs` is what it reads. No code is built at run time: `compute` is an ordinary function
-  in the exported module.
-- The draw stage for GPU-driven emitters: a kernel artifact may carry `compute(inputs, uniforms)`
-  for what depends only on the pass (the timestep, the emitter's pose and motion, bindings); its
-  draw uniforms are declared and seeded among its `bindings`. The transform-feedback simulation
-  calls it before each tick and spawn pass with that pass's `FXKernelDrawInputs`, so a burst sees
-  its own pose. A binding uploads by the type its program declares it as (a float, a vector or a
-  matrix, `FXKernelUniformValue`).
-- `FXApplyValues.particleMaterial` and `trailMaterial`: one material's own uniform values, by its
-  artifact's names - for a tool scrubbing what it recompiled, since a generated name belongs to
-  its graph alone. `uniforms` stays the emitter's parameters, driving every material that declares
-  them.
-- `sparcoon/editor`: `FXRenderBudget` also counts uniform vectors and texture units per stage,
-  against `FX_RENDER_BUDGET_MINIMUMS` (Baseline: the least iOS device's 128 vertex / 64 fragment
-  vectors and 8 units a stage), and measures every uniform type GLSL ES 3.00 has without throwing.
-- A trail past what the device offers of any resource - attributes, varying vectors, uniform
-  vectors or texture units of a stage - is skipped with a warning, as it already was for attributes
-  and varyings. Each limit the renderer reports is checked on its own; one it does not report is
-  not checked.
-
-### Performance
-
-- A GPU-driven emitter resolves each binding's upload once, when it is built: a simulation pass
-  does no string lookups and copies no pose arrays.
-- A trail no longer recomputes its parents' world matrices every tick; the emitter's tick already
-  did.
+## 0.18.0 - 2026-11-13
 
 ### Changed
 
-- **Breaking:** every exported effect must be re-exported (the artifact gains the draw stage, and
-  `FXRenderArtifact.uniformDeclarations` moves into each stage: `vertex.uniformDeclarations` and
-  `fragment.uniformDeclarations`).
-- `sparcoon/editor`: the material drivers' `setElapsedTime`, `setDeltaTime`, `setObjectVelocity`
-  and `setObjectAngularVelocity` are one `advance(frame)`; `packedVaryingVectors` is
-  `packedVectors` and `fxVaryingShape` is `fxPackedShape` (uniforms pack by the same rule);
-  `fxGraphVaryingAllowance` takes the graph's lighting; `fxGraphUniformAllowance` and
-  `FX_DRAW_INPUTS` are new. A budget counts an external texture bound the heaviest way (a masked
-  region).
+- **Breaking:** re-export every effect.
+- A play spreads each frame's particles along the way its emitter came during that frame, instead
+  of spawning them in one clump where the emitter stands at the frame's end: smoke behind a fast
+  car or sparks behind a flying object leave an even stream, and a dense play no longer pulses with
+  the frame rate. It costs no extra simulation pass. Bursts are unchanged, and so is a play's first
+  frame, so an emitter moved into place and started does not smear from where it stood before.
+
+## 0.17.0 - 2026-11-12
+
+### Fixed
+
+- Instances of one effect (a pool) no longer share parameter values: each draws and simulates with
+  its own, as set by `setEmitterParam`, `setMeshParam` and its Timeline Values.
+- A textured trail is no longer skipped on a GPU without vertex texture units.
+
+### Changed
+
+- **Breaking:** re-export every effect.
+- A trail past any of the device's limits is skipped with a warning: uniform vectors and texture
+  units are now checked as well as attributes and varyings.
+
+### Performance
+
+- Values that are the same for a whole draw or simulation pass (the clock, the pose, the object's
+  motion, parameters) are computed once per frame on the CPU instead of per vertex, fragment or
+  particle.
+- A GPU simulation pass does no string lookups and copies no pose arrays.
+- A trail no longer recomputes its parents' world matrices every frame.
 
 ## 0.16.0 - 2026-11-11
 
 ### Changed
 
-- **Breaking:** the JS backend keeps each particle in one interleaved slot, like the GPU backend.
-  A JS behavior artifact is now `{ buffers, bindings, spawn(slots, ...), update(slots, ...) }`
-  over that slot. Every exported effect must be re-exported.
-- A particle mesh binds only the fields its render reads, so more effects fit WebGL1's attribute
-  limit on the JS path. Swapping a render artifact remounts the views over the same particle
-  state, with no re-upload.
-
-### Added
-
-- `FX_CORE_BUFFERS`, the buffers every particle has.
-- `sparcoon/editor`: `slotLayout`, `FXSlotLayout` and `FXSlotField`, the slot layout the editor
-  bakes a JS kernel's offsets from.
-
-### Removed
-
-- `FXKernelBuffers` and the per-buffer write lists of the JS behavior artifact.
-- `sparcoon/editor`: `unpackedAttributes`.
+- **Breaking:** re-export every effect.
+- A particle binds only what its rendering reads, so more effects fit WebGL1's attribute limit on
+  the CPU path.
 
 ## 0.15.0 - 2026-11-11
 
 ### Added
 
-- `maxLifetime` per emitter in the effect spec. An emitter settles by itself once that long has
-  passed since its last birth, with nothing scheduled and its trail faded out. `FXEmitter.isSettled`
-  reports it.
-- `FXEffect` dispatches `"drained"` after `"finished"` once every emitter has settled, so a host can
-  return the effect to a pool without keeping its own tail timings.
+- An emitter that has finished stops simulating and drawing by itself once its longest-lived
+  particle is gone (`maxLifetime`, written by the editor); `FXEmitter.isSettled` reports it.
+- `FXEffect` dispatches `"drained"` after `"finished"` once every emitter has settled, so a game can
+  return the effect to a pool without timing its tail itself.
 
-### Changed
+### Performance
 
-- GPU passes defer three's `resetState()`. `FXWorld.update` and `prewarm` flush it once per
-  renderer per tick, instead of once after every pass.
+- three's `resetState()` runs once per renderer per frame, instead of after every GPU pass.
 
 ## 0.14.2 - 2026-11-11
 
 ### Added
 
-- `FXEffect.compile(renderer, camera, scene?)` precompiles an effect's shaders. It uses
-  `compileAsync` on three r158+ and a synchronous `renderer.compile` on r157.
+- `FXEffect.compile(renderer, camera, scene?)` precompiles an effect's shaders: `compileAsync` on
+  three r158+, a synchronous `renderer.compile` on r157.
 
 ### Changed
 
-- Emitters on one WebGL context share their linked transform-feedback kernel programs.
-- `stop()` and `reset()` clear an emitter's GPU particles. An idle emitter runs no transform-feedback
-  pass and issues no draw call until its next birth.
+- `stop()` and `reset()` clear an emitter's GPU particles.
+
+### Performance
+
+- Emitters on one WebGL context share their GPU simulation programs.
+- An idle emitter runs no GPU simulation pass and issues no draw call until its next birth.
 
 ## 0.14.1 - 2026-11-11
 
-### Added
-
-- `fxSeedHash1` to `fxSeedHash4`, the seed hash behind the editor's Hash node.
-
 ### Fixed
 
-- `FX_RUNTIME_VERSION` now matches the version in `package.json`.
+- `FX_RUNTIME_VERSION` matches the package version, so effects built for this version no longer
+  warn that they are played on an incompatible runtime.
 
 ## 0.14.0 - 2026-11-11
 
 ### Added
 
-- A behavior's update can kill a particle. A killed particle reports its death to death listeners
-  and reactions, the same way a particle that dies of age does.
-- Fractal (`fxFractal1`-`3`), curl (`fxCurl2`, `fxCurl3`) and Voronoi (`fxVoronoi2`, `fxVoronoi3`)
-  noise.
-
-### Changed
-
-- Noise moves into its own module. Its existing functions keep their names and are still exported
-  from the main entry.
+- An effect can kill particles early (the editor's update `kill`). A killed particle reports its
+  death to `onParticleDeath` listeners and death reactions, as one that dies of age does.
+- Fractal, curl and Voronoi noise for effects.
 
 ## 0.13.0 - 2026-11-10
 
 ### Added
 
 - Depth Fade: `fxSetCameraDepth(camera, texture)` gives a camera the depth of the scene it sees, and
-  every graph using Depth Fade that this camera draws fades against it. Without a depth texture,
+  every effect using Depth Fade that this camera draws fades against it. Without a depth texture,
   the edge is hard.
 - External texture slots take either a whole `Texture` or a region of one (`FXExternalTexture`,
   `FXTextureRegion`). `fxAtlasRegion` builds the region of a packed atlas sprite from its frame
   values.
-- Half-lit lighting intrinsics for lighting nodes.
-- Distance-based emission: a play's rate can count per unit of distance moved instead of per second
-  (`FXEmissionBasis`).
-- `FX_RUNTIME_VERSION`. Every exported effect spec records the runtime it was built for
-  (`runtime`), and in development an effect warns once if it is played on an incompatible runtime.
+- Half-lit lighting for effects.
+- Distance-based emission: a play's rate can count per unit of distance its emitter moves instead of
+  per second (`FXEmissionBasis`).
+- `FX_RUNTIME_VERSION`. Every exported effect records the runtime it was built for, and in
+  development it warns once when played on an incompatible runtime.
 
 ## 0.12.0 - 2026-11-09
 
 ### Added
 
 - Death reactions: a particle's death can spawn on another emitter, from the dying particle's
-  position and velocity. They are listed as `reactions` in the effect spec, and
-  `FXEmitter.onParticleDeath` exposes them for hosts.
-- Spawn origins (`FXSpawnOrigin`) for plays and bursts.
+  position and velocity. `FXEmitter.onParticleDeath` lets a game listen too.
+- Spawn origins (`FXSpawnOrigin`): a burst or a play can spawn from a given point instead of the
+  emitter's pose.
 
 ### Changed
 
-- **Breaking:** timeline events are spawn actions (`FXSpawnAction`), shared by the runtime and the
-  editor's preview, instead of `{ kind: "play", ... }` records.
-- **Breaking:** the surface frame is built only for the builtins the fragment stage reads, and graph
-  varyings travel as one structured list. Per-primitive values are `flat` on GLSL ES 3.00
-  (`FX_FLAT`).
-- The render budget counts varyings the way the editor's compiler packs them (`sparcoon/editor`:
-  `fxGraphVaryingAllowance`, `fxVaryingShape`, `packedVaryingVectors`).
+- **Breaking:** re-export every effect.
 
 ## 0.11.1 - 2026-11-08
 
 ### Added
 
-- An `intensity` output slot: a multiplier on the color alone, in linear light. It applies in every
-  blend mode and never changes the alpha.
+- Effects can scale their color by an intensity, in linear light, in every blend mode and without
+  changing alpha.
 - A `"step"` key easing.
 
 ### Fixed
 
 - During playback, transform tracks are sampled at the continuous time rather than snapped to the
   frame grid. Anything reading an object's velocity no longer sees a still pose followed by a jump.
-- `modelMatrix` is declared in fragment shaders, so fragment-stage world-matrix reads compile.
+- World-matrix reads in an effect's fragment stage compile.
 
 ## 0.11.0 - 2026-11-08
 
 ### Added
 
 - Particle trails: an emitter can keep a history of its particles' positions and draw them as a
-  ribbon (`trail` in the effect spec, `FXTrailOptions`, `FX_TRAIL_MAX_FRAMES`). A trail that exceeds
-  the device's attribute or varying limits is skipped with a warning.
+  ribbon. A trail past the device's attribute or varying limits is skipped with a warning.
 - `FXEmitter.particleOverflowCount`.
-- `sparcoon/editor`: the attribute packing rule (`packingOrder`, `packConsecutive`) and
-  `fxTrailRenderBudget`. The editor uses the same rule, so a kernel's slot and the views bound over
-  it agree by construction.
 
 ### Changed
 
 - **Breaking:** emitters have a fixed capacity on every path. The default is 256, and
   `capacityStep` is removed.
-- Moved to eslint 10 and typescript-eslint 8.72 (development only).
 
 ## 0.10.0 - 2026-11-06
 
 ### Changed
 
-- Published to npm's `latest` tag as the stable line. The experimental notes are gone.
+- Published to npm's `latest` tag as the stable line.
 
 ## 0.9.5 - 2026-11-06
 
@@ -220,22 +159,18 @@ its changes are listed only where they explain a change to the runtime.
 - Play-once playback: `FXEffect.play({ loop })`, a `loop` flag in the spec, and a `"finished"` event
   (`FXEffectEventMap`).
 - Key easing curves (`FXKeyEase`: `linear`, `in`, `out`, `inOut`).
-- `sparcoon/editor`: `fxEmitterRenderBudget`, `fxMeshRenderBudget` and
-  `FX_RENDER_BUDGET_MINIMUMS`. They count the vertex attributes and varyings an artifact takes
-  against the minimum each GPU tier guarantees, so the editor can refuse an effect that some GPUs
-  could not draw.
 
 ### Changed
 
-- Transform feedback is captured interleaved.
-- Particle properties that the fragment stage never reads no longer take varyings.
+- More effects fit the device's limits: GPU simulation captures every particle property in one
+  buffer, and properties only the vertex stage reads take no varyings.
 
 ## 0.9.4 - 2026-11-06
 
 ### Fixed
 
-- An emitter falls back to its JS kernel when the GPU has too few transform-feedback outputs for its
-  buffers. Before, it spawned nothing, without an error.
+- An emitter falls back to CPU simulation when the GPU has too few transform-feedback outputs for
+  it. Before, it spawned nothing, without an error.
 
 ## 0.9.3 - 2026-11-06
 
@@ -252,23 +187,14 @@ its changes are listed only where they explain a change to the runtime.
 
 ### Added
 
-- A WebGL2 transform-feedback simulation path. An emitter with a GPU kernel artifact
-  (`gpuBehavior`) simulates on the GPU when a `renderer` is given, and on its JS kernel otherwise.
-- `FXEmitter.applyRenderArtifact`.
+- GPU simulation on WebGL2: an emitter whose effect was exported with it simulates on the GPU when a
+  `renderer` is given, and on the CPU otherwise.
 
 ### Changed
 
-- **Breaking:** render artifacts are given per GLSL tier (`FXRenderArtifactsByGLSLTier`).
-- `fxNoise1`-`3` and `fxFbm3` replace `fxSnoise2`, `fxSnoise3` and `fxValueNoise`. `fxHash` is
-  removed.
+- **Breaking:** re-export every effect.
 
 ## 0.9.1 - 2026-07-17
-
-### Added
-
-- The `sparcoon/editor` entry: `FXEmitter`, `FXMesh` (a VFX mesh built from a render artifact and
-  driven by `FXWorld`) and the keyframe sampling functions that the editor's live preview shares
-  with the runtime.
 
 ### Changed
 
@@ -276,22 +202,18 @@ its changes are listed only where they explain a change to the runtime.
 
 ## 0.9.0 - 2026-07-17
 
-Rewrite. sparcoon is now the runtime for effects authored in the
-[Sparcoon Editor](https://jango-git.github.io/sparcoon-editor/). The editor compiles node graphs
-into artifacts (simulation kernels and render shaders), and the runtime plays them. It no longer
-builds graphs, compiles shaders or ships its own nodes.
+Rewrite. sparcoon is now the runtime for effects authored in the Sparcoon Editor: the editor
+compiles node graphs into effects, and the runtime plays them. It no longer builds graphs, compiles
+shaders or ships its own nodes.
 
 ### Added
 
-- `FXEffect`, the base class of an exported effect module. It plays an `FXEffectSpec` (emitters,
-  meshes, transforms and timeline) and offers `play`, `stop`, `advanceFrame`, `getEmitter`,
-  `getMesh`, `setEmitterParam`, `setMeshParam` and `dispose`.
+- `FXEffect`, the base class of an exported effect. It plays emitters, meshes, transforms and a
+  timeline, and offers `play`, `stop`, `advanceFrame`, `getEmitter`, `getMesh`, `setEmitterParam`,
+  `setMeshParam` and `dispose`.
 - `FXWorld`, the tick domain. One `FXWorld.update(deltaTime)` per frame drives every effect.
-- The artifact contracts that the editor emits (`FXBehaviorArtifact`, `FXRenderArtifact`) and the
-  core particle layout (`position`, `lifecycle`).
-- Unlit and Lambert graph materials, with the `blending`, `alphaHash`, `alphaTest` and `opaque`
-  render modes.
-- The math and noise helpers that kernels call (`fxMath`), and `fxDataTexture`.
+- Unlit and Lambert materials, with the `blending`, `alphaHash`, `alphaTest` and `opaque` render
+  modes.
 
 ### Removed
 

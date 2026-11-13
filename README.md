@@ -234,7 +234,12 @@ them in two places - and takes the parameter values of that tick. With `origin`,
 spawns as if the emitter stood at that point, keeping its own rotation and scale, and moving at the
 given velocity - what its spawn graph reads through `world-matrix` and `object-velocity`. A play
 `over: "distance"` counts its rate per world unit the emitter's position travels, so it spawns
-nothing while the emitter stands still; it takes no `origin`, which does not move.
+nothing while the emitter stands still; it takes no `origin`, which does not move. Either way, a
+play that follows the emitter spreads each tick's births over the tick, from its second emitting
+tick on: each is seeded as old as how long before the tick's end it fell, from where the emitter
+stood then (its pose moved back along its velocity by that age) - so a fast emitter leaves an even
+stream, not one clump a frame. A play's first emitting tick is born at its end, so a host moving an
+emitter into place and starting it does not spread the first births from where it stood before.
 
 An emitter simulated on the CPU reports its particles' deaths - of age, or killed by its update
 graph (the update sink's `kill`, e.g. wired from a collider's `contact`). The editor wires them up as death

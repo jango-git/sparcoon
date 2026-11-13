@@ -8,6 +8,7 @@ import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js"
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
 import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
+import type { FXAgedBirths, FXBirthAges } from "./FXBirthAges.Internal.js";
 import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
@@ -40,6 +41,8 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   private gpuSpawnCursor = 0;
   private gpuSpawnRangeStart = 0;
   private gpuPendingSpawnCount = 0;
+  // The gathered births born earlier in the tick: the range's tail, so nothing may follow them.
+  private gpuAgedSpawns: FXAgedBirths | undefined;
   // Between beginTick() and endTick(): spawns join the tick's pass instead of running their own.
   private ticking = false;
 
@@ -116,7 +119,12 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     }
   }
 
-  public spawn(count: number, transform: FXEmitterTransform): void {
+  public spawn(count: number, transform: FXEmitterTransform, ages?: FXBirthAges): void {
+    if (this.ticking && this.gpuAgedSpawns !== undefined) {
+      throw new Error(
+        "FXGPUEmitterDriver.spawn: a tick's aged births must be its last at its pose",
+      );
+    }
     // Cursor advances by `count`, wrapping at capacity - the buffer slots this claims may already
     // be occupied by still-alive particles, which are simply overwritten (the scheme's cheapness is
     // not checking occupancy at all).
@@ -125,15 +133,17 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.mesh.occupy();
     if (this.ticking) {
       this.gpuPendingSpawnCount += count;
+      this.gpuAgedSpawns = ages === undefined ? undefined : { count, ages };
       return;
     }
     // Outside a tick, this birth has a pose of its own (two bursts from two poses in one frame, a
     // spawn at an origin), so it is seeded now, by a pass of its own with that pose. More than `capacity` at once
     // overwrites the whole ring; the extra births would only overwrite each other - but still take
     // their ids, as inside a tick (and on the JS backend).
+    const seeded = Math.min(count, this.mesh.capacity);
     this.simulation.spawn(
       this.mesh,
-      { start, count: Math.min(count, this.mesh.capacity) },
+      { start, count: seeded, aged: ages === undefined ? undefined : { count: seeded, ages } },
       transform,
       count,
     );
@@ -152,12 +162,17 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.simulation.tick(
       this.mesh,
       deltaTime,
-      { start: this.gpuSpawnRangeStart, count: this.gpuPendingSpawnCount },
+      {
+        start: this.gpuSpawnRangeStart,
+        count: this.gpuPendingSpawnCount,
+        aged: this.gpuAgedSpawns,
+      },
       transform,
     );
     // Consumed - the next tick's range starts wherever the cursor now sits.
     this.gpuSpawnRangeStart = this.gpuSpawnCursor;
     this.gpuPendingSpawnCount = 0;
+    this.gpuAgedSpawns = undefined;
   }
 
   public sortByDistance(): void {
@@ -184,6 +199,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     // Also drops a range gathered but not yet seeded, so nothing cancelled here spawns later.
     this.gpuSpawnRangeStart = 0;
     this.gpuPendingSpawnCount = 0;
+    this.gpuAgedSpawns = undefined;
   }
 
   public applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void {

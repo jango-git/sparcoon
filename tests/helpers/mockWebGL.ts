@@ -99,6 +99,7 @@ const RECORDED_ONLY = [
   "uniformMatrix2fv",
   "uniformMatrix3fv",
   "uniformMatrix4fv",
+  "uniform2f",
   "uniform2fv",
   "uniform3fv",
   "uniform4fv",

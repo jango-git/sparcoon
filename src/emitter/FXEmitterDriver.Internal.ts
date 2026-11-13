@@ -19,6 +19,7 @@ import { renderReadProperties } from "../render/FXArtifactMaterial.Internal.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import { floatGLSLType, packConsecutive } from "../render/FXAttributePacking.js";
 import type { FXTrailHistory } from "../trail/FXTrailHistory.Internal.js";
+import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 
 /**
  * @internal The backend-independent half of an {@link FXEmitter}: everything that differs between
@@ -53,8 +54,13 @@ export interface FXEmitterDriver {
    *  between {@link beginTick} and {@link endTick} for the births at the tick's pose - JS seeds
    *  them right away, GPU gathers them into the tick's one pass - and after {@link endTick} (or on
    *  a paused tick, with neither) for every other pose, which JS seeds right away and GPU seeds
-   *  with a pass of its own. Either way a newborn is seeded, not yet updated. */
-  spawn(count: number, transform: FXEmitterTransform): void;
+   *  with a pass of its own. Either way a newborn is seeded, not yet updated.
+   *
+   *  `ages`: the births were born earlier in the tick, this old (see {@link FXBirthAges}) - seeded
+   *  with that age, where the kernel places them by it; without, they are born at its end. Inside
+   *  a tick, aged births are its last at its pose: on the GPU they are the tail of the tick's
+   *  pass. */
+  spawn(count: number, transform: FXEmitterTransform, ages?: FXBirthAges): void;
   /**
    * Starts (`sink`) or stops (`undefined`) reporting each particle that dies - of age, or killed
    * by its update: during {@link beginTick}, once per particle alive before the tick and dead after

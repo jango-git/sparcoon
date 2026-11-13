@@ -23,3 +23,7 @@ export const FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM = "u_fxDt";
 export const FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM = "u_fxModelMatrix";
 export const FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM = "u_fxObjectVelocity";
 export const FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM = "u_fxObjectAngularVelocity";
+// The tail of a pass's spawn range born earlier in its tick: how many of its births (an int), and
+// their ages as `vec2(first, step)` - birth `k` of the tail is `first + k * step` seconds old.
+export const FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM = "u_fxBirthAgeCount";
+export const FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM = "u_fxBirthAges";

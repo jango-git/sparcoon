@@ -226,7 +226,9 @@ export interface FXBehaviorArtifact {
   readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
 
   /** Seeds newborns `[start, start+count)` of `slots` (every slot back to back, see {@link buffers}).
-   *  Optional (an update-only, non-particle host). */
+   *  Optional (an update-only, non-particle host). A newborn's `age` is already seeded: born that
+   *  long before the end of its tick, it spawns from where the emitter stood then - `worldMatrix`
+   *  with its translation moved back along `velocity` by that age. */
   spawn?(
     slots: Float32Array,
     start: number,

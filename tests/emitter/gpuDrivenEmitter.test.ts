@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FXBufferLayout, FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
 import {
+  FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
@@ -281,6 +282,22 @@ describe("FXEmitter GPU spawn passes", () => {
       [4, 4],
     ]);
     expect(gl.uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(4);
+  });
+
+  it("hands the tick's pass the births spread over it as the tail of its spawn range", () => {
+    const { emitter, world, gl } = gpuEmitter(32);
+    emitter.play(8);
+    world.update(0.25); // The play's first emitting tick: born at its end.
+    emitter.burst(1);
+    gl.calls.length = 0;
+    world.update(0.25);
+
+    // The burst, then the play's 2 births, 0.125 s apart.
+    expect(gl.uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(3);
+    expect(gl.uniforms.get(FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM)).toBe(2);
+    expect(callsNamed(gl, "uniform2f").map((call) => call.args.slice(1))).toEqual([
+      [0.125, -0.125],
+    ]);
   });
 
   it("draws a birth of its own pass that wraps past the end of the ring as two segments", () => {
