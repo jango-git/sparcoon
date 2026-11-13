@@ -13,7 +13,7 @@ import {
 import { FXTransformFeedbackSimulationHolder } from "../../src/emitter/FXTransformFeedbackSimulationHolder";
 import { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import { flushStateResets } from "../../src/render/FXDeferredStateReset.Internal";
-import { IDENTITY_EMITTER_TRANSFORM } from "../helpers/artifacts";
+import { IDENTITY_EMITTER_TRANSFORM, NOTHING_INHERITED } from "../helpers/artifacts";
 import { callsNamed, type MockRenderer, mockRenderer } from "../helpers/mockWebGL";
 import { allViews } from "../helpers/slots";
 
@@ -143,7 +143,13 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     const mesh = meshFor(mock, holder);
     try {
       calls.length = 0;
-      holder.tick(mesh, 1 / 60, { start: 0, count: 0 }, IDENTITY_EMITTER_TRANSFORM);
+      holder.tick(
+        mesh,
+        1 / 60,
+        { start: 0, count: 0 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
       const pointers = calls
         .filter((call) => call.name === "vertexAttribPointer")
         .map((call) => [call.args[0], call.args[1], call.args[4], call.args[5]]);
@@ -171,7 +177,13 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     const mesh = meshFor(mock, holder);
     try {
       calls.length = 0;
-      holder.tick(mesh, 1 / 60, { start: 0, count: 4 }, IDENTITY_EMITTER_TRANSFORM);
+      holder.tick(
+        mesh,
+        1 / 60,
+        { start: 0, count: 4 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
 
       const names = calls.map((call) => call.name);
       const enableIndex = names.indexOf("enable");
@@ -208,7 +220,13 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     const holder = new FXTransformFeedbackSimulationHolder(mock.renderer, minimalArtifact());
     const mesh = meshFor(mock, holder);
     try {
-      holder.tick(mesh, 1 / 30, { start: 5, count: 2 }, IDENTITY_EMITTER_TRANSFORM);
+      holder.tick(
+        mesh,
+        1 / 30,
+        { start: 5, count: 2 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM)).toBe(1);
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM)).toBe(1 / 30);
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(5);
@@ -218,7 +236,13 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       // this first tick's births is still zero.
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM)).toBe(0);
 
-      holder.tick(mesh, 1 / 30, { start: 5, count: 2 }, IDENTITY_EMITTER_TRANSFORM);
+      holder.tick(
+        mesh,
+        1 / 30,
+        { start: 5, count: 2 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
       // A fresh, different seed the very next tick - never the same draw twice in a row.
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM)).toBe(2);
       // Advanced by the previous tick's spawn count (2) - never reset between ticks.
@@ -245,7 +269,13 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       const readBefore = mesh.readBuffer();
       const writeBefore = mesh.writeBuffer();
 
-      holder.tick(mesh, 1 / 60, { start: 0, count: 0 }, IDENTITY_EMITTER_TRANSFORM);
+      holder.tick(
+        mesh,
+        1 / 60,
+        { start: 0, count: 0 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
 
       // Flipped: the half just written is now the one read.
       expect(mesh.readBuffer()).toBe(writeBefore);
@@ -269,7 +299,13 @@ describe("FXTransformFeedbackSimulationHolder", () => {
 
       for (let tick = 0; tick < 6; tick += 1) {
         const expectedRead = tick % 2 === 0 ? bufferB : bufferA;
-        holder.tick(mesh, 1 / 60, { start: 0, count: 0 }, IDENTITY_EMITTER_TRANSFORM);
+        holder.tick(
+          mesh,
+          1 / 60,
+          { start: 0, count: 0 },
+          IDENTITY_EMITTER_TRANSFORM,
+          NOTHING_INHERITED,
+        );
         expect(mesh.readBuffer()).toBe(expectedRead);
         // The two physical buffers are always exactly {bufferA, bufferB} - read and write are
         // never simultaneously the same buffer, and never a buffer outside this original pair.
@@ -292,7 +328,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       const read = mesh.readBuffer();
       const write = mesh.writeBuffer();
       calls.length = 0;
-      holder.spawn(mesh, { start: 3, count: 4 }, IDENTITY_EMITTER_TRANSFORM);
+      holder.spawn(mesh, { start: 3, count: 4 }, IDENTITY_EMITTER_TRANSFORM, NOTHING_INHERITED);
 
       const names = calls.map((call) => call.name);
       // Captured into the write half at the range's own offset...
@@ -313,8 +349,47 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM)).toBe(0);
 
       // Ids keep counting across spawn passes and ticks alike.
-      holder.tick(mesh, 1 / 60, { start: 7, count: 0 }, IDENTITY_EMITTER_TRANSFORM);
+      holder.tick(
+        mesh,
+        1 / 60,
+        { start: 7, count: 0 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
       expect(uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM)).toBe(4);
+    } finally {
+      mesh.destroy();
+      holder.destroy();
+    }
+  });
+
+  it("uploads each pass's inherited values as whole vec4s, zero-padded", () => {
+    const mock = mockRenderer();
+    const { calls } = mock.gl;
+    const holder = new FXTransformFeedbackSimulationHolder(mock.renderer, minimalArtifact());
+    const mesh = meshFor(mock, holder);
+    const uploaded = (): number[][] =>
+      callsNamed(mock.gl, "uniform4fv").map((call) => [...(call.args[1] as Float32Array)]);
+    try {
+      calls.length = 0;
+      holder.spawn(
+        mesh,
+        { start: 0, count: 1 },
+        IDENTITY_EMITTER_TRANSFORM,
+        new Float32Array([1, 2, 3, 4, 5]),
+      );
+      expect(uploaded()).toEqual([[1, 2, 3, 4, 5, 0, 0, 0]]);
+
+      calls.length = 0;
+      holder.tick(
+        mesh,
+        1 / 60,
+        { start: 1, count: 0 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
+      // Nothing to inherit still uploads one whole vec4: the uniform is declared at least that long.
+      expect(uploaded()).toEqual([[0, 0, 0, 0]]);
     } finally {
       mesh.destroy();
       holder.destroy();

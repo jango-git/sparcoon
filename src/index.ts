@@ -9,6 +9,7 @@ export type {
   FXBufferLayout,
   FXFragmentStageSource,
   FXGeometrySource,
+  FXInheritLayout,
   FXKernelDrawInputs,
   FXKernelUniformValue,
   FXParticleKernelArtifact,
@@ -27,6 +28,7 @@ export {
   FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM,
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM,
   FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM,
@@ -72,6 +74,7 @@ export type {
   FXKeyEase,
 } from "./effect/FXEffectSpec.js";
 export type { FXSpawnAction } from "./effect/FXSpawnAction.js";
+export type { FXInheritCopies } from "./emitter/FXInheritance.js";
 
 // Type-only: the return type of `FXEffect.getEmitter`. Exported so an emitted module can name it in
 // a typed `getEmitter` override; the emitter cannot be constructed from the main surface (its

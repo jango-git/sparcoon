@@ -257,6 +257,14 @@ Deaths reach their listeners after every emitter of the world has ticked. A GPU-
 no CPU-visible ages (`reportsParticleDeaths` is false) and refuses a listener; the editor builds an
 emitter some reaction listens to on the CPU.
 
+A reaction's births can inherit from the particle that died: an emitter authored with Inherited
+Attribute nodes reads, at birth, an attribute of that particle - its color, size, a random seed,
+anything its emitter writes, matched by name and type - or its id or lifetime. A birth no death
+spawned (a timeline's, or one of yours) reads the node's default instead. `death.slot` is the dying
+particle's whole slot, laid out as its emitter's `particleSlot` says; a burst or play of your own
+can hand births values the same way, through `origin.inherited` (as many floats as the emitter's
+`inheritDefaults`).
+
 An emitter holds a fixed number of particles - the capacity set in the editor - on both the GPU and
 the JavaScript path: a ring that never grows. Each birth takes the next slot in turn and overwrites
 whatever is there, live or not, so the capacity has to cover the spawn rate times the longest

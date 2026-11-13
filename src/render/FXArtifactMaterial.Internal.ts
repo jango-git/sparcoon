@@ -53,8 +53,9 @@ const FX_FRAGMENT_MODEL_MATRIX = [
   "#endif",
 ].join("\n");
 
-// Mutable holder wired into the Three material as `u_time`/`u_deltaTime`; shape-compatible with IUniform.
-export interface FXFrameTimeUniform {
+// Mutable holder wired into the Three material as `u_time`/`u_deltaTime`/`RANDOM_SEED`;
+// shape-compatible with IUniform.
+export interface FXFrameFloatUniform {
   value: number;
 }
 
@@ -370,10 +371,12 @@ function projectFromModelPos(): string {
  * value; the artifact's `uniforms` stay its initial values, which nothing writes.
  */
 export interface FXMaterialSlots {
-  readonly time: FXFrameTimeUniform;
-  readonly deltaTime: FXFrameTimeUniform;
+  readonly time: FXFrameFloatUniform;
+  readonly deltaTime: FXFrameFloatUniform;
   readonly velocity: FXFrameVec3Uniform;
   readonly angularVelocity: FXFrameVec3Uniform;
+  /** The drawn object's seed (`RANDOM_SEED`), declared by the mesh shaders only. */
+  readonly seed: FXFrameFloatUniform;
   /** The artifact's non-external uniforms, by name. */
   readonly values: Readonly<Record<string, FXValueSlot<FXUniformValue>>>;
   readonly external: FXExternalTextureBindings;
@@ -396,6 +399,7 @@ export function createMaterialSlots(
     deltaTime: { value: 0 },
     velocity: { value: [0, 0, 0] },
     angularVelocity: { value: [0, 0, 0] },
+    seed: { value: 0 },
     values,
     external,
   };
@@ -407,6 +411,7 @@ function bindUniforms(uniforms: Record<string, IUniform>, slots: FXMaterialSlots
   uniforms["u_deltaTime"] = slots.deltaTime;
   uniforms["objectVelocity"] = slots.velocity;
   uniforms["objectAngularVelocity"] = slots.angularVelocity;
+  uniforms["RANDOM_SEED"] = slots.seed;
   for (const name in slots.values) {
     uniforms[name] = slots.values[name];
   }
@@ -439,6 +444,7 @@ export function advanceMaterialSlots(
   slots.deltaTime.value = frame.deltaTime;
   slots.velocity.value = frame.objectVelocity;
   slots.angularVelocity.value = frame.objectAngularVelocity;
+  slots.seed.value = frame.seed;
   render.compute?.(frame, slots.values);
 }
 
@@ -935,6 +941,7 @@ function buildMeshUnlitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
+    "uniform float RANDOM_SEED;",
     frame.varyings,
     graphVaryings(program),
     program.vertex.uniformDeclarations.join("\n"),
@@ -959,6 +966,7 @@ function buildMeshUnlitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
+    "uniform float RANDOM_SEED;",
     frame.varyings,
     graphVaryings(program),
     program.fragment.uniformDeclarations.join("\n"),
@@ -1015,6 +1023,7 @@ function buildMeshLitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
+    "uniform float RANDOM_SEED;",
     frame.varyings,
     "varying vec3 vViewPosition;",
     graphVaryings(program),
@@ -1048,6 +1057,7 @@ function buildMeshLitArtifactMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
+    "uniform float RANDOM_SEED;",
     frame.varyings,
     graphVaryings(program),
     program.fragment.uniformDeclarations.join("\n"),
@@ -1246,6 +1256,7 @@ export function buildMeshArtifactDepthMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
+    "uniform float RANDOM_SEED;",
     frame.varyings,
     "varying vec2 vHighPrecisionZW;",
     graphVaryings(program),
@@ -1270,6 +1281,7 @@ export function buildMeshArtifactDepthMaterial(
     "uniform float u_deltaTime;",
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
+    "uniform float RANDOM_SEED;",
     frame.varyings,
     "varying vec2 vHighPrecisionZW;",
     graphVaryings(program),

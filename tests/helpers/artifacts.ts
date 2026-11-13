@@ -3,6 +3,7 @@ import type {
   FXBehaviorArtifact,
   FXBufferLayout,
   FXEmitterTransform,
+  FXInheritLayout,
   FXParticleReads,
   FXRenderArtifact,
   FXRenderArtifactsByGLSLTier,
@@ -28,6 +29,9 @@ export const IDENTITY_EMITTER_TRANSFORM: FXEmitterTransform = {
   velocity: [0, 0, 0],
   angularVelocity: [0, 0, 0],
 };
+
+/** What a birth inherits under a behavior that declares no inherit layout. */
+export const NOTHING_INHERITED = new Float32Array(0);
 
 /** Fixture `GLTypeInfo` values for the varying types tests wire up (position/lifecycle/attributes). */
 export const FLOAT_VARYING: GLTypeInfo = {
@@ -229,6 +233,7 @@ export function behaviorArtifact(
     attributes?: readonly SeedAttr[];
     update?: FieldUpdate;
     noSpawn?: boolean;
+    inherit?: FXInheritLayout;
   } = {},
 ): FXBehaviorArtifact {
   const attributes = spec.attributes ?? [];
@@ -242,6 +247,7 @@ export function behaviorArtifact(
 
   return fieldBehavior({
     buffers,
+    ...(spec.inherit === undefined ? {} : { inherit: spec.inherit }),
     ...(spec.update === undefined ? {} : { update: spec.update }),
     ...(spec.noSpawn === true
       ? {}

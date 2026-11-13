@@ -13,6 +13,7 @@ import {
   FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM,
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM,
   FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM,
@@ -71,6 +72,8 @@ export class FXTransformFeedbackSimulationHolder {
   private readonly drawFrame: { -readonly [K in keyof FXKernelDrawInputs]: FXKernelDrawInputs[K] } =
     { deltaTime: 0, worldMatrix: [], velocity: [], angularVelocity: [] };
   private readonly compute: FXParticleKernelArtifact["compute"];
+  // The inherited values a pass uploads, whole vec4s (see FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM).
+  private inheritedVectors = new Float32Array(4);
 
   // A fresh, monotonic seed every tick - decorrelates `rand()` draws across ticks (and, crucially,
   // across a buffer slot's successive rebirths under the cursor/overwrite scheme - see the `rand`
@@ -127,6 +130,7 @@ export class FXTransformFeedbackSimulationHolder {
     deltaTime: number,
     spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
+    inherited: Float32Array,
   ): void {
     const gl = this.gl;
     this.randSeedCounter += 1;
@@ -134,7 +138,7 @@ export class FXTransformFeedbackSimulationHolder {
     this.bindProgramAndInputs(mesh);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, mesh.writeBuffer());
 
-    this.setUniforms(deltaTime, spawnRange, emitter, mesh.capacity);
+    this.setUniforms(deltaTime, spawnRange, emitter, inherited, mesh.capacity);
 
     gl.enable(gl.RASTERIZER_DISCARD);
     gl.beginTransformFeedback(gl.POINTS);
@@ -156,7 +160,8 @@ export class FXTransformFeedbackSimulationHolder {
   }
 
   /**
-   * Seeds the slots of `spawnRange` right now, from `emitter` and the current binding values, and
+   * Seeds the slots of `spawnRange` right now, from `emitter`, `inherited` and the current binding
+   * values, and
    * touches no other slot: the spawn half of {@link tick}, run on its own. Lets every `burst()`
    * outside the emitter's tick spawn from the pose and parameters of the moment it was called,
    * instead of sharing one pass - and so one pose - with everything else spawned that frame.
@@ -174,6 +179,7 @@ export class FXTransformFeedbackSimulationHolder {
     mesh: FXTransformFeedbackParticle,
     spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
+    inherited: Float32Array,
     births: number = spawnRange.count,
   ): void {
     if (spawnRange.count <= 0) {
@@ -194,7 +200,7 @@ export class FXTransformFeedbackSimulationHolder {
 
     this.bindProgramAndInputs(mesh);
     // dt 0: the spawn branch has no use for it, and nothing else runs in this pass.
-    this.setUniforms(0, spawnRange, emitter, capacity);
+    this.setUniforms(0, spawnRange, emitter, inherited, capacity);
 
     const slotBytes = this.slot.stride * Float32Array.BYTES_PER_ELEMENT;
     gl.enable(gl.RASTERIZER_DISCARD);
@@ -281,9 +287,21 @@ export class FXTransformFeedbackSimulationHolder {
     deltaTime: number,
     spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
+    inherited: Float32Array,
     capacity: number,
   ): void {
     const gl = this.gl;
+    const vectorLength = Math.max(4, Math.ceil(inherited.length / 4) * 4);
+    if (this.inheritedVectors.length === vectorLength) {
+      this.inheritedVectors.fill(0);
+    } else {
+      this.inheritedVectors = new Float32Array(vectorLength);
+    }
+    this.inheritedVectors.set(inherited);
+    gl.uniform4fv(
+      this.uniformLocations[FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM],
+      this.inheritedVectors,
+    );
     gl.uniform1i(
       this.uniformLocations[FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM],
       this.randSeedCounter,
@@ -352,6 +370,7 @@ const FIXED_UNIFORM_NAMES: readonly string[] = [
   FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM,
 ];
 
 /**

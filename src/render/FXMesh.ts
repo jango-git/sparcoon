@@ -4,7 +4,12 @@ import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import { FXWorld } from "../world/FXWorld.js";
-import { createDrawFrame, fillObjectDrawFrame, type FXDrawFrame } from "./FXDrawFrame.Internal.js";
+import {
+  createDrawFrame,
+  fillObjectDrawFrame,
+  type FXDrawFrame,
+  nextObjectSeed,
+} from "./FXDrawFrame.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 import { FXMeshMaterial } from "./FXMeshMaterial.js";
 
@@ -38,6 +43,8 @@ export class FXMesh extends Mesh {
   private readonly motionTracker = new FXObjectMotionTracker();
   // Filled in place each tick (see onWorldTick).
   private readonly drawFrame: FXDrawFrame = createDrawFrame();
+  // This mesh's own seed (see FXDrawInputs.seed), kept for its life.
+  private readonly seed = nextObjectSeed();
   // A built-in primitive is ours to dispose; an app-supplied custom geometry is the caller's.
   private readonly ownsGeometry: boolean;
   // The depth material we built for a shadow caster (undefined when not casting), kept so `destroy`
@@ -94,7 +101,14 @@ export class FXMesh extends Mesh {
   /** @internal Driven by {@link FXWorld.update}. */
   public onWorldTick(deltaTime: number, elapsedTime: number): void {
     this.driver.advance(
-      fillObjectDrawFrame(this.drawFrame, this.motionTracker, this, elapsedTime, deltaTime),
+      fillObjectDrawFrame(
+        this.drawFrame,
+        this.motionTracker,
+        this,
+        elapsedTime,
+        deltaTime,
+        this.seed,
+      ),
     );
   }
 

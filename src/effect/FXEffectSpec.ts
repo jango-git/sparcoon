@@ -6,6 +6,7 @@ import type {
   FXParticleKernelArtifact,
   FXRenderArtifactsByGLSLTier,
 } from "../artifact/FXArtifact.js";
+import type { FXInheritCopies } from "../emitter/FXInheritance.js";
 import type { FXWorld } from "../world/FXWorld.js";
 import type { FXSpawnAction } from "./FXSpawnAction.js";
 
@@ -67,6 +68,8 @@ export type FXEffectEvent = FXSpawnAction & { readonly time: number };
 export type FXEffectReaction = FXSpawnAction & {
   /** The index of the source in {@link FXEffectSpec.emitters}. */
   readonly source: number;
+  /** What its births inherit of the dying particle (see `FXInheritCopies`); omitted when nothing. */
+  readonly copies?: FXInheritCopies;
 };
 
 /** One emitter's precompiled artifacts, transform, and timeline. */

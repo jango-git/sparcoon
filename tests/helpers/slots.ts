@@ -2,6 +2,7 @@ import type {
   FXBehaviorArtifact,
   FXBufferLayout,
   FXEmitterTransform,
+  FXInheritLayout,
   FXValueSlot,
 } from "../../src/artifact/FXArtifact";
 import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
@@ -51,7 +52,8 @@ export type FieldSpawn = (
   start: number,
   count: number,
   bindings: Bindings,
-  emitter?: FXEmitterTransform,
+  emitter: FXEmitterTransform,
+  inherited: Float32Array,
 ) => void;
 export type FieldUpdate = (
   fields: FieldBuffers,
@@ -69,6 +71,7 @@ export type FieldUpdate = (
 export function fieldBehavior(spec: {
   buffers: readonly FXBufferLayout[];
   bindings?: Bindings;
+  inherit?: FXInheritLayout;
   spawn?: FieldSpawn;
   update?: FieldUpdate;
 }): FXBehaviorArtifact {
@@ -83,6 +86,7 @@ export function fieldBehavior(spec: {
   return {
     buffers: spec.buffers,
     bindings: spec.bindings ?? {},
+    ...(spec.inherit === undefined ? {} : { inherit: spec.inherit }),
     update(slots, count, deltaTime, bindings, emitter): void {
       if (update !== undefined) {
         run(slots, (fields) => {
@@ -98,10 +102,11 @@ export function fieldBehavior(spec: {
             start: number,
             count: number,
             bindings: Bindings,
-            emitter?: FXEmitterTransform,
+            emitter: FXEmitterTransform,
+            inherited: Float32Array,
           ): void {
             run(slots, (fields) => {
-              spawn(fields, start, count, bindings, emitter);
+              spawn(fields, start, count, bindings, emitter, inherited);
             });
           },
         }),

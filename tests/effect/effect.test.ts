@@ -7,10 +7,12 @@ import type {
   FXEffectReaction,
   FXEffectSpec,
 } from "../../src/effect/FXEffectSpec";
+import { FX_CORE_LIFECYCLE, FX_CORE_LIFECYCLE_STRIDE, FX_LIFETIME } from "../../src/coreLayout";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 import { effectSpec, emitterSpec as baseEmitterSpec, TestEffect } from "../helpers/effectSpecs";
+import { fieldBehavior } from "../helpers/slots";
 import {
   bindingValue,
   emitterUniform,
@@ -594,6 +596,48 @@ describe("FXEffect death reactions", () => {
     expect(() =>
       makeEffect(world, shellAndSparks({ source: 0, kind: "play", rate: 4, duration: 0 })),
     ).toThrow(/finite duration/);
+    // Sparks inherit nothing, so no copy fits them.
+    expect(() =>
+      makeEffect(world, shellAndSparks({ source: 0, kind: "burst", count: 4, copies: [0, 0, 1] })),
+    ).toThrow(/does not copy within/);
     expect(registeredObjectCount(world)).toBe(0);
+  });
+
+  it("hands the reaction's births what its copies take of the dying particle", () => {
+    const world = newWorld();
+    const inherited: number[][] = [];
+    const spec = shellAndSparks({ source: 0, kind: "burst", count: 1, copies: [4, 1, 1] });
+    const sparks = spec.emitters[1];
+    const effect = makeEffect(
+      world,
+      effectSpec({
+        ...spec,
+        emitters: [
+          spec.emitters[0],
+          {
+            ...sparks,
+            behavior: fieldBehavior({
+              buffers: sparks.behavior.buffers,
+              inherit: { stride: 2, defaults: [-1, -1] },
+              spawn(fields, start, count, _bindings, _emitter, values): void {
+                inherited.push([...values]);
+                for (let i = start; i < start + count; i++) {
+                  fields[FX_CORE_LIFECYCLE][i * FX_CORE_LIFECYCLE_STRIDE + FX_LIFETIME] = 1;
+                }
+              },
+            }),
+          },
+        ],
+      }),
+    );
+    effect.play();
+    world.update(0.1); // the shell is born, lifetime 0.15
+    world.update(0.1);
+    world.update(0.1); // it dies
+    world.update(0.1);
+    // Float 4 of the shell's slot is its lifecycle's lifetime.
+    expect(inherited).toHaveLength(1);
+    expect(inherited[0][0]).toBe(-1);
+    expect(inherited[0][1]).toBeCloseTo(0.15, 6);
   });
 });

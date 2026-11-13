@@ -5,6 +5,40 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## 0.20.0 - 2026-11-13
+
+### Added
+
+- **Inheritance on death reactions**: the particles a reaction spawns can take values from the
+  particle whose death spawned them - any attribute its emitter writes (color, size, a seed...),
+  matched by name and exact type, or its id or lifetime - authored with the editor's Inherited
+  Attribute node. A birth no death spawned reads the node's default. On the GPU path a reaction's
+  births cost nothing extra: they already spawn in a pass of their own.
+- **Hash on VFX meshes**: a VFX mesh seeds the editor's Hash node by a seed of its own, the same
+  every frame and another for every mesh built - so two copies of one effect, or two meshes of it,
+  draw different randoms. Particles still seed by their id.
+- `FXParticleDeath.slot`: the dying particle's whole slot, laid out as `FXEmitter.particleSlot`.
+- `FXSpawnOrigin.inherited`: what the births of a burst or play at an origin inherit, as many floats
+  as `FXEmitter.inheritDefaults`.
+- `FXEmitter.inheritDefaults` (what its births inherit when no death spawned them) and
+  `FXEmitter.particleSlot` (the layout of a particle's slot).
+- The types `FXInheritLayout` (a behavior artifact's `inherit`) and `FXInheritCopies`, and the
+  constant `FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM`, for code that builds artifacts or reactions by
+  hand.
+
+### Changed
+
+- **Breaking:** re-export every effect.
+- **Breaking:** a behavior artifact's `spawn` takes the inherited values as a sixth argument, and its
+  `emitter` argument is always given; an artifact may declare an `inherit` layout. Only code that
+  builds behavior artifacts by hand is affected.
+- **Breaking:** `connectDeathReaction` takes what to copy as a fourth argument (`FXInheritCopies`),
+  and `FXSpawnTarget` and `FXDeathSource` need `inheritDefaults` and `particleSlot` - only code
+  implementing them by hand is affected.
+- Listening to an emitter's deaths copies each dying particle's whole slot instead of its position.
+- `FXDrawInputs` carries the drawn object's `seed` (`RANDOM_SEED` in the shaders) - only code
+  calling an artifact's `compute` by hand is affected.
+
 ## 0.19.0 - 2026-11-13
 
 ### Added

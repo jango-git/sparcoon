@@ -15,6 +15,12 @@ export interface FXDrawInputs {
   readonly objectVelocity: readonly [number, number, number];
   /** World-space angular velocity, radians per second about its axis (`objectAngularVelocity`). */
   readonly objectAngularVelocity: readonly [number, number, number];
+  /**
+   * The drawn object's own random seed (`RANDOM_SEED`): one number per object, the same every
+   * frame, another for every object built - so two copies of one effect draw different randoms.
+   * A particle seeds by its id instead, which its shaders read under the same name.
+   */
+  readonly seed: number;
 }
 
 /** One draw input: the GLSL name the shaders read it as, its {@link FXDrawInputs} field and type. */
@@ -31,4 +37,5 @@ export const FX_DRAW_INPUTS: readonly FXDrawInput[] = [
   { name: "modelMatrix", field: "modelMatrix", type: "mat4" },
   { name: "objectVelocity", field: "objectVelocity", type: "vec3" },
   { name: "objectAngularVelocity", field: "objectAngularVelocity", type: "vec3" },
+  { name: "RANDOM_SEED", field: "seed", type: "float" },
 ];

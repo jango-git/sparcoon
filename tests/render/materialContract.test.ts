@@ -22,6 +22,7 @@ function frame(over: Partial<FXDrawInputs> = {}): FXDrawInputs {
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
     objectVelocity: [0, 0, 0],
     objectAngularVelocity: [0, 0, 0],
+    seed: 0,
     ...over,
   };
 }

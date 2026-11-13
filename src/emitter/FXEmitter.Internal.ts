@@ -63,6 +63,11 @@ export interface FXSpawnOrigin {
   readonly position: readonly number[];
   /** `[x, y, z]` per second. default `[0, 0, 0]` */
   readonly velocity?: readonly number[];
+  /**
+   * What the births take from the particle they come from - as many floats as the emitter's
+   * {@link FXEmitter.inheritDefaults}, laid out as its behavior's `inherit`. default those defaults
+   */
+  readonly inherited?: ArrayLike<number>;
 }
 
 export interface FXEmitterBurstOptions {
@@ -118,6 +123,11 @@ export interface FXParticleDeath {
   readonly position: readonly number[];
   /** `[x, y, z]` per second: how far it moved over its last tick. */
   readonly velocity: readonly number[];
+  /**
+   * Its whole slot after its last update: every field its behavior declares, back to back in the
+   * order of the behavior's `buffers` ({@link FXEmitter.particleSlot}).
+   */
+  readonly slot: Float32Array;
 }
 
 /** Receives the deaths of an emitter's particles; see {@link FXEmitter.onParticleDeath}. */

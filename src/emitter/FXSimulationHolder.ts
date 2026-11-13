@@ -34,9 +34,10 @@ export class FXSimulationHolder {
     slots: Float32Array,
     begin: number,
     count: number,
-    emitter?: FXEmitterTransform,
+    emitter: FXEmitterTransform,
+    inherited: Float32Array,
   ): void {
-    this.artifact.spawn?.(slots, begin, count, this.bindings, emitter);
+    this.artifact.spawn?.(slots, begin, count, this.bindings, emitter, inherited);
   }
 
   public update(

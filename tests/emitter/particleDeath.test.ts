@@ -1,12 +1,24 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { FXBehaviorArtifact, FXEmitterTransform } from "../../src/artifact/FXArtifact";
+import type {
+  FXBehaviorArtifact,
+  FXEmitterTransform,
+  FXInheritLayout,
+} from "../../src/artifact/FXArtifact";
+import {
+  FX_CORE_LIFECYCLE,
+  FX_CORE_LIFECYCLE_STRIDE,
+  FX_CORE_POSITION,
+  FX_ID,
+  FX_LIFETIME,
+} from "../../src/coreLayout";
 import { connectDeathReaction, fireSpawnAction } from "../../src/effect/FXSpawnAction";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { FXParticleDeath } from "../../src/emitter/FXEmitter.Internal";
 import { FXWorld } from "../../src/world/FXWorld";
 import { killingBehavior, placingBehavior, unlitArtifact } from "../helpers/artifacts";
 import { landBirths } from "../helpers/internals";
+import { fieldBehavior } from "../helpers/slots";
 
 const worlds: FXWorld[] = [];
 
@@ -30,7 +42,11 @@ function emitterIn(world: FXWorld, behavior: FXBehaviorArtifact, capacity = 16):
 function collectDeaths(emitter: FXEmitter): FXParticleDeath[] {
   const deaths: FXParticleDeath[] = [];
   emitter.onParticleDeath((death) => {
-    deaths.push({ position: [...death.position], velocity: [...death.velocity] });
+    deaths.push({
+      position: [...death.position],
+      velocity: [...death.velocity],
+      slot: death.slot.slice(),
+    });
   });
   return deaths;
 }
@@ -235,5 +251,163 @@ describe("death reactions", () => {
     }).not.toThrow();
     world.update(0.1);
     expect(target.particleCount).toBe(0);
+  });
+});
+
+/**
+ * A behavior whose newborns live `lifetime` and get a `tag` of `firstTag` plus their birth's id,
+ * recording each spawn call's `inherited` values into `inherits` (one entry per call).
+ */
+function taggingBehavior(
+  lifetime: number,
+  options: {
+    firstTag?: number;
+    inherit?: FXInheritLayout;
+    inherits?: number[][];
+  } = {},
+): FXBehaviorArtifact {
+  const firstTag = options.firstTag ?? 0;
+  return fieldBehavior({
+    buffers: [
+      { name: FX_CORE_POSITION, stride: 3 },
+      { name: FX_CORE_LIFECYCLE, stride: FX_CORE_LIFECYCLE_STRIDE },
+      { name: "tag", stride: 2 },
+    ],
+    ...(options.inherit === undefined ? {} : { inherit: options.inherit }),
+    spawn(fields, start, count, _bindings, _emitter, inherited): void {
+      options.inherits?.push([...inherited]);
+      const lifecycle = fields[FX_CORE_LIFECYCLE];
+      for (let i = start; i < start + count; i++) {
+        const row = i * FX_CORE_LIFECYCLE_STRIDE;
+        lifecycle[row + FX_LIFETIME] = lifetime;
+        fields.tag[i * 2] = firstTag + lifecycle[row + FX_ID];
+        fields.tag[i * 2 + 1] = -1;
+      }
+    },
+  });
+}
+
+// The slot taggingBehavior lays out: position 0..2, lifecycle 3..5, tag 6..7.
+const TAG_OFFSET = 6;
+const LIFETIME_OFFSET = 3 + FX_LIFETIME;
+
+describe("a death's slot", () => {
+  it("is the whole slot as the particle died, taken before a birth of the same tick claims it", () => {
+    const world = newWorld();
+    // One slot: the burst landing in the tick the first particle dies overwrites it.
+    const emitter = emitterIn(world, taggingBehavior(0.15, { firstTag: 10 }), 1);
+    const deaths = collectDeaths(emitter);
+    emitter.burst(1);
+    world.update(0.1); // id 0 born, tag 10
+    emitter.burst(1);
+    world.update(0.1); // id 0 ages to 0.1; id 1 overwrites it: no death
+    world.update(0.1); // id 1 ages to 0.1
+    emitter.burst(1);
+    world.update(0.1); // id 1 dies of age, then id 2 claims its slot in the same tick
+    expect(deaths).toHaveLength(1);
+    expect([...deaths[0].slot.subarray(TAG_OFFSET)]).toEqual([11, -1]);
+    expect(deaths[0].slot[LIFETIME_OFFSET]).toBeCloseTo(0.15, 6);
+    expect(emitter.particleSlot.stride).toBe(deaths[0].slot.length);
+  });
+});
+
+describe("inheritance", () => {
+  const inherit: FXInheritLayout = { stride: 3, defaults: [7, 8, 9] };
+
+  function linked(copies: readonly number[]): {
+    world: FXWorld;
+    source: FXEmitter;
+    inherits: number[][];
+  } {
+    const world = newWorld();
+    const inherits: number[][] = [];
+    const target = emitterIn(world, taggingBehavior(10, { inherit, inherits }));
+    const source = emitterIn(world, taggingBehavior(0.05, { firstTag: 20 }));
+    connectDeathReaction(source, target, { kind: "burst", count: 2 }, copies);
+    return { world, source, inherits };
+  }
+
+  it("hands a reaction's births what its copies take of the dying particle, the rest defaults", () => {
+    const { world, source, inherits } = linked([TAG_OFFSET, 1, 2]);
+    source.burst(1);
+    world.update(0.1); // born, tag [20, -1]
+    world.update(0.1); // dies
+    expect(inherits).toEqual([]);
+    world.update(0.1); // the reaction's burst lands: one spawn call for both births
+    expect(inherits).toEqual([[7, 20, -1]]);
+  });
+
+  it("hands each death its own values", () => {
+    const { world, source, inherits } = linked([TAG_OFFSET, 0, 1]);
+    source.burst(2);
+    world.update(0.1); // ids 0 and 1 born, tags 20 and 21
+    world.update(0.1); // both die
+    world.update(0.1);
+    expect(inherits).toEqual([
+      [20, 8, 9],
+      [21, 8, 9],
+    ]);
+  });
+
+  it("gives a birth no death spawned the defaults: a host's burst, with or without an origin", () => {
+    const world = newWorld();
+    const inherits: number[][] = [];
+    const emitter = emitterIn(world, taggingBehavior(10, { inherit, inherits }));
+    emitter.burst(1);
+    emitter.burst(1, { origin: { position: [1, 0, 0] } });
+    emitter.burst(1, { origin: { position: [2, 0, 0], inherited: [1, 2, 3] } });
+    world.update(0.1);
+    expect(inherits).toEqual([
+      [7, 8, 9],
+      [7, 8, 9],
+      [1, 2, 3],
+    ]);
+  });
+
+  it("keeps a play's inherited values for its whole duration, copied at the call", () => {
+    const world = newWorld();
+    const inherits: number[][] = [];
+    const emitter = emitterIn(world, taggingBehavior(10, { inherit, inherits }));
+    const values = [1, 2, 3];
+    emitter.play(10, { duration: 0.3, origin: { position: [0, 0, 0], inherited: values } });
+    values[0] = 100;
+    world.update(0.1);
+    world.update(0.1);
+    world.update(0.1);
+    // One spawn call per tick that emits; how many emit is the play's own arithmetic.
+    expect(inherits.length).toBeGreaterThan(1);
+    expect(new Set(inherits.map((values) => values.join()))).toEqual(new Set(["1,2,3"]));
+  });
+
+  it("refuses inherited values of another length than the defaults", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, taggingBehavior(10, { inherit }));
+    expect(() => emitter.burst(1, { origin: { position: [0, 0, 0], inherited: [1, 2] } })).toThrow(
+      /inherited: expected 3 values/,
+    );
+  });
+
+  it("refuses an inherit layout whose defaults are not as long as its stride", () => {
+    const world = newWorld();
+    expect(() =>
+      emitterIn(world, taggingBehavior(10, { inherit: { stride: 2, defaults: [1] } })),
+    ).toThrow(/defaults: expected 2 values/);
+  });
+
+  it("refuses copies outside the source's slot or the target's layout, or not whole triples", () => {
+    const world = newWorld();
+    const target = emitterIn(world, taggingBehavior(10, { inherit }));
+    const source = emitterIn(world, taggingBehavior(1));
+    const action = { kind: "burst", count: 1 } as const;
+    expect(() => connectDeathReaction(source, target, action, [TAG_OFFSET, 0])).toThrow(/triples/);
+    expect(() => connectDeathReaction(source, target, action, [TAG_OFFSET, 0, 3])).toThrow(
+      /does not copy within/,
+    );
+    expect(() => connectDeathReaction(source, target, action, [0, 2, 2])).toThrow(
+      /does not copy within/,
+    );
+    expect(() => connectDeathReaction(source, target, action, [0, 0, 0])).toThrow(
+      /does not copy within/,
+    );
   });
 });

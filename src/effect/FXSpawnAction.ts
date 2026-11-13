@@ -5,6 +5,12 @@ import type {
   FXParticleDeathListener,
   FXSpawnOrigin,
 } from "../emitter/FXEmitter.Internal.js";
+import {
+  assertValidInheritCopies,
+  type FXInheritCopies,
+  inheritFrom,
+} from "../emitter/FXInheritance.js";
+import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 
 /**
  * What makes an emitter spawn, whatever triggers it - a timeline event at a time, or a death
@@ -24,12 +30,16 @@ export type FXSpawnAction =
 
 /** What a {@link FXSpawnAction} is fired on - an emitter, or anything spawning through one. */
 export interface FXSpawnTarget {
+  /** What its births inherit when nothing is handed to them (`FXEmitter.inheritDefaults`). */
+  readonly inheritDefaults: ArrayLike<number>;
   burst(count: number, options?: Partial<FXEmitterBurstOptions>): number;
   play(rate: number, options?: Partial<FXEmitterPlayOptions>): number;
 }
 
 /** What a death reaction listens to - an emitter, or anything forwarding one's deaths. */
 export interface FXDeathSource {
+  /** The slot its particles' deaths hand out (`FXEmitter.particleSlot`). */
+  readonly particleSlot: FXSlotLayout;
   onParticleDeath(listener: FXParticleDeathListener): () => void;
 }
 
@@ -75,17 +85,38 @@ export function assertDeathReactionAction(action: FXSpawnAction, subject: string
 
 /**
  * Fires `action` on `target` at every death of `source`'s particles, from where the particle died
- * and moving as it moved (see {@link FXSpawnOrigin}).
+ * and moving as it moved, its births inheriting what `copies` take of it (see
+ * {@link FXSpawnOrigin}). Both sides' layouts are read at the call: a source or target rebuilt
+ * with another one is connected afresh.
  * @returns Disconnects the two.
- * @throws When `action` is a play without end: one per death would pile up without bound.
+ * @throws When `action` is a play without end: one per death would pile up without bound. When
+ *   `copies` do not fit the two layouts (see {@link assertValidInheritCopies}).
  */
 export function connectDeathReaction(
   source: FXDeathSource,
   target: FXSpawnTarget,
   action: FXSpawnAction,
+  copies: FXInheritCopies = [],
 ): () => void {
   assertDeathReactionAction(action, "connectDeathReaction");
+  const defaults = Float32Array.from(target.inheritDefaults);
+  assertValidInheritCopies(
+    copies,
+    source.particleSlot.stride,
+    defaults.length,
+    "connectDeathReaction.copies",
+  );
+  // Copied by the target at the call, so one array serves every death.
+  const inherited = new Float32Array(defaults.length);
+  const origin: {
+    position: readonly number[];
+    velocity: readonly number[];
+    inherited: Float32Array;
+  } = { position: [], velocity: [], inherited };
   return source.onParticleDeath((death) => {
-    fireSpawnAction(target, action, death);
+    origin.position = death.position;
+    origin.velocity = death.velocity;
+    inheritFrom(death.slot, copies, defaults, inherited);
+    fireSpawnAction(target, action, origin);
   });
 }

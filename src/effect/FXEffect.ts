@@ -15,13 +15,16 @@ import type {
 } from "../artifact/FXArtifact.js";
 import { ownValue } from "../artifact/FXValueSlots.Internal.js";
 import { FXEmitter } from "../emitter/FXEmitter.js";
+import { assertValidInheritCopies } from "../emitter/FXInheritance.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
+import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
 import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import {
   createDrawFrame,
   fillObjectDrawFrame,
   type FXDrawFrame,
+  nextObjectSeed,
 } from "../render/FXDrawFrame.Internal.js";
 import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
@@ -225,6 +228,8 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
   private readonly meshes: Mesh[] = [];
   // World-space velocity/angular-velocity tracker per mesh, parallel to `meshes`.
   private readonly meshMotionTrackers: FXObjectMotionTracker[] = [];
+  // Each mesh's own seed (see FXDrawInputs.seed), taken as it is built.
+  private readonly meshSeeds: number[] = [];
   private readonly emitterDriven: Set<string>[] = [];
   private readonly meshDriven: Set<string>[] = [];
   // Name -> index, for the live-update API (getEmitter/getMesh/setEmitterParam/setMeshParam). A
@@ -318,7 +323,12 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     // Once every emitter exists: a reaction may name any of them as its source.
     for (const [index, emitterSpec] of specification.emitters.entries()) {
       for (const reaction of emitterSpec.reactions ?? []) {
-        connectDeathReaction(this.emitters[reaction.source], this.emitters[index], reaction);
+        connectDeathReaction(
+          this.emitters[reaction.source],
+          this.emitters[index],
+          reaction,
+          reaction.copies,
+        );
       }
     }
 
@@ -344,6 +354,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       this.meshRenders.push(render);
       this.meshMaterials.push(material);
       this.meshMotionTrackers.push(new FXObjectMotionTracker());
+      this.meshSeeds.push(nextObjectSeed());
       this.meshDriven.push(new Set<string>());
     }
 
@@ -414,6 +425,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           mesh,
           this.meshClock,
           simulationDelta,
+          this.meshSeeds[i],
         ),
       );
     }
@@ -706,8 +718,9 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
 /**
  * The indices of the emitters some reaction in `specification` listens to - built on the CPU, the
  * only simulation that sees deaths.
- * @throws On a reaction naming an emitter the effect does not have, or one that cannot be fired by
- *   a death (see {@link assertDeathReactionAction}).
+ * @throws On a reaction naming an emitter the effect does not have, one that cannot be fired by
+ *   a death (see {@link assertDeathReactionAction}), or one whose copies do not fit its source's
+ *   slot and its emitter's inherit layout (see {@link assertValidInheritCopies}).
  */
 function deathReactionSources(specification: FXEffectSpec): ReadonlySet<number> {
   const sources = new Set<number>();
@@ -724,6 +737,13 @@ function deathReactionSources(specification: FXEffectSpec): ReadonlySet<number> 
         );
       }
       assertDeathReactionAction(reaction, `FXEffect: emitter "${emitter.name}"`);
+      // A source is built on the CPU, so its slot is its JS behavior's.
+      assertValidInheritCopies(
+        reaction.copies ?? [],
+        particleSlotLayout(specification.emitters[reaction.source].behavior.buffers).stride,
+        emitter.behavior.inherit?.stride ?? 0,
+        `FXEffect: emitter "${emitter.name}" reaction copies`,
+      );
       sources.add(reaction.source);
     }
   }

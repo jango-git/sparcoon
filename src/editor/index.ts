@@ -24,6 +24,7 @@ export type { FXFromArtifactsOptions } from "../emitter/FXFromArtifactsOptions.j
 // by the runtime's FXEffect and the editor's preview.
 export type { FXDeathSource, FXSpawnAction, FXSpawnTarget } from "../effect/FXSpawnAction.js";
 export { connectDeathReaction, fireSpawnAction } from "../effect/FXSpawnAction.js";
+export type { FXInheritCopies } from "../emitter/FXInheritance.js";
 
 // Self-contained VFX mesh (the mesh twin of FXEmitter): build one from a render artifact and let
 // FXWorld.update drive it, including the object velocity/angular velocity a mesh render graph reads.

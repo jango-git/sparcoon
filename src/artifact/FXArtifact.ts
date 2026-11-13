@@ -42,6 +42,18 @@ export interface FXEmitterTransform {
   readonly angularVelocity: readonly number[];
 }
 
+/**
+ * What a behavior's newborns can take from the particle whose death spawned them: `stride` floats,
+ * handed to its spawn as `inherited` (see {@link FXBehaviorArtifact.spawn}). A birth no death
+ * spawned - a timeline's, a host's - gets `defaults`, as does any value the dying particle's
+ * emitter does not hold. Which float is which is the editor's to lay out; the runtime only copies.
+ */
+export interface FXInheritLayout {
+  readonly stride: number;
+  /** `stride` floats. */
+  readonly defaults: readonly number[];
+}
+
 /** What a GPU kernel's draw stage reads of one simulation pass: its timestep and the emitter's
  *  pose and motion in it ({@link FXParticleKernelArtifact.compute}). */
 export interface FXKernelDrawInputs extends FXEmitterTransform {
@@ -240,17 +252,22 @@ export interface FXBehaviorArtifact {
   readonly buffers: readonly FXBufferLayout[];
   /** number, or Float32Array (a curve LUT). */
   readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
+  /** What its newborns take from a dying particle; absent when nothing (`stride` 0). The emitter's
+   *  GPU kernel, when it has one, reads the same layout. */
+  readonly inherit?: FXInheritLayout;
 
   /** Seeds newborns `[start, start+count)` of `slots` (every slot back to back, see {@link buffers}).
    *  Optional (an update-only, non-particle host). A newborn's `age` is already seeded: born that
    *  long before the end of its tick, it spawns from where the emitter stood then - `worldMatrix`
-   *  with its translation moved back along `velocity` by that age. */
+   *  with its translation moved back along `velocity` by that age. `inherited` is the one
+   *  {@link inherit} layout's values every newborn of the call shares. */
   spawn?(
     slots: Float32Array,
     start: number,
     count: number,
     bindings: Record<string, FXValueSlot<number | Float32Array>>,
-    emitter?: FXEmitterTransform,
+    emitter: FXEmitterTransform,
+    inherited: Float32Array,
   ): void;
   /**
    * Advances every slot `[0, count)` - dead ones too (`age >= lifetime`, including never-born

@@ -10,6 +10,7 @@ import {
   FX_POSITION_Z,
 } from "../coreLayout.js";
 import { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle.js";
+import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
@@ -83,6 +84,10 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     return this.currentLayout;
   }
 
+  public get slot(): FXSlotLayout {
+    return this.mesh.slot;
+  }
+
   public get particleCount(): number {
     return this.mesh.liveCount;
   }
@@ -111,7 +116,12 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     }
   }
 
-  public spawn(count: number, transform: FXEmitterTransform, ages?: FXBirthAges): void {
+  public spawn(
+    count: number,
+    transform: FXEmitterTransform,
+    inherited: Float32Array,
+    ages?: FXBirthAges,
+  ): void {
     // Host-owned, like age: no write slot exists for id (the editor's FXParticleBehaviorTarget.ts
     // scalarWriteSlots never lists it), so no graph can ever collide with this assignment.
     //
@@ -138,7 +148,7 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
       }
       // Re-checked (defensive): no spawn function would leave the freshly zeroed rows born dead.
       if (this.simulation.canSpawn) {
-        this.simulation.spawn(slots, range.start, range.count, transform);
+        this.simulation.spawn(slots, range.start, range.count, transform, inherited);
       }
       // `claim` marked the range for upload, and the upload waits for the next render - so it
       // carries what the spawn wrote too.
@@ -230,23 +240,20 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     this.mesh.destroy();
   }
 
-  // One death found by advanceAges: its position after this tick's update, and its velocity over it.
+  // One death found by advanceAges: its slot after this tick's update, and its velocity over it.
   private readonly reportDeath = (slot: number): void => {
-    const position = slot * this.mesh.slot.stride + this.mesh.core.position;
+    const start = slot * this.mesh.slot.stride;
+    const position = start + this.mesh.core.position;
     const { slots } = this.mesh;
     const before = this.positionsBeforeUpdate;
     const offset = slot * FX_CORE_POSITION_STRIDE;
-    const x = slots[position + FX_POSITION_X];
-    const y = slots[position + FX_POSITION_Y];
-    const z = slots[position + FX_POSITION_Z];
     const inverseDelta = 1 / this.tickDeltaTime;
     this.deathSink?.(
-      x,
-      y,
-      z,
-      (x - before[offset + FX_POSITION_X]) * inverseDelta,
-      (y - before[offset + FX_POSITION_Y]) * inverseDelta,
-      (z - before[offset + FX_POSITION_Z]) * inverseDelta,
+      slots,
+      start,
+      (slots[position + FX_POSITION_X] - before[offset + FX_POSITION_X]) * inverseDelta,
+      (slots[position + FX_POSITION_Y] - before[offset + FX_POSITION_Y]) * inverseDelta,
+      (slots[position + FX_POSITION_Z] - before[offset + FX_POSITION_Z]) * inverseDelta,
     );
   };
 }

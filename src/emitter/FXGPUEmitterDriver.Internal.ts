@@ -1,7 +1,7 @@
 import type { BufferGeometry, WebGLRenderer } from "three";
 
 import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
-import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
@@ -43,6 +43,8 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   private gpuPendingSpawnCount = 0;
   // The gathered births born earlier in the tick: the range's tail, so nothing may follow them.
   private gpuAgedSpawns: FXAgedBirths | undefined;
+  // What the gathered births inherit: one array for the whole range, as it is one pass.
+  private gpuTickInherited: Float32Array = NOTHING_INHERITED;
   // Between beginTick() and endTick(): spawns join the tick's pass instead of running their own.
   private ticking = false;
 
@@ -88,6 +90,10 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     return this.currentLayout;
   }
 
+  public get slot(): FXSlotLayout {
+    return this.mesh.slot;
+  }
+
   public get particleCount(): number {
     return this.mesh.capacity;
   }
@@ -119,10 +125,20 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     }
   }
 
-  public spawn(count: number, transform: FXEmitterTransform, ages?: FXBirthAges): void {
+  public spawn(
+    count: number,
+    transform: FXEmitterTransform,
+    inherited: Float32Array,
+    ages?: FXBirthAges,
+  ): void {
     if (this.ticking && this.gpuAgedSpawns !== undefined) {
       throw new Error(
         "FXGPUEmitterDriver.spawn: a tick's aged births must be its last at its pose",
+      );
+    }
+    if (this.ticking && this.gpuPendingSpawnCount > 0 && inherited !== this.gpuTickInherited) {
+      throw new Error(
+        "FXGPUEmitterDriver.spawn: a tick's births at its pose share one inheritance",
       );
     }
     // Cursor advances by `count`, wrapping at capacity - the buffer slots this claims may already
@@ -133,6 +149,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.mesh.occupy();
     if (this.ticking) {
       this.gpuPendingSpawnCount += count;
+      this.gpuTickInherited = inherited;
       this.gpuAgedSpawns = ages === undefined ? undefined : { count, ages };
       return;
     }
@@ -145,6 +162,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       this.mesh,
       { start, count: seeded, aged: ages === undefined ? undefined : { count: seeded, ages } },
       transform,
+      inherited,
       count,
     );
     this.gpuSpawnRangeStart = this.gpuSpawnCursor;
@@ -168,11 +186,13 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
         aged: this.gpuAgedSpawns,
       },
       transform,
+      this.gpuTickInherited,
     );
     // Consumed - the next tick's range starts wherever the cursor now sits.
     this.gpuSpawnRangeStart = this.gpuSpawnCursor;
     this.gpuPendingSpawnCount = 0;
     this.gpuAgedSpawns = undefined;
+    this.gpuTickInherited = NOTHING_INHERITED;
   }
 
   public sortByDistance(): void {
@@ -200,6 +220,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.gpuSpawnRangeStart = 0;
     this.gpuPendingSpawnCount = 0;
     this.gpuAgedSpawns = undefined;
+    this.gpuTickInherited = NOTHING_INHERITED;
   }
 
   public applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void {
@@ -226,3 +247,6 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.simulation.destroy();
   }
 }
+
+// What a pass without births uploads: its spawn branch runs for no slot, so any value does.
+const NOTHING_INHERITED = new Float32Array(0);

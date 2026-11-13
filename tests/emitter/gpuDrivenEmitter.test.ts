@@ -1,7 +1,11 @@
 import { PerspectiveCamera } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { FXBufferLayout, FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
+import type {
+  FXBufferLayout,
+  FXInheritLayout,
+  FXParticleKernelArtifact,
+} from "../../src/artifact/FXArtifact";
 import {
   FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
@@ -71,12 +75,19 @@ function newWorld(): FXWorld {
 
 function emitterOn(
   mock: MockRenderer,
-  options: { gpuKernel?: FXParticleKernelArtifact; capacity?: number } = {},
+  options: {
+    gpuKernel?: FXParticleKernelArtifact;
+    capacity?: number;
+    inherit?: FXInheritLayout;
+  } = {},
   world: FXWorld = newWorld(),
 ): { emitter: FXEmitter; world: FXWorld } {
   const emitter = FXEmitter.fromArtifacts(
     unlitArtifact(),
-    behaviorArtifact({ lifetime: 5 }),
+    behaviorArtifact({
+      lifetime: 5,
+      ...(options.inherit === undefined ? {} : { inherit: options.inherit }),
+    }),
     {
       gpuKernel: options.gpuKernel ?? kernel(),
       renderer: mock.renderer,
@@ -282,6 +293,26 @@ describe("FXEmitter GPU spawn passes", () => {
       [4, 4],
     ]);
     expect(gl.uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM)).toBe(4);
+  });
+
+  it("hands the tick's pass the defaults to inherit, and a pass at an origin the origin's values", () => {
+    const mock = mockRenderer();
+    const { emitter, world } = emitterOn(mock, { inherit: { stride: 2, defaults: [5, 6] } });
+    // Copied at the call, as WebGL does: the holder reuses one array for every pass.
+    const uploads: number[][] = [];
+    const context = mock.gl.context as unknown as Record<string, unknown>;
+    const upload = context.uniform4fv as (location: unknown, value: Float32Array) => void;
+    context.uniform4fv = (location: unknown, value: Float32Array): void => {
+      uploads.push([...value]);
+      upload(location, value);
+    };
+    emitter.burst(1);
+    emitter.burst(1, { origin: { position: [1, 0, 0], inherited: [1, 2] } });
+    world.update(1 / 60);
+    expect(uploads).toEqual([
+      [5, 6, 0, 0],
+      [1, 2, 0, 0],
+    ]);
   });
 
   it("hands the tick's pass the births spread over it as the tail of its spawn range", () => {

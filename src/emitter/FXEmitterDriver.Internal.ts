@@ -37,6 +37,8 @@ export interface FXEmitterDriver {
    *  unwritten reads (zero). Replaced by {@link applyRenderArtifact}; reused for the depth
    *  (shadow-caster) material. */
   readonly layout: FXParticleLayout;
+  /** The particle slot this driver's simulation lays out (fixed for the driver's life). */
+  readonly slot: FXSlotLayout;
   readonly particleCount: number;
   readonly particleCapacity: number;
   /** Births lost to a full ring so far; `undefined` where that cannot be known (GPU - no
@@ -49,7 +51,8 @@ export interface FXEmitterDriver {
    *  simulation sees them; the GPU one would need a readback. */
   readonly reportsDeaths: boolean;
 
-  /** Claims `count` newborn slots and seeds them from `transform` and the current binding values.
+  /** Claims `count` newborn slots and seeds them from `transform`, `inherited` (the behavior's
+   *  inherit layout, shared by every newborn of the call) and the current binding values.
    *  `FXEmitter` is the only caller, once per queued birth, from its own tick (see its `tick`):
    *  between {@link beginTick} and {@link endTick} for the births at the tick's pose - JS seeds
    *  them right away, GPU gathers them into the tick's one pass - and after {@link endTick} (or on
@@ -59,14 +62,19 @@ export interface FXEmitterDriver {
    *  `ages`: the births were born earlier in the tick, this old (see {@link FXBirthAges}) - seeded
    *  with that age, where the kernel places them by it; without, they are born at its end. Inside
    *  a tick, aged births are its last at its pose: on the GPU they are the tail of the tick's
-   *  pass. */
-  spawn(count: number, transform: FXEmitterTransform, ages?: FXBirthAges): void;
+   *  pass. Every birth of one tick's pose shares one `inherited` array - on the GPU, one pass. */
+  spawn(
+    count: number,
+    transform: FXEmitterTransform,
+    inherited: Float32Array,
+    ages?: FXBirthAges,
+  ): void;
   /**
    * Starts (`sink`) or stops (`undefined`) reporting each particle that dies - of age, or killed
    * by its update: during {@link beginTick}, once per particle alive before the tick and dead after
-   * it, with its position
-   * and its velocity over the tick. A slot a birth overwrites, and particles {@link reset} clears,
-   * are not deaths. Throws when {@link reportsDeaths} is false and `sink` is given.
+   * it, with its slot (read during the call: a birth later in the tick may claim it) and its
+   * velocity over the tick. A slot a birth overwrites, and particles {@link reset} clears, are not
+   * deaths. Throws when {@link reportsDeaths} is false and `sink` is given.
    */
   watchDeaths(sink: FXParticleDeathSink | undefined): void;
   /** Runs before this tick's scheduled bursts/plays: JS updates every existing slot, then ages
@@ -102,11 +110,11 @@ export interface FXEmitterDriver {
   destroy(): void;
 }
 
-/** Receives one death from {@link FXEmitterDriver.watchDeaths}: position, then velocity. */
+/** Receives one death from {@link FXEmitterDriver.watchDeaths}: the slots it lies in from
+ *  `offset` on ({@link FXEmitterDriver.slot}), then its velocity. */
 export type FXParticleDeathSink = (
-  positionX: number,
-  positionY: number,
-  positionZ: number,
+  slots: Float32Array,
+  offset: number,
   velocityX: number,
   velocityY: number,
   velocityZ: number,

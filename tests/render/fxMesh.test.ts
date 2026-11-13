@@ -41,6 +41,26 @@ describe("FXMesh world drive", () => {
     world.dispose();
   });
 
+  it("draws with a seed of its own, the same every frame, another for every mesh built", () => {
+    const world = new FXWorld();
+    const first = FXMesh.fromArtifact(unlitArtifact(), {}, world);
+    const second = FXMesh.fromArtifact(unlitArtifact(), {}, world);
+    const seedOf = (mesh: FXMesh): unknown =>
+      ((mesh.material as ShaderMaterial).uniforms["RANDOM_SEED"] as { value: number }).value;
+    world.update(0.1);
+    const seed = seedOf(first);
+    expect(seedOf(second)).not.toBe(seed);
+    world.update(0.1);
+    expect(seedOf(first)).toBe(seed);
+    for (const shader of [
+      (first.material as ShaderMaterial).vertexShader,
+      (first.material as ShaderMaterial).fragmentShader,
+    ]) {
+      expect(shader).toContain("uniform float RANDOM_SEED;");
+    }
+    world.dispose();
+  });
+
   it("joins the default world when none is passed and is driven by the static update", () => {
     const mesh = FXMesh.fromArtifact(unlitArtifact());
     mesh.position.set(0, 0, 0);

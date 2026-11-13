@@ -15,12 +15,14 @@ export function createDrawFrame(): FXDrawFrame {
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
     objectVelocity: [0, 0, 0],
     objectAngularVelocity: [0, 0, 0],
+    seed: 0,
   };
 }
 
 /**
  * Fills `frame` with this tick's draw inputs for `object`, a single drawn object posed by its own
- * `matrixWorld`: the clock, the pose and the motion `tracker` samples from it. Returns `frame`.
+ * `matrixWorld`: the clock, the pose and the motion `tracker` samples from it, and its `seed`.
+ * Returns `frame`.
  */
 export function fillObjectDrawFrame(
   frame: FXDrawFrame,
@@ -28,6 +30,7 @@ export function fillObjectDrawFrame(
   object: Object3D,
   time: number,
   deltaTime: number,
+  seed: number,
 ): FXDrawFrame {
   const motion = sampleObjectMotion(tracker, object, deltaTime);
   frame.time = time;
@@ -35,5 +38,16 @@ export function fillObjectDrawFrame(
   frame.modelMatrix = object.matrixWorld.elements;
   frame.objectVelocity = motion.velocity;
   frame.objectAngularVelocity = motion.angularVelocity;
+  frame.seed = seed;
   return frame;
+}
+
+// The seed the next drawn object built takes (see FXDrawInputs.seed).
+let nextSeed = 0;
+
+/** A seed of its own for a drawn object being built: every object built takes the next one. */
+export function nextObjectSeed(): number {
+  const seed = nextSeed;
+  nextSeed += 1;
+  return seed;
 }
