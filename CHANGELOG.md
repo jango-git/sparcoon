@@ -5,6 +5,29 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## 0.19.0 - 2026-11-13
+
+### Added
+
+- **Shadow Threshold** on the editor's Surface sink: a shadow-casting effect's shadow keeps the
+  fragments whose alpha reaches it, so it moves where the shadow ends - shrinking a soft sprite's
+  shadow to its dense core, or widening it - without touching the visible effect. It works in every
+  render mode, opaque included; left unwired, the shadow ends where the visible surface does, as
+  before.
+
+### Changed
+
+- **Breaking:** re-export every effect.
+- **Breaking:** an `FXRenderArtifact` holds its GLSL in two programs (`FXRenderProgram`): `color`,
+  which draws it, and `shadow`, which draws it into a shadow map. Only code that builds render
+  artifacts by hand is affected; a shadow-casting emitter or mesh needs the `shadow` program.
+
+### Performance
+
+- A shadow-casting effect's shadow pass computes only what decides which fragments cast - the
+  color's alpha and the cutoff - and none of its lighting, color or emission, so its shaders are
+  smaller and compile faster.
+
 ## 0.18.0 - 2026-11-13
 
 ### Changed

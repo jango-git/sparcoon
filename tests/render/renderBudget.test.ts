@@ -190,11 +190,14 @@ describe("fxEmitterRenderBudget", () => {
     const base = unlitArtifact();
     const bridged = (types: readonly string[]): FXRenderArtifact => ({
       ...base,
-      varyings: types.map((type, index) => ({
-        name: `v_bridge${String(index)}`,
-        type,
-        interpolation: "smooth",
-      })),
+      color: {
+        ...base.color,
+        varyings: types.map((type, index) => ({
+          name: `v_bridge${String(index)}`,
+          type,
+          interpolation: "smooth",
+        })),
+      },
     });
     const plain = fxEmitterRenderBudget(base, slot()).varyingVectors;
     expect(fxEmitterRenderBudget(bridged(["mat4"]), slot()).varyingVectors).toBe(plain + 4);
@@ -203,11 +206,30 @@ describe("fxEmitterRenderBudget", () => {
     expect(fxEmitterRenderBudget(bridged(["mat2"]), slot()).varyingVectors).toBe(plain + 1);
   });
 
+  it("counts what the shadow program carries when the emitter casts a shadow", () => {
+    const base = unlitArtifact();
+    const carried = [
+      { name: "v_bridge0", type: "vec4", interpolation: "smooth" as const },
+      { name: "v_bridge1", type: "vec4", interpolation: "smooth" as const },
+      { name: "v_bridge2", type: "vec4", interpolation: "smooth" as const },
+    ];
+    const shadowing: FXRenderArtifact = { ...base, shadow: { ...base.shadow!, varyings: carried } };
+    const color = fxEmitterRenderBudget(shadowing, slot()).varyingVectors;
+    // The color program carries nothing, so only a shadowed budget sees the shadow's three rows.
+    expect(color).toBe(fxEmitterRenderBudget(base, slot()).varyingVectors);
+    expect(fxEmitterRenderBudget(shadowing, slot(), { castShadow: true }).varyingVectors).toBe(
+      fxEmitterRenderBudget(base, slot(), { castShadow: true }).varyingVectors + 3,
+    );
+  });
+
   it("counts a flat varying as any other", () => {
     const base = unlitArtifact();
     const carrying = (interpolation: "smooth" | "flat"): number =>
       fxEmitterRenderBudget(
-        { ...base, varyings: [{ name: "v_bridge0", type: "vec4", interpolation }] },
+        {
+          ...base,
+          color: { ...base.color, varyings: [{ name: "v_bridge0", type: "vec4", interpolation }] },
+        },
         slot(),
       ).varyingVectors;
     expect(carrying("flat")).toBe(carrying("smooth"));

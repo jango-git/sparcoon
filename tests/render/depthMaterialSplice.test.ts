@@ -28,11 +28,17 @@ function meshDepthShaders(render: FXRenderArtifact): ShaderMaterial {
 /** A lit fixture: the graph's `albedo` carries the intrinsic call, like a real lighting-node graph. */
 function litArtifact(): FXRenderArtifact {
   return {
-    ...unlitArtifact(),
+    ...unlitArtifact({ outputs: { albedo: "fxLambertShade(vec4(1.0), geometryNormal)" } }),
     lightingIntrinsics: ["fxLambertShade"],
-    sceneDepth: false,
-    outputs: { albedo: "fxLambertShade(vec4(1.0), geometryNormal)" },
   };
+}
+
+/** `outputs`' artifact drawn in `renderMode`. */
+function inMode(
+  renderMode: NonNullable<FXRenderArtifact["options"]>["renderMode"],
+  outputs: Record<string, string> = { albedo: "vec4(1.0)" },
+): FXRenderArtifact {
+  return { ...unlitArtifact({ outputs }), options: { renderMode } };
 }
 
 // Both depth builders (particle + mesh) share the same tail contract, so drive them from one table.
@@ -55,33 +61,59 @@ describe.each(BUILDERS)("$kind depth material assembly", ({ build }) => {
     expect(vertexShader).toContain("vHighPrecisionZW = gl_Position.zw;");
   });
 
-  it("keeps the alpha cutout in every non-opaque mode, so the shadow silhouette matches", () => {
-    const cutoff = "if (diffuseColor.a < clamp(0.0075, 0.0, 1.0)) discard;";
-
-    const blending = build(unlitArtifact({ outputs: { albedo: "vec4(1.0)" } }));
-    expect(blending.fragmentShader).toContain(cutoff);
-
-    const alphaHash = build({
-      ...unlitArtifact({ outputs: { albedo: "vec4(1.0)" } }),
-      options: { renderMode: "alphaHash" },
+  it("draws the shadow program, not the color one", () => {
+    const render = unlitArtifact();
+    const shadow = {
+      ...render.shadow!,
+      fragment: { ...render.shadow!.fragment, body: ["float shadowOnly = 0.5;"] },
+      outputs: { alpha: "shadowOnly" },
+    };
+    const { fragmentShader } = build({
+      ...render,
+      color: {
+        ...render.color,
+        fragment: { ...render.color.fragment, body: ["float colorOnly;"] },
+      },
+      shadow,
     });
-    expect(alphaHash.fragmentShader).toContain(cutoff);
-    expect(alphaHash.fragmentShader).toContain("#include <alphahash_fragment>");
+    expect(fragmentShader).toContain("float shadowOnly = 0.5;");
+    expect(fragmentShader).toContain("float fxShadowAlpha = shadowOnly;");
+    expect(fragmentShader).not.toContain("colorOnly");
+  });
 
-    const alphaTest = build({
-      ...unlitArtifact({ outputs: { albedo: "vec4(1.0)", alphaThreshold: "0.5" } }),
-      options: { renderMode: "alphaTest" },
-    });
+  it("throws on an artifact with no shadow program", () => {
+    expect(() => build({ ...unlitArtifact(), shadow: undefined })).toThrow(/no shadow program/);
+  });
+
+  it("keeps what the color material keeps when shadowThreshold is unwired", () => {
+    const cutoff = "if (fxShadowAlpha < clamp(0.0075, 0.0, 1.0)) discard;";
+
+    const blending = build(inMode("blending")).fragmentShader;
+    expect(blending).toContain("if (fxShadowAlpha < 0.0035) discard;");
+    expect(blending).toContain(cutoff);
+
+    // Always a hard cutoff: a hashed shadow would only add noise to the shadow map.
+    const alphaHash = build(inMode("alphaHash")).fragmentShader;
+    expect(alphaHash).toContain(cutoff);
+    expect(alphaHash).not.toContain("alphahash");
+
+    const alphaTest = build(inMode("alphaTest", { albedo: "vec4(1.0)", alphaThreshold: "0.5" }));
     expect(alphaTest.fragmentShader).toContain(
-      "if (diffuseColor.a < clamp(0.5, 0.0, 1.0)) discard;",
+      "if (fxShadowAlpha < clamp(0.5, 0.0, 1.0)) discard;",
     );
 
-    // Opaque keeps the GPU's early depth test - no discard anywhere.
-    const opaque = build({
-      ...unlitArtifact({ outputs: { albedo: "vec4(1.0)" } }),
-      options: { renderMode: "opaque" },
-    });
-    expect(opaque.fragmentShader).not.toContain("discard");
+    // The visible opaque material discards nothing, so neither does its shadow.
+    expect(build(inMode("opaque")).fragmentShader).not.toContain("discard");
+  });
+
+  it("cuts at a wired shadowThreshold in every mode, opaque included, instead of alphaThreshold", () => {
+    const outputs = { albedo: "vec4(1.0)", alphaThreshold: "0.2", shadowThreshold: "0.6" };
+    for (const mode of ["blending", "alphaHash", "alphaTest", "opaque"] as const) {
+      const { fragmentShader } = build(inMode(mode, outputs));
+      expect(fragmentShader).toContain("if (fxShadowAlpha < clamp(0.6, 0.0, 1.0)) discard;");
+      expect(fragmentShader).not.toContain("0.2");
+      expect(fragmentShader).not.toContain("0.0035");
+    }
   });
 
   it("resolves a lit graph's shade intrinsic without the lights, so it never samples a shadow map", () => {
@@ -91,7 +123,7 @@ describe.each(BUILDERS)("$kind depth material assembly", ({ build }) => {
       "vec4 fxLambertShade(vec4 diffuseColor, vec3 worldNormal) { return diffuseColor; }",
     );
     expect(fragmentShader).toContain(
-      "vec4 diffuseColor = fxLambertShade(vec4(1.0), geometryNormal);",
+      "float fxShadowAlpha = (fxLambertShade(vec4(1.0), geometryNormal)).a;",
     );
     expect(fragmentShader).toContain("gl_FragColor = packDepthToRGBA( fragCoordZ );");
     // In the shadow pass the light's shadow map is the target being drawn: a material with the

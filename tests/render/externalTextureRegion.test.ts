@@ -121,21 +121,23 @@ describe("external texture sampling variants", () => {
   const render = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     sceneDepth: false,
-    varyings: [],
-    vertex: {
-      uniformDeclarations: [],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
+    color: {
+      varyings: [],
+      vertex: {
+        uniformDeclarations: [],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+      },
+      fragment: {
+        uniformDeclarations: [`uniform sampler2D ${SAMPLER};`],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+        surfaceReads: NO_SURFACE_READS,
+      },
+      outputs: { albedo: `${sample}(p_uv)` },
     },
-    fragment: {
-      uniformDeclarations: [`uniform sampler2D ${SAMPLER};`],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
-      surfaceReads: NO_SURFACE_READS,
-    },
-    outputs: { albedo: `${sample}(p_uv)` },
     uniforms: { [SAMPLER]: { type: "sampler2D", external: SAMPLER } },
     attributeReads: [],
   });

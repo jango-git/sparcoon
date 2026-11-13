@@ -4,6 +4,7 @@ import { DoubleSide, NormalBlending, ShaderMaterial, UniformsLib, UniformsUtils 
 import type {
   FXParticleReads,
   FXRenderArtifact,
+  FXRenderProgram,
   FXSurfaceReads,
   FXValueSlot,
 } from "../artifact/FXArtifact.js";
@@ -91,17 +92,20 @@ function readProperties(reads: FXParticleReads): string[] {
   return properties;
 }
 
-/** The particle properties the fragment stage reads - each one a varying. */
-function fragmentReadProperties(render: FXRenderArtifact): ReadonlySet<string> {
-  return new Set(readProperties(render.fragment.particleReads));
+/** The particle properties a program's fragment stage reads - each one a varying. */
+function fragmentReadProperties(program: FXRenderProgram): ReadonlySet<string> {
+  return new Set(readProperties(program.fragment.particleReads));
 }
 
-/** The particle properties either stage reads. */
+/** The particle properties any stage of the render's programs reads: what its mesh must hold. */
 export function renderReadProperties(render: FXRenderArtifact): ReadonlySet<string> {
-  return new Set([
-    ...readProperties(render.vertex.particleReads),
-    ...readProperties(render.fragment.particleReads),
-  ]);
+  const programs = render.shadow === undefined ? [render.color] : [render.color, render.shadow];
+  return new Set(
+    programs.flatMap((program) => [
+      ...readProperties(program.vertex.particleReads),
+      ...readProperties(program.fragment.particleReads),
+    ]),
+  );
 }
 
 /**
@@ -162,10 +166,10 @@ function unpackStatements(
  * the render reads (see `particleLayout`), so each is declared. A missing field's property is a
  * zero constant instead. Only a property the fragment stage reads makes `p_<name>` a varying; for
  * the rest it is a plain vertex-shader global, so it costs none of the GPU's few varying vectors.
- * Shared by both adapters and the depth material.
+ * Shared by both adapters and the depth material, each for the program it draws.
  */
 function declareVaryings(
-  render: FXRenderArtifact,
+  program: FXRenderProgram,
   layout: FXParticleLayout,
 ): {
   attributeDeclarations: string;
@@ -182,7 +186,7 @@ function declareVaryings(
   for (const name in layout.missing) {
     properties[name] = layout.missing[name].glslTypeName;
   }
-  const fragmentReads = fragmentReadProperties(render);
+  const fragmentReads = fragmentReadProperties(program);
   const vertexVaryingDeclarations: string[] = [];
   const fragmentVaryingDeclarations: string[] = [];
   for (const name in properties) {
@@ -225,12 +229,12 @@ const FX_FLAT_DEFINE = [
   "#endif",
 ].join("\n");
 
-/** The declarations of what the graph carries between its stages - the same in both stages. */
-function graphVaryings(render: FXRenderArtifact): string {
-  const flat = render.varyings.some((varying) => varying.interpolation === "flat");
+/** The declarations of what a program carries between its stages - the same in both stages. */
+function graphVaryings(program: FXRenderProgram): string {
+  const flat = program.varyings.some((varying) => varying.interpolation === "flat");
   return [
     ...(flat ? [FX_FLAT_DEFINE] : []),
-    ...render.varyings.map(
+    ...program.varyings.map(
       (varying) =>
         `${varying.interpolation === "flat" ? "FX_FLAT " : ""}varying ${varying.type} ${varying.name};`,
     ),
@@ -467,49 +471,90 @@ function hashString(input: string): string {
   return (hash >>> 0).toString(36);
 }
 
-// Stable program-cache key from the artifact's GLSL and how its external textures are bound (a region
-// slot is its own program variant): identical artifacts bound alike share one compiled program.
-export function fxRenderArtifactCacheKey(
+// Stable program-cache key from one of the artifact's programs and how its external textures are
+// bound (a region slot is its own program variant): identical programs bound alike share one
+// compiled program.
+function programCacheKey(
   render: FXRenderArtifact,
-  external: FXExternalTextureBindings = {},
+  program: FXRenderProgram,
+  external: FXExternalTextureBindings,
 ): string {
   return hashString(
     [
       externalSamplingKey(external),
       render.lightingIntrinsics.join(","),
-      render.vertex.uniformDeclarations.join("|"),
-      render.fragment.uniformDeclarations.join("|"),
-      graphVaryings(render),
-      render.vertex.helperFunctions.join("|"),
-      render.vertex.body.join("|"),
-      render.fragment.helperFunctions.join("|"),
-      render.fragment.body.join("|"),
-      Object.entries(render.outputs)
+      program.vertex.uniformDeclarations.join("|"),
+      program.fragment.uniformDeclarations.join("|"),
+      graphVaryings(program),
+      program.vertex.helperFunctions.join("|"),
+      program.vertex.body.join("|"),
+      program.fragment.helperFunctions.join("|"),
+      program.fragment.body.join("|"),
+      Object.entries(program.outputs)
         .map(([slot, expression]) => `${slot}=${expression}`)
         .join("|"),
     ].join("\n"),
   );
 }
 
-// The fragment alpha-discard for a render mode (operates on `diffuseColor`). `alphaThresholdExpression`
-// is the hard cutoff (default 0.0075, clamped to [0,1] so an out-of-range graph expression can't force
-// an always/never discard), applied in every mode except `opaque` - `opaque` returns early with no
-// discard at all, so it keeps the GPU's early depth test. `blending` also drops near-zero fragments;
+/** The `alphaThreshold` cutoff where the graph leaves it unwired. */
+const DEFAULT_ALPHA_THRESHOLD = "0.0075";
+
+// `blending`'s own floor: the near-zero fragments it drops whatever the cutoff.
+function blendingFloorLine(alpha: string): string {
+  return `if (${alpha} < 0.0035) discard;`;
+}
+
+// A hard cutoff, clamped to [0,1] so an out-of-range graph expression can't force an always/never
+// discard.
+function cutoffLine(alpha: string, threshold: string): string {
+  return `if (${alpha} < clamp(${threshold}, 0.0, 1.0)) discard;`;
+}
+
+// The color material's alpha-discard for a render mode (operates on `diffuseColor`): the
+// `alphaThreshold` cutoff in every mode except `opaque` - `opaque` returns early with no discard at
+// all, so it keeps the GPU's early depth test. `blending` also drops near-zero fragments;
 // `alphaHash` adds the stochastic `alphahash_fragment` discard (needs `alphahash_pars_fragment` +
 // `vPosition` in scope).
-function alphaDiscardLines(renderMode: FXRenderMode, alphaThresholdExpression: string): string {
+function alphaDiscardLines(
+  renderMode: FXRenderMode,
+  outputs: Readonly<Record<string, string>>,
+): string {
   if (renderMode === "opaque") {
     return "";
   }
-  const cutoff = `if (diffuseColor.a < clamp(${alphaThresholdExpression}, 0.0, 1.0)) discard;`;
+  const threshold = outputOrDefault(outputs, "alphaThreshold", DEFAULT_ALPHA_THRESHOLD);
+  const cutoff = cutoffLine("diffuseColor.a", threshold);
   switch (renderMode) {
     case "blending":
-      return `if (diffuseColor.a < 0.0035) discard;\n${cutoff}`;
+      return `${blendingFloorLine("diffuseColor.a")}\n${cutoff}`;
     case "alphaHash":
       return `${cutoff}\n#include <alphahash_fragment>`;
     case "alphaTest":
       return cutoff;
   }
+}
+
+// The shadow program's discard (operates on `fxShadowAlpha`): a wired `shadowThreshold` is the
+// shadow's own cutoff in every mode, `opaque` included - it moves where the shadow ends without
+// touching the visible material. Unwired, the shadow keeps what the color material keeps: no
+// discard in `opaque`, the `alphaThreshold` cutoff (and `blending`'s floor) otherwise. Always
+// hard: a hashed shadow would only add noise to the shadow map.
+function shadowDiscardLines(
+  renderMode: FXRenderMode,
+  outputs: Readonly<Record<string, string>>,
+): string {
+  if ("shadowThreshold" in outputs) {
+    return cutoffLine("fxShadowAlpha", outputs["shadowThreshold"]);
+  }
+  if (renderMode === "opaque") {
+    return "";
+  }
+  const cutoff = cutoffLine(
+    "fxShadowAlpha",
+    outputOrDefault(outputs, "alphaThreshold", DEFAULT_ALPHA_THRESHOLD),
+  );
+  return renderMode === "blending" ? `${blendingFloorLine("fxShadowAlpha")}\n${cutoff}` : cutoff;
 }
 
 // The blend tail after the color is assembled: premultiply, then (blending mode only) fold `additivity`
@@ -536,18 +581,17 @@ function intensityLine(outputs: Readonly<Record<string, string>>): string {
 /** The fragment tail every color material ends with: the graph's `albedo`, the render mode's
  *  discard, the `intensity` multiplier, then three's opaque -> tone mapping -> color space -> fog
  *  chunks and the blend tail. */
-function colorFragmentTail(render: FXRenderArtifact, renderMode: FXRenderMode): string[] {
-  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
+function colorFragmentTail(program: FXRenderProgram, renderMode: FXRenderMode): string[] {
   return [
-    `vec4 diffuseColor = ${render.outputs["albedo"]};`,
-    alphaDiscardLines(renderMode, alphaThreshold),
-    intensityLine(render.outputs),
+    `vec4 diffuseColor = ${program.outputs["albedo"]};`,
+    alphaDiscardLines(renderMode, program.outputs),
+    intensityLine(program.outputs),
     "vec3 outgoingLight = diffuseColor.rgb;",
     "#include <opaque_fragment>",
     "#include <tonemapping_fragment>",
     "#include <colorspace_fragment>",
     "#include <fog_fragment>",
-    blendTail(renderMode, render.outputs),
+    blendTail(renderMode, program.outputs),
   ];
 }
 
@@ -606,10 +650,11 @@ export function buildUnlitArtifactMaterial(
   layout: FXParticleLayout,
   slots: FXMaterialSlots,
 ): ShaderMaterial {
+  const program = render.color;
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
 
-  if (!("albedo" in render.outputs)) {
+  if (!("albedo" in program.outputs)) {
     throw new Error("buildUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const {
@@ -617,9 +662,9 @@ export function buildUnlitArtifactMaterial(
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
-  } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
-  const frame = surfaceFrame(render.fragment.surfaceReads, false);
+  } = declareVaryings(program, layout);
+  const cacheKey = programCacheKey(render, program, slots.external);
+  const frame = surfaceFrame(program.fragment.surfaceReads, false);
 
   const vertexShader = [
     FX_CORE_PARTICLE_DEFINES,
@@ -632,9 +677,9 @@ export function buildUnlitArtifactMaterial(
     "varying float p_cameraDistance;",
     frame.varyings,
     vertexVaryingDeclarations,
-    graphVaryings(render),
-    render.vertex.uniformDeclarations.join("\n"),
-    render.vertex.helperFunctions.join("\n"),
+    graphVaryings(program),
+    program.vertex.uniformDeclarations.join("\n"),
+    program.vertex.helperFunctions.join("\n"),
     // `common` declares `vPosition` (under USE_ALPHAHASH); `fog_pars_vertex` declares `vFogDepth`.
     "#include <common>",
     "#include <fog_pars_vertex>",
@@ -642,8 +687,8 @@ export function buildUnlitArtifactMaterial(
     "void main() {",
     "p_uv = uv;",
     vertexAssignments,
-    render.vertex.body.join("\n"),
-    transformPreamble(render.outputs, frame.normalTransform),
+    program.vertex.body.join("\n"),
+    transformPreamble(program.outputs, frame.normalTransform),
     frame.vertex,
     projectFromModelPos(),
     "#include <fog_vertex>",
@@ -663,19 +708,19 @@ export function buildUnlitArtifactMaterial(
     "varying float p_cameraDistance;",
     frame.varyings,
     fragmentVaryingDeclarations,
-    graphVaryings(render),
-    render.fragment.uniformDeclarations.join("\n"),
+    graphVaryings(program),
+    program.fragment.uniformDeclarations.join("\n"),
     externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
-    render.fragment.helperFunctions.join("\n"),
+    program.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
     "#include <fog_pars_fragment>",
     frame.fragmentPars,
     "void main() {",
     frame.fragment,
-    render.fragment.body.join("\n"),
-    ...colorFragmentTail(render, renderMode),
+    program.fragment.body.join("\n"),
+    ...colorFragmentTail(program, renderMode),
     "}",
   ].join("\n");
 
@@ -709,10 +754,11 @@ function buildLitArtifactMaterial(
   layout: FXParticleLayout,
   slots: FXMaterialSlots,
 ): ShaderMaterial {
+  const program = render.color;
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
 
-  if (!("albedo" in render.outputs)) {
+  if (!("albedo" in program.outputs)) {
     throw new Error("buildLitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const {
@@ -720,9 +766,9 @@ function buildLitArtifactMaterial(
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
-  } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
-  const frame = surfaceFrame(render.fragment.surfaceReads, true);
+  } = declareVaryings(program, layout);
+  const cacheKey = programCacheKey(render, program, slots.external);
+  const frame = surfaceFrame(program.fragment.surfaceReads, true);
 
   const vertexShader = [
     "#define LAMBERT",
@@ -737,9 +783,9 @@ function buildLitArtifactMaterial(
     frame.varyings,
     "varying vec3 vViewPosition;",
     vertexVaryingDeclarations,
-    graphVaryings(render),
-    render.vertex.uniformDeclarations.join("\n"),
-    render.vertex.helperFunctions.join("\n"),
+    graphVaryings(program),
+    program.vertex.uniformDeclarations.join("\n"),
+    program.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
     frame.vertexPars,
@@ -747,8 +793,8 @@ function buildLitArtifactMaterial(
     "void main() {",
     "p_uv = uv;",
     vertexAssignments,
-    render.vertex.body.join("\n"),
-    transformPreamble(render.outputs, frame.normalTransform),
+    program.vertex.body.join("\n"),
+    transformPreamble(program.outputs, frame.normalTransform),
     frame.vertex,
     "vec3 transformed = position;",
     projectFromModelPos(),
@@ -773,11 +819,11 @@ function buildLitArtifactMaterial(
     "varying float p_cameraDistance;",
     frame.varyings,
     fragmentVaryingDeclarations,
-    graphVaryings(render),
-    render.fragment.uniformDeclarations.join("\n"),
+    graphVaryings(program),
+    program.fragment.uniformDeclarations.join("\n"),
     externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
-    render.fragment.helperFunctions.join("\n"),
+    program.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
     "#include <alphahash_pars_fragment>",
@@ -791,8 +837,8 @@ function buildLitArtifactMaterial(
     "void main() {",
     // The lighting intrinsics convert the world-space frame to view space at their own boundary.
     frame.fragment,
-    render.fragment.body.join("\n"),
-    ...colorFragmentTail(render, renderMode),
+    program.fragment.body.join("\n"),
+    ...colorFragmentTail(program, renderMode),
     "}",
   ].join("\n");
 
@@ -873,14 +919,15 @@ function buildMeshUnlitArtifactMaterial(
   render: FXRenderArtifact,
   slots: FXMaterialSlots,
 ): ShaderMaterial {
+  const program = render.color;
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
 
-  if (!("albedo" in render.outputs)) {
+  if (!("albedo" in program.outputs)) {
     throw new Error("buildMeshUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
-  const frame = surfaceFrame(render.fragment.surfaceReads, false);
+  const cacheKey = programCacheKey(render, program, slots.external);
+  const frame = surfaceFrame(program.fragment.surfaceReads, false);
 
   const vertexShader = [
     "varying vec2 p_uv;",
@@ -889,16 +936,16 @@ function buildMeshUnlitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
-    graphVaryings(render),
-    render.vertex.uniformDeclarations.join("\n"),
-    render.vertex.helperFunctions.join("\n"),
+    graphVaryings(program),
+    program.vertex.uniformDeclarations.join("\n"),
+    program.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
     frame.vertexPars,
     "void main() {",
     "p_uv = uv;",
-    render.vertex.body.join("\n"),
-    meshTransformPreamble(render.outputs, frame.normalTransform),
+    program.vertex.body.join("\n"),
+    meshTransformPreamble(program.outputs, frame.normalTransform),
     frame.vertex,
     meshProjectFromModelPos(),
     "#include <fog_vertex>",
@@ -913,19 +960,19 @@ function buildMeshUnlitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
-    graphVaryings(render),
-    render.fragment.uniformDeclarations.join("\n"),
+    graphVaryings(program),
+    program.fragment.uniformDeclarations.join("\n"),
     externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
-    render.fragment.helperFunctions.join("\n"),
+    program.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
     "#include <fog_pars_fragment>",
     frame.fragmentPars,
     "void main() {",
     frame.fragment,
-    render.fragment.body.join("\n"),
-    ...colorFragmentTail(render, renderMode),
+    program.fragment.body.join("\n"),
+    ...colorFragmentTail(program, renderMode),
     "}",
   ].join("\n");
 
@@ -951,14 +998,15 @@ function buildMeshLitArtifactMaterial(
   render: FXRenderArtifact,
   slots: FXMaterialSlots,
 ): ShaderMaterial {
+  const program = render.color;
   const options: RenderMaterialOptions = render.options ?? {};
   const renderMode = options.renderMode ?? "blending";
 
-  if (!("albedo" in render.outputs)) {
+  if (!("albedo" in program.outputs)) {
     throw new Error("buildMeshLitArtifactMaterial: render artifact has no 'albedo' output");
   }
-  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
-  const frame = surfaceFrame(render.fragment.surfaceReads, true);
+  const cacheKey = programCacheKey(render, program, slots.external);
+  const frame = surfaceFrame(program.fragment.surfaceReads, true);
 
   const vertexShader = [
     "#define LAMBERT",
@@ -969,17 +1017,17 @@ function buildMeshLitArtifactMaterial(
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
     "varying vec3 vViewPosition;",
-    graphVaryings(render),
-    render.vertex.uniformDeclarations.join("\n"),
-    render.vertex.helperFunctions.join("\n"),
+    graphVaryings(program),
+    program.vertex.uniformDeclarations.join("\n"),
+    program.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
     frame.vertexPars,
     "#include <shadowmap_pars_vertex>",
     "void main() {",
     "p_uv = uv;",
-    render.vertex.body.join("\n"),
-    meshTransformPreamble(render.outputs, frame.normalTransform),
+    program.vertex.body.join("\n"),
+    meshTransformPreamble(program.outputs, frame.normalTransform),
     frame.vertex,
     "vec3 transformed = position;",
     meshProjectFromModelPos(),
@@ -1001,11 +1049,11 @@ function buildMeshLitArtifactMaterial(
     "uniform vec3 objectVelocity;",
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
-    graphVaryings(render),
-    render.fragment.uniformDeclarations.join("\n"),
+    graphVaryings(program),
+    program.fragment.uniformDeclarations.join("\n"),
     externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
-    render.fragment.helperFunctions.join("\n"),
+    program.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
     "#include <alphahash_pars_fragment>",
@@ -1018,8 +1066,8 @@ function buildMeshLitArtifactMaterial(
     lightingFunctions(render),
     "void main() {",
     frame.fragment,
-    render.fragment.body.join("\n"),
-    ...colorFragmentTail(render, renderMode),
+    program.fragment.body.join("\n"),
+    ...colorFragmentTail(program, renderMode),
     "}",
   ].join("\n");
 
@@ -1061,39 +1109,45 @@ const DEPTH_FRAGMENT_TAIL = [
   "gl_FragColor = packDepthToRGBA( fragCoordZ );",
 ];
 
-// Depth (shadow-caster) twin of buildArtifactMaterial: the SAME compiled render IR spliced into a
-// customDepthMaterial so a cast shadow's silhouette honors the authored shape/deformation and the
-// exact same alpha cutout (dissolve, spherical-clip, blend-mode trim - all via alphaDiscardLines) as
-// the visible material. A stock MeshDepthMaterial would ignore all of that and, worse, collapse every
-// instanced particle onto one un-instanced vertex. It mirrors buildUnlit/LitArtifactMaterial's whole
-// vertex+fragment scope (every builtin the IR body reads must be declared, since the body is the same
-// IR) and only swaps the color tail for the RGBA depth pack. A lit graph's shade intrinsics resolve to
-// their stubs (`lightingStubs`): only the discarded RGB depends on shading, and every intrinsic returns
-// its input alpha unchanged, so the depth cutout stays correct. No light uniforms (`lights: true`): in
-// the shadow pass Three would bind the light's shadow map - the very target being drawn - to a sampler
-// the shade intrinsics read, a feedback loop the driver answers by dropping the draw (no shadow).
-// Fog/logdepth/clipping-planes are dropped, same as the 4 color builders.
+/** The shadow program of `render`, for the depth builder `builder` - which a trail never reaches. */
+function shadowProgram(render: FXRenderArtifact, builder: string): FXRenderProgram {
+  const program = render.shadow;
+  if (program === undefined) {
+    throw new Error(`${builder}: render artifact has no shadow program`);
+  }
+  if (!("alpha" in program.outputs)) {
+    throw new Error(`${builder}: shadow program has no 'alpha' output`);
+  }
+  return program;
+}
+
+// Depth (shadow-caster) twin of buildArtifactMaterial: the artifact's shadow program - the compiled
+// graph cut down to what decides which fragments cast (the albedo's alpha, the cutoffs) and where
+// they are - spliced into a customDepthMaterial, so a cast shadow's silhouette honors the authored
+// shape/deformation and cutout (dissolve, spherical-clip, blend-mode trim). A stock
+// MeshDepthMaterial would ignore all of that and, worse, collapse every instanced particle onto one
+// un-instanced vertex. It declares the builtins of the unlit color material's scope (the program
+// reads the same target) and ends in the RGBA depth pack. A shade intrinsic left in the program
+// (one whose shaded color feeds the alpha) resolves to its stub (`lightingStubs`), the input color
+// unshaded. No light uniforms (`lights: true`): in the shadow pass Three would bind the light's
+// shadow map - the very target being drawn - to a sampler the shade intrinsics read, a feedback
+// loop the driver answers by dropping the draw (no shadow). Fog/logdepth/clipping-planes are
+// dropped, same as the 4 color builders.
 export function buildArtifactDepthMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
   slots: FXMaterialSlots,
 ): ShaderMaterial {
-  const options: RenderMaterialOptions = render.options ?? {};
-  const renderMode = options.renderMode ?? "blending";
-  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
-
-  if (!("albedo" in render.outputs)) {
-    throw new Error("buildArtifactDepthMaterial: render artifact has no 'albedo' output");
-  }
-  const albedo = render.outputs["albedo"];
+  const program = shadowProgram(render, "buildArtifactDepthMaterial");
+  const renderMode = render.options?.renderMode ?? "blending";
   const {
     attributeDeclarations,
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
-  } = declareVaryings(render, layout);
-  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
-  const frame = surfaceFrame(render.fragment.surfaceReads, false);
+  } = declareVaryings(program, layout);
+  const cacheKey = programCacheKey(render, program, slots.external);
+  const frame = surfaceFrame(program.fragment.surfaceReads, false);
 
   const vertexShader = [
     FX_CORE_PARTICLE_DEFINES,
@@ -1108,16 +1162,16 @@ export function buildArtifactDepthMaterial(
     // High-precision NDC z/w carried to the fragment for the depth pack (mirrors stock depth.glsl.js).
     "varying vec2 vHighPrecisionZW;",
     vertexVaryingDeclarations,
-    graphVaryings(render),
-    render.vertex.uniformDeclarations.join("\n"),
-    render.vertex.helperFunctions.join("\n"),
+    graphVaryings(program),
+    program.vertex.uniformDeclarations.join("\n"),
+    program.vertex.helperFunctions.join("\n"),
     "#include <common>",
     frame.vertexPars,
     "void main() {",
     "p_uv = uv;",
     vertexAssignments,
-    render.vertex.body.join("\n"),
-    transformPreamble(render.outputs, frame.normalTransform),
+    program.vertex.body.join("\n"),
+    transformPreamble(program.outputs, frame.normalTransform),
     frame.vertex,
     projectFromModelPos(),
     "vHighPrecisionZW = gl_Position.zw;",
@@ -1136,21 +1190,20 @@ export function buildArtifactDepthMaterial(
     frame.varyings,
     "varying vec2 vHighPrecisionZW;",
     fragmentVaryingDeclarations,
-    graphVaryings(render),
-    render.fragment.uniformDeclarations.join("\n"),
+    graphVaryings(program),
+    program.fragment.uniformDeclarations.join("\n"),
     externalSamplingFunctions(slots.external),
     cameraDepthStub(render),
-    render.fragment.helperFunctions.join("\n"),
+    program.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
-    "#include <alphahash_pars_fragment>",
     frame.fragmentPars,
     lightingStubs(render),
     "void main() {",
     frame.fragment,
-    render.fragment.body.join("\n"),
-    `vec4 diffuseColor = ${albedo};`,
-    alphaDiscardLines(renderMode, alphaThreshold),
+    program.fragment.body.join("\n"),
+    `float fxShadowAlpha = ${program.outputs["alpha"]};`,
+    shadowDiscardLines(renderMode, program.outputs),
     ...DEPTH_FRAGMENT_TAIL,
     "}",
   ].join("\n");
@@ -1176,23 +1229,16 @@ export function buildArtifactDepthMaterial(
   return material;
 }
 
-// Mesh twin of buildArtifactDepthMaterial (the mesh-path depth builder): mirrors buildMeshUnlit/
-// LitArtifactMaterial's scope with the particle plumbing removed, swapping the color tail for the
-// depth pack. The same lighting stubs. No `varyings` - a VFX mesh has no instanced attributes.
+// Mesh twin of buildArtifactDepthMaterial (the mesh-path depth builder): the mesh's shadow program
+// in buildMeshUnlitArtifactMaterial's scope, ending in the depth pack. The same lighting stubs. No `varyings` - a VFX mesh has no instanced attributes.
 export function buildMeshArtifactDepthMaterial(
   render: FXRenderArtifact,
   slots: FXMaterialSlots,
 ): ShaderMaterial {
-  const options: RenderMaterialOptions = render.options ?? {};
-  const renderMode = options.renderMode ?? "blending";
-  const alphaThreshold = outputOrDefault(render.outputs, "alphaThreshold", "0.0075");
-
-  if (!("albedo" in render.outputs)) {
-    throw new Error("buildMeshArtifactDepthMaterial: render artifact has no 'albedo' output");
-  }
-  const albedo = render.outputs["albedo"];
-  const cacheKey = fxRenderArtifactCacheKey(render, slots.external);
-  const frame = surfaceFrame(render.fragment.surfaceReads, false);
+  const program = shadowProgram(render, "buildMeshArtifactDepthMaterial");
+  const renderMode = render.options?.renderMode ?? "blending";
+  const cacheKey = programCacheKey(render, program, slots.external);
+  const frame = surfaceFrame(program.fragment.surfaceReads, false);
 
   const vertexShader = [
     "varying vec2 p_uv;",
@@ -1202,15 +1248,15 @@ export function buildMeshArtifactDepthMaterial(
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
     "varying vec2 vHighPrecisionZW;",
-    graphVaryings(render),
-    render.vertex.uniformDeclarations.join("\n"),
-    render.vertex.helperFunctions.join("\n"),
+    graphVaryings(program),
+    program.vertex.uniformDeclarations.join("\n"),
+    program.vertex.helperFunctions.join("\n"),
     "#include <common>",
     frame.vertexPars,
     "void main() {",
     "p_uv = uv;",
-    render.vertex.body.join("\n"),
-    meshTransformPreamble(render.outputs, frame.normalTransform),
+    program.vertex.body.join("\n"),
+    meshTransformPreamble(program.outputs, frame.normalTransform),
     frame.vertex,
     meshProjectFromModelPos(),
     "vHighPrecisionZW = gl_Position.zw;",
@@ -1226,21 +1272,20 @@ export function buildMeshArtifactDepthMaterial(
     "uniform vec3 objectAngularVelocity;",
     frame.varyings,
     "varying vec2 vHighPrecisionZW;",
-    graphVaryings(render),
-    render.fragment.uniformDeclarations.join("\n"),
+    graphVaryings(program),
+    program.fragment.uniformDeclarations.join("\n"),
     externalSamplingFunctions(slots.external),
     cameraDepthStub(render),
-    render.fragment.helperFunctions.join("\n"),
+    program.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <packing>",
-    "#include <alphahash_pars_fragment>",
     frame.fragmentPars,
     lightingStubs(render),
     "void main() {",
     frame.fragment,
-    render.fragment.body.join("\n"),
-    `vec4 diffuseColor = ${albedo};`,
-    alphaDiscardLines(renderMode, alphaThreshold),
+    program.fragment.body.join("\n"),
+    `float fxShadowAlpha = ${program.outputs["alpha"]};`,
+    shadowDiscardLines(renderMode, program.outputs),
     ...DEPTH_FRAGMENT_TAIL,
     "}",
   ].join("\n");
@@ -1452,7 +1497,7 @@ function trailLayoutAttributes(layout: FXTrailLayout): {
  * around it); a recorded field is interpolated between the segment's points; a missing one is zero.
  */
 function declareTrailProperties(
-  render: FXRenderArtifact,
+  program: FXRenderProgram,
   layout: FXTrailLayout,
 ): {
   vertexDeclarations: string;
@@ -1464,7 +1509,7 @@ function declareTrailProperties(
     ...layout.recorded,
     [FX_CORE_POSITION]: { glslTypeName: "vec3", bufferSize: 3, instantiable: true },
   };
-  const fragmentReads = fragmentReadProperties(render);
+  const fragmentReads = fragmentReadProperties(program);
   const vertexDeclarations: string[] = [];
   const fragmentDeclarations: string[] = [];
   const assignments: string[] = [];
@@ -1520,8 +1565,9 @@ export function buildTrailArtifactMaterial(
   slots: FXMaterialSlots,
   trailUniforms: FXTrailUniforms,
 ): ShaderMaterial {
+  const program = render.color;
   const renderMode = render.options?.renderMode ?? "blending";
-  if (!("albedo" in render.outputs)) {
+  if (!("albedo" in program.outputs)) {
     throw new Error("buildTrailArtifactMaterial: render artifact has no 'albedo' output");
   }
   if (isLitArtifact(render)) {
@@ -1534,13 +1580,13 @@ export function buildTrailArtifactMaterial(
     throw new Error("buildTrailArtifactMaterial: a gpu history must record position and lifecycle");
   }
   // A ribbon has no surface normal or tangent of its own (the editor's trail target offers neither).
-  const { surfaceReads } = render.fragment;
+  const { surfaceReads } = program.fragment;
   if (surfaceReads.normal || surfaceReads.tangent) {
     throw new Error("buildTrailArtifactMaterial: a trail has no surface normal or tangent");
   }
   const frame = surfaceFrame(surfaceReads, false);
-  const width = outputOrDefault(render.outputs, "width", "0.1");
-  const properties = declareTrailProperties(render, layout);
+  const width = outputOrDefault(program.outputs, "width", "0.1");
+  const properties = declareTrailProperties(program, layout);
   const attributes = trailLayoutAttributes(layout);
   const ageVectors = FX_TRAIL_MAX_FRAMES / 4;
   const sharedDeclarations = [
@@ -1568,9 +1614,9 @@ export function buildTrailArtifactMaterial(
           `uniform vec4 u_trailAges[${String(ageVectors)}];`,
         ]),
     properties.vertexDeclarations,
-    graphVaryings(render),
-    render.vertex.uniformDeclarations.join("\n"),
-    render.vertex.helperFunctions.join("\n"),
+    graphVaryings(program),
+    program.vertex.uniformDeclarations.join("\n"),
+    program.vertex.helperFunctions.join("\n"),
     "#include <common>",
     "#include <fog_pars_vertex>",
     ...(layout.kind === "gpu" ? [TRAIL_AGE_LOOKUP] : []),
@@ -1582,7 +1628,7 @@ export function buildTrailArtifactMaterial(
     properties.assignments,
     // Along the trail from its head (0) to its tail (1), and across it (0 -> 1).
     "p_uv = vec2(clamp(p_trailAge / max(u_trailSpan, 1e-6), 0.0, 1.0), fxTrailSide * 0.5 + 0.5);",
-    render.vertex.body.join("\n"),
+    program.vertex.body.join("\n"),
     `float fxTrailWidth = ${width};`,
     "vec3 fxTrailDirection = fxTrailPosB - fxTrailPosA;",
     // A point with no joint (a particle's first or last point) faces its own segment.
@@ -1609,18 +1655,18 @@ export function buildTrailArtifactMaterial(
     FX_CORE_PARTICLE_DEFINES,
     ...sharedDeclarations,
     properties.fragmentDeclarations,
-    graphVaryings(render),
-    render.fragment.uniformDeclarations.join("\n"),
+    graphVaryings(program),
+    program.fragment.uniformDeclarations.join("\n"),
     externalSamplingFunctions(slots.external),
     cameraDepthFunctions(render),
-    render.fragment.helperFunctions.join("\n"),
+    program.fragment.helperFunctions.join("\n"),
     "#include <common>",
     "#include <alphahash_pars_fragment>",
     "#include <fog_pars_fragment>",
     "void main() {",
     frame.fragment,
-    render.fragment.body.join("\n"),
-    ...colorFragmentTail(render, renderMode),
+    program.fragment.body.join("\n"),
+    ...colorFragmentTail(program, renderMode),
     "}",
   ].join("\n");
 
@@ -1641,6 +1687,6 @@ export function buildTrailArtifactMaterial(
     fragmentShader,
     renderMode,
     lit: false,
-    cacheKey: `fx-trail-${layout.kind}_${fxRenderArtifactCacheKey(render, slots.external)}`,
+    cacheKey: `fx-trail-${layout.kind}_${programCacheKey(render, program, slots.external)}`,
   });
 }

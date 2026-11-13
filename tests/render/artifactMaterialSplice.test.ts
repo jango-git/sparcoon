@@ -3,14 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
 import type { GLTypeInfo } from "../../src/instancedParticle/glTypeInfo";
 import { FXArtifactMaterial } from "../../src/render/FXArtifactMaterial";
-import {
-  layoutOf,
-  NO_PARTICLE_READS,
-  NO_SURFACE_READS,
-  unlitArtifact,
-  VEC2_VARYING,
-  VEC3_VARYING,
-} from "../helpers/artifacts";
+import { layoutOf, unlitArtifact, VEC2_VARYING, VEC3_VARYING } from "../helpers/artifacts";
 
 /** The two fixed core buffers plus any named attribute varyings the outputs reference. */
 function varyings(attrs: Record<string, GLTypeInfo> = {}): Record<string, GLTypeInfo> {
@@ -75,12 +68,16 @@ describe("unlit ShaderMaterial assembly", () => {
   });
 
   it("declares the graph's varyings in both stages, flat ones flat where the GLSL has it", () => {
+    const base = unlitArtifact();
     const render = {
-      ...unlitArtifact(),
-      varyings: [
-        { name: "v_bridge_0", type: "float", interpolation: "flat" as const },
-        { name: "v_bridge_1", type: "vec2", interpolation: "smooth" as const },
-      ],
+      ...base,
+      color: {
+        ...base.color,
+        varyings: [
+          { name: "v_bridge_0", type: "float", interpolation: "flat" as const },
+          { name: "v_bridge_1", type: "vec2", interpolation: "smooth" as const },
+        ],
+      },
     };
     const { vertexShader, fragmentShader } = assembledShaders(render, varyings());
     for (const shader of [vertexShader, fragmentShader]) {
@@ -170,28 +167,10 @@ describe("unlit ShaderMaterial assembly", () => {
 });
 
 describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
+  // Shading lives in the graph: `albedo` already carries the intrinsic call.
   const lit = (intrinsics: readonly string[]): FXRenderArtifact => ({
+    ...unlitArtifact({ outputs: { albedo: "fxLambertShade(vec4(1.0), geometryNormal)" } }),
     lightingIntrinsics: intrinsics,
-    sceneDepth: false,
-    varyings: [],
-    vertex: {
-      uniformDeclarations: [],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
-    },
-    fragment: {
-      uniformDeclarations: [],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
-      // The intrinsic call below reads the normal.
-      surfaceReads: { ...NO_SURFACE_READS, normal: true },
-    },
-    // Shading lives in the graph: `albedo` already carries the intrinsic call.
-    outputs: { albedo: "fxLambertShade(vec4(1.0), geometryNormal)" },
-    uniforms: {},
-    attributeReads: [],
   });
 
   it("lights up Three's infrastructure and defines the shade intrinsics before main", () => {
@@ -233,28 +212,12 @@ describe("lit ShaderMaterial assembly (non-empty lighting capability)", () => {
 
 // The opaque and alphaTest tails, shared with the mesh material, are materialContract.test.ts.
 describe("render mode + additivity blend tail", () => {
-  const artifact = (over: Partial<FXRenderArtifact>): FXRenderArtifact => ({
-    lightingIntrinsics: [],
-    sceneDepth: false,
-    varyings: [],
-    vertex: {
-      uniformDeclarations: [],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
-    },
-    fragment: {
-      uniformDeclarations: [],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
-      surfaceReads: NO_SURFACE_READS,
-    },
-    outputs: { albedo: "vec4(1.0)" },
-    uniforms: {},
-    attributeReads: [],
-    ...over,
-  });
+  const artifact = (
+    over: { outputs?: Record<string, string> } & Partial<FXRenderArtifact>,
+  ): FXRenderArtifact => {
+    const { outputs, ...rest } = over;
+    return { ...unlitArtifact(outputs === undefined ? {} : { outputs }), ...rest };
+  };
 
   it("blending (default): folds additivity into the output alpha, keeps floor + cutoff discards", () => {
     const { fragmentShader } = assembledShaders(

@@ -65,21 +65,23 @@ describe("render artifact - generated & external textures", () => {
   const withGeneratedTexture = (texture: Texture): FXRenderArtifact => ({
     lightingIntrinsics: [],
     sceneDepth: false,
-    varyings: [],
-    vertex: {
-      uniformDeclarations: [],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
+    color: {
+      varyings: [],
+      vertex: {
+        uniformDeclarations: [],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+      },
+      fragment: {
+        uniformDeclarations: ["uniform sampler2D u_grad$0;"],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+        surfaceReads: NO_SURFACE_READS,
+      },
+      outputs: { albedo: "texture2D(u_grad$0, p_uv)" },
     },
-    fragment: {
-      uniformDeclarations: ["uniform sampler2D u_grad$0;"],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
-      surfaceReads: NO_SURFACE_READS,
-    },
-    outputs: { albedo: "texture2D(u_grad$0, p_uv)" },
     uniforms: { u_grad$0: { type: "sampler2D", value: texture } },
     attributeReads: [],
   });
@@ -87,21 +89,23 @@ describe("render artifact - generated & external textures", () => {
   const withExternalTexture = (): FXRenderArtifact => ({
     lightingIntrinsics: [],
     sceneDepth: false,
-    varyings: [],
-    vertex: {
-      uniformDeclarations: [],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
+    color: {
+      varyings: [],
+      vertex: {
+        uniformDeclarations: [],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+      },
+      fragment: {
+        uniformDeclarations: ["uniform sampler2D u_flame$0;"],
+        helperFunctions: [],
+        body: [],
+        particleReads: NO_PARTICLE_READS,
+        surfaceReads: NO_SURFACE_READS,
+      },
+      outputs: { albedo: "texture2D(u_flame$0, p_uv)" },
     },
-    fragment: {
-      uniformDeclarations: ["uniform sampler2D u_flame$0;"],
-      helperFunctions: [],
-      body: [],
-      particleReads: NO_PARTICLE_READS,
-      surfaceReads: NO_SURFACE_READS,
-    },
-    outputs: { albedo: "texture2D(u_flame$0, p_uv)" },
     uniforms: { u_flame$0: { type: "sampler2D", external: "flame" } },
     attributeReads: [],
   });
@@ -124,21 +128,23 @@ describe("render artifact - generated & external textures", () => {
     const render: FXRenderArtifact = {
       lightingIntrinsics: [],
       sceneDepth: false,
-      varyings: [],
-      vertex: {
-        uniformDeclarations: [],
-        helperFunctions: [],
-        body: [],
-        particleReads: NO_PARTICLE_READS,
+      color: {
+        varyings: [],
+        vertex: {
+          uniformDeclarations: [],
+          helperFunctions: [],
+          body: [],
+          particleReads: NO_PARTICLE_READS,
+        },
+        fragment: {
+          uniformDeclarations: ["uniform sampler2D u_grad$0;", "uniform sampler2D u_flame$1;"],
+          helperFunctions: [],
+          body: [],
+          particleReads: NO_PARTICLE_READS,
+          surfaceReads: NO_SURFACE_READS,
+        },
+        outputs: { albedo: "texture2D(u_grad$0, p_uv) * texture2D(u_flame$1, p_uv)" },
       },
-      fragment: {
-        uniformDeclarations: ["uniform sampler2D u_grad$0;", "uniform sampler2D u_flame$1;"],
-        helperFunctions: [],
-        body: [],
-        particleReads: NO_PARTICLE_READS,
-        surfaceReads: NO_SURFACE_READS,
-      },
-      outputs: { albedo: "texture2D(u_grad$0, p_uv) * texture2D(u_flame$1, p_uv)" },
       uniforms: {
         u_grad$0: { type: "sampler2D", value: gradient },
         u_flame$1: { type: "sampler2D", external: "flame" },

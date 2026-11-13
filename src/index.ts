@@ -14,6 +14,7 @@ export type {
   FXParticleKernelArtifact,
   FXParticleReads,
   FXRenderArtifact,
+  FXRenderProgram,
   FXShaderStageSource,
   FXSurfaceReads,
   FXUniformInit,

@@ -56,8 +56,8 @@ export class FXArtifactMaterial {
   }
 
   /**
-   * The `customDepthMaterial` for casting shadows: the same artifact IR spliced into a depth-packing
-   * material, so the shadow silhouette honors the authored shape/alpha-cutout (see
+   * The `customDepthMaterial` for casting shadows: the artifact's shadow program spliced into a
+   * depth-packing material, so the shadow silhouette honors the authored shape/alpha-cutout (see
    * {@link buildArtifactDepthMaterial}). Built only when the emitter opts into `castShadow`.
    */
   public buildThreeDepthMaterial(layout: FXParticleLayout): Material {

@@ -6,6 +6,7 @@ import type {
   FXParticleReads,
   FXRenderArtifact,
   FXRenderArtifactsByGLSLTier,
+  FXRenderProgram,
   FXSurfaceReads,
 } from "../../src/artifact/FXArtifact";
 import {
@@ -124,27 +125,69 @@ export function unlitArtifact(
     geometry?: FXRenderArtifact["geometry"];
   } = {},
 ): FXRenderArtifact {
-  const outputs = over.outputs ?? { albedo: "vec4(1.0)" };
+  const { shadowThreshold, ...colorOutputs } = over.outputs ?? { albedo: "vec4(1.0)" };
   const attributeReads = over.attributeReads ?? [];
   const vertexBody = over.vertexBody ?? [];
   const fragmentBody = over.fragmentBody ?? [];
+  const uniformDeclarations = over.uniformDeclarations ?? [];
+  return {
+    lightingIntrinsics: [],
+    sceneDepth: false,
+    geometry: over.geometry,
+    color: programOf(colorOutputs, vertexBody, fragmentBody, uniformDeclarations, attributeReads),
+    shadow: programOf(
+      shadowOutputsOf(colorOutputs, shadowThreshold),
+      vertexBody,
+      fragmentBody,
+      uniformDeclarations,
+      attributeReads,
+    ),
+    uniforms: over.uniforms ?? {},
+    attributeReads,
+  };
+}
+
+/** The slots a shadow program carries over from the color program's, as the editor's target does. */
+const SHADOW_CARRIED_SLOTS = ["alphaThreshold", "particleTransform", "vertexTransform"];
+
+/** The shadow program's outputs for color `outputs`: the albedo's alpha, the cutoffs and the
+ *  transforms - what the editor's shadow program keeps of a graph. */
+export function shadowOutputsOf(
+  outputs: Readonly<Record<string, string>>,
+  shadowThreshold?: string,
+): Record<string, string> {
+  return {
+    alpha: `(${outputs["albedo"] ?? "vec4(1.0)"}).a`,
+    ...Object.fromEntries(
+      SHADOW_CARRIED_SLOTS.filter((slot) => slot in outputs).map((slot) => [slot, outputs[slot]]),
+    ),
+    ...(shadowThreshold === undefined ? {} : { shadowThreshold }),
+  };
+}
+
+/** One program over hand-written stage `code`, with what it reads recorded as the editor does. */
+export function programOf(
+  outputs: Readonly<Record<string, string>>,
+  vertexBody: readonly string[] = [],
+  fragmentBody: readonly string[] = [],
+  uniformDeclarations: readonly string[] = [],
+  attributeReads: readonly FXAttributeDecl[] = [],
+): FXRenderProgram {
   const outputsOf = (vertex: boolean): string[] =>
     Object.keys(outputs)
       .filter((slot) => VERTEX_OUTPUT_SLOTS.has(slot) === vertex)
       .map((slot) => outputs[slot]);
-  const stage = (body: readonly string[], vertex: boolean): FXRenderArtifact["vertex"] => ({
+  const stage = (body: readonly string[], vertex: boolean): FXRenderProgram["vertex"] => ({
     // As the editor declares them: in each stage whose code reads them.
-    uniformDeclarations: declaredIn([...body, ...outputsOf(vertex)].join("\n"), [
-      ...(over.uniformDeclarations ?? []),
-    ]),
+    uniformDeclarations: declaredIn(
+      [...body, ...outputsOf(vertex)].join("\n"),
+      uniformDeclarations,
+    ),
     helperFunctions: [],
     body,
     particleReads: particleReadsIn([...body, ...outputsOf(vertex)].join("\n"), attributeReads),
   });
   return {
-    lightingIntrinsics: [],
-    sceneDepth: false,
-    geometry: over.geometry,
     varyings: [],
     vertex: stage(vertexBody, true),
     fragment: {
@@ -152,8 +195,6 @@ export function unlitArtifact(
       surfaceReads: surfaceReadsIn([...fragmentBody, ...outputsOf(false)].join("\n")),
     },
     outputs,
-    uniforms: over.uniforms ?? {},
-    attributeReads,
   };
 }
 

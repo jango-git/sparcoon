@@ -137,6 +137,19 @@ export interface FXFragmentStageSource extends FXShaderStageSource {
   readonly surfaceReads: FXSurfaceReads;
 }
 
+/**
+ * One shader program of a render, spliced into one Three material: its two stages, what it carries
+ * between them, and the GLSL expression each of its output slots reads (slot -> expression). The
+ * programs of one render share its uniforms and its draw stage ({@link FXRenderArtifact.compute}).
+ */
+export interface FXRenderProgram {
+  /** What the program carries from its vertex stage to its fragment stage, declared in both. */
+  readonly varyings: readonly FXVaryingDecl[];
+  readonly vertex: FXShaderStageSource;
+  readonly fragment: FXFragmentStageSource;
+  readonly outputs: Readonly<Record<string, string>>;
+}
+
 /** Render half of an emitted effect: compiled GLSL spliced into a Three material, plus live uniforms. */
 export interface FXRenderArtifact {
   /**
@@ -159,18 +172,21 @@ export interface FXRenderArtifact {
   /** Absent => `"plane"`. */
   readonly geometry?: FXGeometrySource;
   readonly options?: FXGraphUnlitMaterialOptions | FXGraphLambertMaterialOptions;
-  /** What the graph carries from its vertex stage to its fragment stage, declared in both. */
-  readonly varyings: readonly FXVaryingDecl[];
-  readonly vertex: FXShaderStageSource;
-  readonly fragment: FXFragmentStageSource;
   /**
-   * slot -> GLSL expression: `albedo` (required; already carries the shaded color when lit), the
-   * optional fragment-stage compositing slots (`additivity` / `alphaThreshold`, and `intensity`: a
-   * multiplier on the color alone, never its alpha, in linear light), and the optional
-   * vertex-stage `particleTransform` / `vertexTransform` (mat4). Shading normal and emission are node
-   * inputs now, not surface slots.
+   * The program drawing the effect. Its outputs: `albedo` (required; already carries the shaded
+   * color when lit), the optional fragment-stage compositing slots (`additivity` /
+   * `alphaThreshold`, and `intensity`: a multiplier on the color alone, never its alpha, in linear
+   * light), the optional vertex-stage `particleTransform` / `vertexTransform` (mat4), and a
+   * trail's `width`.
    */
-  readonly outputs: Readonly<Record<string, string>>;
+  readonly color: FXRenderProgram;
+  /**
+   * The program drawing the effect into a shadow map: only what decides which fragments cast -
+   * the albedo's alpha and the cutoffs - and where they are. Its outputs: `alpha` (required), the
+   * optional `alphaThreshold` / `shadowThreshold` cutoffs and `particleTransform` /
+   * `vertexTransform`. Absent for a trail, which casts no shadow.
+   */
+  readonly shadow?: FXRenderProgram;
   readonly uniforms: Record<string, FXUniformInit>;
   /**
    * The attributes the render declares, with their widths (`p_fx_<name>`); the emitter merges these

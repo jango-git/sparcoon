@@ -4,6 +4,7 @@ import type {
   FXBufferLayout,
   FXGLSLRenderTier,
   FXRenderArtifact,
+  FXRenderProgram,
   FXSurfaceReads,
 } from "../artifact/FXArtifact.js";
 import { FX_CORE_BUFFERS } from "../coreLayout.js";
@@ -449,10 +450,7 @@ function heaviestMaterialBudget(
   externalSlots: readonly string[],
 ): FXRenderBudget {
   const noReads = { position: false, lifecycle: false, attributes: [] };
-  const heaviest: FXRenderArtifact = {
-    lightingIntrinsics,
-    sceneDepth: false,
-    options: { renderMode: "alphaHash" },
+  const program = (outputs: Record<string, string>): FXRenderProgram => ({
     varyings: [],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: [], particleReads: noReads },
     fragment: {
@@ -463,7 +461,14 @@ function heaviestMaterialBudget(
       particleReads: noReads,
       surfaceReads,
     },
-    outputs: { albedo: "vec4(1.0)" },
+    outputs,
+  });
+  const heaviest: FXRenderArtifact = {
+    lightingIntrinsics,
+    sceneDepth: false,
+    options: { renderMode: "alphaHash" },
+    color: program({ albedo: "vec4(1.0)" }),
+    shadow: program({ alpha: "1.0" }),
     uniforms: Object.fromEntries(
       externalSlots.map((name) => [name, { type: "sampler2D", external: name }]),
     ),

@@ -13,12 +13,7 @@ const HALF_LIT_CALL = "fxHalfLitShade(vec4(1.0), geometryNormal, 1.0, 0.5, 8.0)"
 
 /** A lit artifact listing `intrinsics`, its albedo `albedo` (a call of one of them). */
 function litArtifact(intrinsics: readonly string[], albedo = HALF_LIT_CALL): FXRenderArtifact {
-  const base = unlitArtifact({ outputs: { albedo } });
-  return {
-    ...base,
-    lightingIntrinsics: intrinsics,
-    fragment: { ...base.fragment, surfaceReads: { ...base.fragment.surfaceReads, normal: true } },
-  };
+  return { ...unlitArtifact({ outputs: { albedo } }), lightingIntrinsics: intrinsics };
 }
 
 function colorShader(render: FXRenderArtifact): string {

@@ -12,7 +12,7 @@ import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { packingOrder } from "../../src/render/FXAttributePacking";
 import { fxEmitterRenderBudget, fxTrailRenderBudget } from "../../src/render/FXRenderBudget";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
-import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
+import { behaviorArtifact, programOf, unlitArtifact } from "../helpers/artifacts";
 import {
   gpuParticlesOf,
   isGPUDriven,
@@ -42,14 +42,10 @@ const COLOR_ALPHA_SIZE: readonly FXAttributeDecl[] = [
 ];
 
 /** A render reading color, alpha and size. */
-function colorAlphaSizeRender(over: Partial<FXRenderArtifact> = {}): FXRenderArtifact {
-  return {
-    ...unlitArtifact({
-      attributeReads: COLOR_ALPHA_SIZE,
-      outputs: { albedo: "vec4(p_fx_color * p_fx_size, p_fx_alpha)" },
-    }),
-    ...over,
-  };
+function colorAlphaSizeRender(
+  outputs: Record<string, string> = { albedo: "vec4(p_fx_color * p_fx_size, p_fx_alpha)" },
+): FXRenderArtifact {
+  return unlitArtifact({ attributeReads: COLOR_ALPHA_SIZE, outputs });
 }
 
 function trailOptions(render: FXRenderArtifact): FXTrailOptions {
@@ -253,9 +249,42 @@ describe("GPU packing", () => {
     }
   });
 
+  it("packs a field only the shadow program reads", () => {
+    const base = unlitArtifact({
+      attributeReads: COLOR_ALPHA_SIZE,
+      outputs: { albedo: "vec4(p_fx_color * p_fx_size, 1.0)" },
+    });
+    const render: FXRenderArtifact = {
+      ...base,
+      shadow: programOf(
+        { alpha: "1.0", shadowThreshold: "p_fx_alpha" },
+        [],
+        [],
+        [],
+        COLOR_ALPHA_SIZE,
+      ),
+    };
+    const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact(), {
+      gpuKernel: kernelOf(packedKernelBuffers()),
+      renderer: mockRenderer().renderer,
+      expectedCapacity: 4,
+      castShadow: true,
+    });
+    try {
+      const depth = gpuParticlesOf(emitter).customDepthMaterial as ShaderMaterial;
+      expect(depth.vertexShader).toMatch(/p_fx_alpha = a_pack\d\.\w;/);
+      expect(depth.fragmentShader).toContain("varying float p_fx_alpha;");
+      expect(depth.fragmentShader).toContain(
+        "if (fxShadowAlpha < clamp(p_fx_alpha, 0.0, 1.0)) discard;",
+      );
+    } finally {
+      emitter.destroy();
+    }
+  });
+
   it("mounts the GPU trail history's start, end and previous views off the slot", () => {
     const render = colorAlphaSizeRender({
-      outputs: { albedo: "vec4(p_fx_color * p_fx_size, p_fx_alpha * PARTICLE_AGE)" },
+      albedo: "vec4(p_fx_color * p_fx_size, p_fx_alpha * PARTICLE_AGE)",
     });
     const buffers = packedKernelBuffers();
     const emitter = gpuEmitter(unlitArtifact(), buffers, render);

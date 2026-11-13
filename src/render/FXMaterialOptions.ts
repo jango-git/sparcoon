@@ -13,7 +13,9 @@
  * - `opaque` - fully opaque (alpha forced to 1).
  *
  * The `alphaThreshold` output slot (hard discard cutoff, default 0.0075) applies in every mode except
- * `opaque`; `additivity` applies only in `blending`. The `intensity` slot (a multiplier on the color,
+ * `opaque`; `additivity` applies only in `blending`. A cast shadow keeps what the visible material
+ * keeps, always as a hard cutoff, unless the shadow program's `shadowThreshold` is wired: that is
+ * the shadow's own cutoff, in every mode. The `intensity` slot (a multiplier on the color,
  * default 1) applies in every mode and never touches the alpha: in `blending` the light a fragment adds
  * is its color times its alpha, so dimming a glow through its color's alpha also pushes it under the
  * discard floor - `intensity` dims (or brightens) it instead.
