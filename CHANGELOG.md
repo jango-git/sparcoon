@@ -5,7 +5,7 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
-## Unreleased
+## 0.21.0 - 2026-11-14
 
 ### Added
 
