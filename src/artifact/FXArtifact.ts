@@ -72,9 +72,10 @@ export interface FXValueSlot<T> {
 /**
  * Built-in primitive instanced per particle. The vertex program is geometry-agnostic, so `"plane"`
  * + a camera-facing `particleTransform` is the classic billboard while `"box"`/`"sphere"` are true
- * 3D mesh particles. Absent => `"plane"`.
+ * 3D mesh particles. `"octagon"` is `"plane"` with its corners cut, for a texture empty there.
+ * Absent => `"plane"`.
  */
-export type FXGeometryPrimitive = "plane" | "box" | "sphere";
+export type FXGeometryPrimitive = "plane" | "octagon" | "box" | "sphere";
 
 /**
  * The geometry an emitter/mesh instances: a built-in primitive, or an app-supplied `BufferGeometry`

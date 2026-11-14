@@ -16,6 +16,9 @@ on the minor it was built for - after such an update, re-export every effect.
 - `FXEmitter.onParticleEvent("birth", listener)` reports each particle born alive, where its spawn
   placed it and with the velocity of the pose it was born from. Births of `prewarm` are not
   reported.
+- The `"octagon"` geometry primitive: the `"plane"` quad with its corners cut, 83% of its area,
+  textured the same way. For a large sprite whose texture is empty in the corners it draws the
+  same picture with fewer pixels.
 
 ### Changed
 
