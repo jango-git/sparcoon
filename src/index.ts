@@ -59,6 +59,17 @@ export type {
   FXGraphUnlitMaterialOptions,
   FXRenderMode,
 } from "./render/FXMaterialOptions.js";
+export {
+  FX_SURFACE_HEADER_TEXELS,
+  FX_SURFACE_NORMAL_A,
+  FX_SURFACE_NORMAL_B,
+  FX_SURFACE_NORMAL_C,
+  FX_SURFACE_TEXEL_FLOATS,
+  FX_SURFACE_TEXELS_PER_TRIANGLE,
+  FX_SURFACE_VERTEX_A,
+  FX_SURFACE_VERTEX_B,
+  FX_SURFACE_VERTEX_C,
+} from "./surfaceTableLayout.js";
 
 // Whole-project playback: the generic runtime behind every editor-emitted project module (base
 // class + scene specification). An emitted module supplies only its `FXEffectSpec` data and a thin subclass.

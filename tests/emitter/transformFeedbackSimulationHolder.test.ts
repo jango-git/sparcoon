@@ -10,6 +10,7 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../../src/behaviorTransformFeedbackLayout";
+import type { FXSurfaceTable } from "../../src/emitter/FXSurfaceTable.Internal";
 import { FXTransformFeedbackSimulationHolder } from "../../src/emitter/FXTransformFeedbackSimulationHolder";
 import { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
 import { flushStateResets } from "../../src/render/FXDeferredStateReset.Internal";
@@ -406,5 +407,61 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     expect(callsNamed(mock.gl, "deleteProgram")).toEqual([]);
     second.destroy();
     expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
+  });
+
+  describe("mesh surfaces", () => {
+    const table: FXSurfaceTable = { data: new Float32Array(7 * 4), texels: 7 };
+    const sampling = (): FXParticleKernelArtifact => ({
+      ...minimalArtifact(),
+      vertexSource: "#version 300 es\nuniform highp sampler2D u_s;\nvoid main(){}",
+      meshSurfaces: { u_s: "rock" },
+    });
+
+    it("uploads a surface once and binds it to its texture unit every pass", () => {
+      const mock = mockRenderer();
+      const { calls } = mock.gl;
+      const first = new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
+        u_s: table,
+      });
+      const second = new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
+        u_s: table,
+      });
+      const mesh = meshFor(mock, first);
+      try {
+        const uploads = callsNamed(mock.gl, "texImage2D");
+        expect(uploads).toHaveLength(1);
+        expect(uploads[0]?.args.slice(2, 5)).toEqual([mock.gl.context.RGBA32F, 7, 1]);
+
+        calls.length = 0;
+        first.tick(
+          mesh,
+          1 / 60,
+          { start: 0, count: 0 },
+          IDENTITY_EMITTER_TRANSFORM,
+          NOTHING_INHERITED,
+        );
+        expect(callsNamed(mock.gl, "state.activeTexture")[0]?.args).toEqual([
+          mock.gl.context.TEXTURE0,
+        ]);
+        expect(callsNamed(mock.gl, "state.bindTexture")).toHaveLength(1);
+        expect(mock.gl.uniforms.get("u_s")).toBe(0);
+
+        first.destroy();
+        expect(mock.gl.liveTextures.size).toBe(1);
+        second.destroy();
+        expect(mock.gl.liveTextures.size).toBe(0);
+      } finally {
+        mesh.destroy();
+      }
+    });
+
+    it("refuses more surfaces than the vertex stage has texture units, claiming nothing", () => {
+      const mock = mockRenderer({ maxVertexTextureUnits: 0 });
+      expect(
+        () => new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), { u_s: table }),
+      ).toThrow(/texture units/);
+      expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
+      expect(mock.gl.liveTextures.size).toBe(0);
+    });
   });
 });

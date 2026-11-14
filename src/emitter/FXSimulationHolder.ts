@@ -6,6 +6,7 @@ import type {
 import { ownSlots } from "../artifact/FXValueSlots.Internal.js";
 import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 
 /**
  * @internal The runtime's JS (CPU) behavior driver - the GPU sibling is
@@ -20,9 +21,16 @@ export class FXSimulationHolder {
   // This emitter's own live bindings - never the shared artifact's.
   private readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
 
-  constructor(private readonly artifact: FXBehaviorArtifact) {
+  /** `surfaces` are the tables of the artifact's `meshSurfaces`, by binding. */
+  constructor(
+    private readonly artifact: FXBehaviorArtifact,
+    private readonly surfaces: Readonly<Record<string, FXSurfaceTable>> = {},
+  ) {
     this.slot = particleSlotLayout(artifact.buffers);
     this.bindings = ownSlots(artifact.bindings);
+    for (const name in surfaces) {
+      this.bindings[name] = { value: surfaces[name].data };
+    }
   }
 
   public get canSpawn(): boolean {
@@ -54,7 +62,8 @@ export class FXSimulationHolder {
    *  tier - `FXEmitter.applyValues` scrubs both, since either backend may be the active one. */
   public applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void {
     for (const name in values) {
-      if (name in this.bindings) {
+      // A mesh surface is the geometry's, not a value.
+      if (name in this.bindings && !(name in this.surfaces)) {
         this.bindings[name].value = values[name];
       }
     }

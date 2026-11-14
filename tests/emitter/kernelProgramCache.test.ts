@@ -19,14 +19,14 @@ describe("acquireKernelProgram", () => {
     const gl = mockWebGL();
     const first = acquireKernelProgram(gl.context, kernel());
     const second = acquireKernelProgram(gl.context, kernel());
-    expect(second.program).toBe(first.program);
+    expect(second.resource).toBe(first.resource);
     expect(callsNamed(gl, "linkProgram")).toHaveLength(1);
 
     first.release();
     first.release();
     expect(callsNamed(gl, "deleteProgram")).toEqual([]);
     second.release();
-    expect(callsNamed(gl, "deleteProgram").map((call) => call.args[0])).toEqual([first.program]);
+    expect(callsNamed(gl, "deleteProgram").map((call) => call.args[0])).toEqual([first.resource]);
   });
 
   it("links anew once the last user is gone", () => {
@@ -39,9 +39,9 @@ describe("acquireKernelProgram", () => {
   it("keeps kernels of other sources, and other contexts, apart", () => {
     const gl = mockWebGL();
     const other = mockWebGL();
-    const program = acquireKernelProgram(gl.context, kernel()).program;
-    expect(acquireKernelProgram(gl.context, kernel("int a;")).program).not.toBe(program);
-    expect(acquireKernelProgram(other.context, kernel()).program).not.toBe(program);
+    const program = acquireKernelProgram(gl.context, kernel()).resource;
+    expect(acquireKernelProgram(gl.context, kernel("int a;")).resource).not.toBe(program);
+    expect(acquireKernelProgram(other.context, kernel()).resource).not.toBe(program);
   });
 
   it("caches nothing for a kernel that failed to link", () => {
@@ -56,10 +56,10 @@ describe("acquireKernelProgram", () => {
     const stale = acquireKernelProgram(gl.context, kernel());
     gl.context.canvas.dispatchEvent(new Event("webglcontextlost"));
     const fresh = acquireKernelProgram(gl.context, kernel());
-    expect(fresh.program).not.toBe(stale.program);
+    expect(fresh.resource).not.toBe(stale.resource);
 
     stale.release();
     expect(callsNamed(gl, "deleteProgram")).toEqual([]);
-    expect(acquireKernelProgram(gl.context, kernel()).program).toBe(fresh.program);
+    expect(acquireKernelProgram(gl.context, kernel()).resource).toBe(fresh.resource);
   });
 });

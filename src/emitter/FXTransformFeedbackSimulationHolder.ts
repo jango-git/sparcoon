@@ -26,10 +26,10 @@ import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXPa
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
 import type { FXAgedBirths } from "./FXBirthAges.Internal.js";
-import {
-  acquireKernelProgram,
-  type FXKernelProgramLease,
-} from "./FXKernelProgramCache.Internal.js";
+import type { FXContextLease } from "./FXContextLeases.Internal.js";
+import { acquireKernelProgram } from "./FXKernelProgramCache.Internal.js";
+import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
+import { acquireSurfaceTexture } from "./FXSurfaceTexture.Internal.js";
 
 /**
  * @internal A pass's births under the ring's cursor/overwrite scheme: `count` slots from `start`, the
@@ -61,13 +61,15 @@ export class FXTransformFeedbackSimulationHolder {
   public readonly slot: FXSlotLayout;
 
   private readonly gl: WebGL2RenderingContext;
-  private readonly programLease: FXKernelProgramLease;
+  private readonly programLease: FXContextLease<WebGLProgram>;
   private readonly vao: WebGLVertexArrayObject;
   private readonly uniformLocations: Record<string, WebGLUniformLocation | null> = {};
   // This emitter's own bindings - its parameters and draw uniforms - never the shared artifact's.
   private readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
   // Each binding the program uses, resolved once: a pass only walks this.
   private readonly uploads: readonly FXBindingUpload[];
+  // The mesh-surface textures the program samples, texture unit `i` for entry `i`.
+  private readonly surfaces: readonly FXSurfaceBinding[];
   // Filled in place each pass (see setUniforms).
   private readonly drawFrame: { -readonly [K in keyof FXKernelDrawInputs]: FXKernelDrawInputs[K] } =
     { deltaTime: 0, worldMatrix: [], velocity: [], angularVelocity: [] };
@@ -88,9 +90,11 @@ export class FXTransformFeedbackSimulationHolder {
   // randSeedCounter above.
   private spawnIdBase = 0;
 
+  /** `surfaces` are the tables of the artifact's `meshSurfaces`, by uniform. */
   constructor(
     private readonly renderer: WebGLRenderer,
     artifact: FXParticleKernelArtifact,
+    surfaces: Readonly<Record<string, FXSurfaceTable>> = {},
   ) {
     // Every emitter driven by this class already required the live render tier to be "standard"
     // (a real WebGL2 context) before this class is ever constructed (FXEmitter.fromArtifacts's
@@ -103,7 +107,7 @@ export class FXTransformFeedbackSimulationHolder {
 
     // Shared by every holder of this kernel: safe, as every pass sets all of its uniforms.
     this.programLease = acquireKernelProgram(gl, artifact);
-    const program = this.programLease.program;
+    const program = this.programLease.resource;
 
     for (const name of FIXED_UNIFORM_NAMES) {
       this.uniformLocations[name] = gl.getUniformLocation(program, name);
@@ -111,6 +115,13 @@ export class FXTransformFeedbackSimulationHolder {
     this.bindings = ownSlots(artifact.bindings);
     this.uploads = bindingUploads(gl, program, this.bindings);
     this.compute = artifact.compute;
+    try {
+      this.surfaces = surfaceBindings(renderer, program, surfaces);
+    } catch (error) {
+      // The caller falls back to the JS kernel: the program is no longer this holder's.
+      this.programLease.release();
+      throw error;
+    }
 
     // A dedicated VAO for this simulation pass only - never one three.js's own WebGLBindingStates
     // manages, so raw attribute setup here can never corrupt a mesh's cached vertex state. This
@@ -241,6 +252,9 @@ export class FXTransformFeedbackSimulationHolder {
   }
 
   public destroy(): void {
+    for (const surface of this.surfaces) {
+      surface.lease.release();
+    }
     this.programLease.release();
     this.gl.deleteVertexArray(this.vao);
   }
@@ -264,7 +278,7 @@ export class FXTransformFeedbackSimulationHolder {
     // the mismatch and re-binds, with no reset needed for this half of the state-hygiene problem.
     // The other half (the VAO-identity cache) has no such setter - see the raw
     // gl.bindVertexArray() call below and the deferred state reset that ends every pass.
-    this.renderer.state.useProgram(this.programLease.program);
+    this.renderer.state.useProgram(this.programLease.resource);
     gl.bindVertexArray(this.vao);
 
     const slotBytes = this.slot.stride * Float32Array.BYTES_PER_ELEMENT;
@@ -355,6 +369,12 @@ export class FXTransformFeedbackSimulationHolder {
     for (const entry of this.uploads) {
       entry.upload(gl, entry.location, entry.slot.value);
     }
+    this.surfaces.forEach((surface, unit) => {
+      // Through three's state, so its texture cache stays true to the context.
+      this.renderer.state.activeTexture(gl.TEXTURE0 + unit);
+      this.renderer.state.bindTexture(gl.TEXTURE_2D, surface.lease.resource);
+      gl.uniform1i(surface.location, unit);
+    });
   }
 }
 
@@ -449,7 +469,7 @@ const UPLOAD_MAT4: FXUniformUpload = (gl, location, value) => {
 /**
  * The upload of each binding of `bindings` that `program` uses, by the type the program declares
  * it as - a binding it does not use (compiled away) uploads nothing. A float takes a number; a
- * vector or matrix an array (column-major). A sampler is no binding a node produces yet.
+ * vector or matrix an array (column-major). A sampler is a mesh surface (see `surfaceBindings`).
  */
 function bindingUploads(
   gl: WebGL2RenderingContext,
@@ -483,4 +503,48 @@ function bindingUploads(
     }
   }
   return uploads;
+}
+
+/** A mesh surface the program samples: where its sampler is, and the texture it binds. */
+interface FXSurfaceBinding {
+  readonly location: WebGLUniformLocation;
+  readonly lease: FXContextLease<WebGLTexture>;
+}
+
+/**
+ * The texture of each of `surfaces` that `program` samples - one compiled away takes none.
+ * @throws When they take more texture units than this GPU's vertex stage has.
+ */
+function surfaceBindings(
+  renderer: WebGLRenderer,
+  program: WebGLProgram,
+  surfaces: Readonly<Record<string, FXSurfaceTable>>,
+): FXSurfaceBinding[] {
+  const gl = renderer.getContext() as WebGL2RenderingContext;
+  const used: { location: WebGLUniformLocation; table: FXSurfaceTable }[] = [];
+  for (const name in surfaces) {
+    const location = gl.getUniformLocation(program, name);
+    if (location !== null) {
+      used.push({ location, table: surfaces[name] });
+    }
+  }
+  const maxUnits = gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) as number;
+  if (used.length > maxUnits) {
+    throw new Error(
+      `FXTransformFeedbackSimulationHolder: the kernel samples ${String(used.length)} mesh ` +
+        `surfaces; this GPU's vertex stage has ${String(maxUnits)} texture units`,
+    );
+  }
+  const bindings: FXSurfaceBinding[] = [];
+  try {
+    for (const { location, table } of used) {
+      bindings.push({ location, lease: acquireSurfaceTexture(renderer, table) });
+    }
+  } catch (error) {
+    for (const binding of bindings) {
+      binding.lease.release();
+    }
+    throw error;
+  }
+  return bindings;
 }

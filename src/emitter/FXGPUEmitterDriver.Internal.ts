@@ -12,6 +12,7 @@ import type { FXAgedBirths, FXBirthAges } from "./FXBirthAges.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
 import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
+import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 
 /**
@@ -59,6 +60,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     material: FXArtifactMaterial,
     capacity: number,
     baseGeometry: BufferGeometry,
+    surfaces: Readonly<Record<string, FXSurfaceTable>>,
   ) {
     // The slot the holder lays out below (both by particleSlotLayout), known before it exists: a
     // render the slot cannot draw throws before any GPU resource is allocated.
@@ -69,7 +71,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     // throw from either goes to the caller (FXEmitter.fromArtifacts), which falls back to
     // FXJSEmitterDriver - so what the holder already allocated is released first, or it would
     // leak for the GL context's lifetime.
-    const simulation = new FXTransformFeedbackSimulationHolder(renderer, kernel);
+    const simulation = new FXTransformFeedbackSimulationHolder(renderer, kernel, surfaces);
     try {
       this.mesh = new FXTransformFeedbackParticle(
         renderer.getContext() as WebGL2RenderingContext,

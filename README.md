@@ -23,7 +23,7 @@ the timeline.
     <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/destruction.webp" width="400" alt="Destruction" /><br /><b>Destruction</b><br /><sub>mesh particles, shadows, lighting, collisions</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/fireflies.webp" width="400" alt="Fireflies" /><br /><b>Fireflies</b><br /><sub>curl noise</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/fireflies.webp" width="400" alt="Fireflies" /><br /><b>Fireflies</b><br /><sub>spawn on a mesh, curl noise</sub></td>
     <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/sparks.webp" width="400" alt="Sparks" /><br /><b>Sparks</b><br /><sub>GPU simulation, collision, shadows</sub></td>
   </tr>
   <tr>
@@ -41,6 +41,7 @@ screen and press **Load**.
 
 - Effects made of particle emitters and meshes under a shared timeline.
 - Billboard and mesh particles, particle trails.
+- Random points on the surface of a mesh, evenly by area.
 - Collisions with planes, boxes, spheres and cones.
 - Particle birth and death events for reactions between emitters and for listeners in your code,
   with attribute inheritance.

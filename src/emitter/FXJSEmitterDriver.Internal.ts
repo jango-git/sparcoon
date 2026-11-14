@@ -24,6 +24,7 @@ import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
 import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
+import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 
 /**
  * @internal The CPU (JS) particle-simulation backend: a fixed-capacity ring `FXInstancedParticle`
@@ -71,8 +72,9 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     material: FXArtifactMaterial,
     capacity: number,
     baseGeometry: BufferGeometry,
+    surfaces: Readonly<Record<string, FXSurfaceTable>>,
   ) {
-    this.simulation = new FXSimulationHolder(behavior);
+    this.simulation = new FXSimulationHolder(behavior, surfaces);
     this.currentLayout = particleLayout(this.simulation.slot, material.artifact);
     const threeMaterial = material.buildThreeMaterial(this.currentLayout);
     this.mesh = new FXInstancedParticle(

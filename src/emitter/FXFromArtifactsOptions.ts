@@ -10,8 +10,10 @@ import type { FXEmitterOptions } from "./FXEmitter.Internal.js";
  * a uniform declared `{ type: "sampler2D", external: "<slot>" }` binds from `textures[<slot>]` (a
  * whole `Texture`, or a {@link FXTextureRegion} of one) -
  * and custom geometries by name, resolving a `{ type: "custom", external: "<name>" }` geometry
- * source from `geometries[<name>]`. The app owns both maps' lifecycle; the runtime never disposes
- * them.
+ * source from `geometries[<name>]` and every mesh surface the behavior samples (`meshSurfaces`,
+ * required: a missing one throws). The app owns both maps' lifecycle; the runtime never disposes
+ * them. A surface is read from its geometry when the emitter is built; a geometry whose attributes
+ * changed since is read anew by the next emitter built from it.
  */
 export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
   readonly textures?: Record<string, FXExternalTexture>;

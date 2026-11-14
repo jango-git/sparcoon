@@ -56,6 +56,7 @@ import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
 import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
 import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
 import { FXParticleEventChannel } from "./FXParticleEventChannel.Internal.js";
+import { surfaceTablesOf } from "./FXSurfaceTable.Internal.js";
 
 /**
  * Particle emitter - one instanced billboard/mesh draw call, per-particle state driven by a
@@ -309,8 +310,16 @@ export class FXEmitter extends Object3D {
       );
     }
 
+    // Before anything owns a GPU resource: a missing geometry throws on either backend.
+    const geometries = options.geometries ?? {};
+    const surfaces = surfaceTablesOf(behavior.meshSurfaces, geometries);
+    const gpuSurfaces =
+      options.gpuKernel === undefined
+        ? {}
+        : surfaceTablesOf(options.gpuKernel.meshSurfaces, geometries);
+
     const material = new FXArtifactMaterial(render, options.textures);
-    const baseGeometry = resolveGeometrySource(render.geometry, options.geometries ?? {});
+    const baseGeometry = resolveGeometrySource(render.geometry, geometries);
 
     // The one place this emitter's backend is chosen, ever (never switched mid-playback). A real
     // driver-level failure (program link, buffer/VAO setup) despite "Try GPU simulation" having
@@ -326,6 +335,7 @@ export class FXEmitter extends Object3D {
           material,
           capacity,
           baseGeometry,
+          gpuSurfaces,
         );
       } catch (error) {
         console.warn(
@@ -335,7 +345,7 @@ export class FXEmitter extends Object3D {
         );
       }
     }
-    driver ??= new FXJSEmitterDriver(behavior, material, capacity, baseGeometry);
+    driver ??= new FXJSEmitterDriver(behavior, material, capacity, baseGeometry, surfaces);
 
     // Everything built so far owns GPU resources: a throw from here on releases them.
     const limits = deviceLimits(options.renderer);

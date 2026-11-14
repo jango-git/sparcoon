@@ -19,6 +19,13 @@ on the minor it was built for - after such an update, re-export every effect.
 - The `"octagon"` geometry primitive: the `"plane"` quad with its corners cut, 83% of its area,
   textured the same way. For a large sprite whose texture is empty in the corners it draws the
   same picture with fewer pixels.
+- **Random points on a mesh surface**, in the spawn and the update, on the CPU and the GPU. The
+  editor's Random Mesh Point node draws a point on a mesh evenly by area, with the mesh's normal
+  there, interpolated between the normals of the triangle's vertices (the triangle's own normal if
+  the geometry has no normals). The effect takes the mesh as a `BufferGeometry` in its assets under
+  the mesh asset's name and requires it, so a missing one throws when the effect is built. The
+  runtime reads a geometry when the first emitter sampling it is built, and again for an emitter
+  built after the geometry's attributes changed.
 
 ### Changed
 

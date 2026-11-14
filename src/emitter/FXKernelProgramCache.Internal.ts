@@ -1,39 +1,12 @@
 import type { FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
-
-/**
- * @internal One holder's claim on a linked transform-feedback kernel program. Every holder of the
- * same kernel on the same context shares one program; it is deleted when the last claim is
- * released.
- */
-export interface FXKernelProgramLease {
-  readonly program: WebGLProgram;
-  /** Gives the claim up; a second call is a no-op. */
-  release(): void;
-}
-
-interface FXKernelProgramEntry {
-  readonly program: WebGLProgram;
-  users: number;
-}
+import { type FXContextLease, FXContextLeases } from "./FXContextLeases.Internal.js";
 
 const ERROR_PREFIX = "FXKernelProgramCache";
 
-// Programs belong to one context. A lost context takes them with it, so its entries are dropped:
-// a context restored under the same object must link anew.
-const entriesByContext = new WeakMap<WebGL2RenderingContext, Map<string, FXKernelProgramEntry>>();
-
-function entriesOf(gl: WebGL2RenderingContext): Map<string, FXKernelProgramEntry> {
-  const known = entriesByContext.get(gl);
-  if (known !== undefined) {
-    return known;
-  }
-  const entries = new Map<string, FXKernelProgramEntry>();
-  entriesByContext.set(gl, entries);
-  gl.canvas.addEventListener("webglcontextlost", () => {
-    entries.clear();
-  });
-  return entries;
-}
+// Every holder of the same kernel on the same context shares one linked program.
+const programs = new FXContextLeases<string, WebGLProgram>((gl, program) => {
+  gl.deleteProgram(program);
+});
 
 // The exact sources, not a hash of them: a collision would hand a holder another kernel.
 function kernelKey(artifact: FXParticleKernelArtifact): string {
@@ -45,39 +18,14 @@ function kernelKey(artifact: FXParticleKernelArtifact): string {
 }
 
 /**
- * @internal The linked program for `artifact` on `gl`, linked on first use.
+ * @internal A claim on the linked program for `artifact` on `gl`, linked on first use.
  * @throws When the kernel fails to compile or link.
  */
 export function acquireKernelProgram(
   gl: WebGL2RenderingContext,
   artifact: FXParticleKernelArtifact,
-): FXKernelProgramLease {
-  const entries = entriesOf(gl);
-  const key = kernelKey(artifact);
-  let entry = entries.get(key);
-  if (entry === undefined) {
-    entry = { program: linkKernelProgram(gl, artifact), users: 0 };
-    entries.set(key, entry);
-  }
-
-  const linked = entry;
-  linked.users += 1;
-  let released = false;
-  return {
-    program: linked.program,
-    release: (): void => {
-      if (released) {
-        return;
-      }
-      released = true;
-      linked.users -= 1;
-      // Past a context loss the entry is no longer in the map, and its program is already gone.
-      if (linked.users === 0 && entries.get(key) === linked) {
-        entries.delete(key);
-        gl.deleteProgram(linked.program);
-      }
-    },
-  };
+): FXContextLease<WebGLProgram> {
+  return programs.acquire(gl, kernelKey(artifact), () => linkKernelProgram(gl, artifact));
 }
 
 function linkKernelProgram(

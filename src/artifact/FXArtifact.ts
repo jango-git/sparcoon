@@ -254,6 +254,13 @@ export interface FXBehaviorArtifact {
   readonly buffers: readonly FXBufferLayout[];
   /** number, or Float32Array (a curve LUT). */
   readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
+  /**
+   * The mesh surfaces its kernels sample, by binding: the runtime adds each binding, valued with
+   * the table of the geometry named here (`FXFromArtifactsOptions.geometries`), laid out as
+   * `surfaceTableLayout.ts` says. None of {@link bindings}, so no value scrub reaches it. Absent
+   * when none.
+   */
+  readonly meshSurfaces?: Readonly<Record<string, string>>;
   /** What its newborns take from a dying particle; absent when nothing (`stride` 0). The emitter's
    *  GPU kernel, when it has one, reads the same layout. */
   readonly inherit?: FXInheritLayout;
@@ -317,10 +324,15 @@ export interface FXParticleKernelArtifact {
    * uniforms {@link compute} fills (declared and seeded, at zero, like any other). The fixed
    * contract uniforms in `behaviorTransformFeedbackLayout.ts` are the runtime's own to set every
    * pass, not part of this map. Each uploads by the type the program declares it as.
-   * Float32Array is reserved for a future sampler2D-backed (LUT) uniform; no standard-tier node
-   * produces one yet.
+   * A sampler is no binding: the program's mesh surfaces are listed in {@link meshSurfaces}.
    */
   readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
+  /**
+   * The mesh surfaces the program samples, by `sampler2D` uniform: each binds the texture of the
+   * table of the geometry named here (`FXFromArtifactsOptions.geometries`), laid out as
+   * `surfaceTableLayout.ts` says. Absent when none.
+   */
+  readonly meshSurfaces?: Readonly<Record<string, string>>;
   /**
    * The draw stage, as {@link FXRenderArtifact.compute} is for a render: computes, once per pass
    * on the CPU, the values one for the whole pass from `inputs` and the emitter's own bindings,
@@ -333,5 +345,5 @@ export interface FXParticleKernelArtifact {
   ) => void;
 }
 
-/** A GPU kernel uniform's value: a float, a vector or matrix (column-major), or a LUT. */
+/** A GPU kernel uniform's value: a float, or a vector or matrix (column-major) as an array. */
 export type FXKernelUniformValue = number | number[] | Float32Array;

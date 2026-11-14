@@ -21,6 +21,10 @@ export interface MockGLOptions {
   readonly maxFeedbackComponents?: number;
   /** MAX_VERTEX_ATTRIBS; the WebGL2 minimum, 16, by default. */
   readonly maxVertexAttribs?: number;
+  /** MAX_TEXTURE_SIZE; the WebGL2 minimum, 2048, by default. */
+  readonly maxTextureSize?: number;
+  /** MAX_VERTEX_TEXTURE_IMAGE_UNITS; the WebGL2 minimum, 16, by default. */
+  readonly maxVertexTextureUnits?: number;
 }
 
 export interface MockGL {
@@ -32,6 +36,8 @@ export interface MockGL {
   readonly uniforms: Map<string, number>;
   /** Buffers created and not deleted yet. */
   readonly liveBuffers: Set<unknown>;
+  /** Textures created and not deleted yet. */
+  readonly liveTextures: Set<unknown>;
 }
 
 /** The renderer surface the transform-feedback code reads, around a {@link MockGL}. */
@@ -65,6 +71,22 @@ const CONSTANTS = {
   FLOAT_MAT2: 0x8b5a,
   FLOAT_MAT3: 0x8b5b,
   FLOAT_MAT4: 0x8b5c,
+  SAMPLER_2D: 0x8b5e,
+  TEXTURE_2D: 0x0de1,
+  TEXTURE0: 0x84c0,
+  RGBA: 0x1908,
+  RGBA32F: 0x8814,
+  NEAREST: 0x2600,
+  CLAMP_TO_EDGE: 0x812f,
+  TEXTURE_MIN_FILTER: 0x2801,
+  TEXTURE_MAG_FILTER: 0x2800,
+  TEXTURE_WRAP_S: 0x2802,
+  TEXTURE_WRAP_T: 0x2803,
+  UNPACK_ALIGNMENT: 0x0cf5,
+  UNPACK_FLIP_Y_WEBGL: 0x9240,
+  UNPACK_PREMULTIPLY_ALPHA_WEBGL: 0x9241,
+  MAX_TEXTURE_SIZE: 0x0d33,
+  MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c,
 } as const;
 
 // A declared uniform's type, as `getActiveUniform` reports it.
@@ -77,6 +99,7 @@ const UNIFORM_TYPES: Readonly<Record<string, number>> = {
   mat2: CONSTANTS.FLOAT_MAT2,
   mat3: CONSTANTS.FLOAT_MAT3,
   mat4: CONSTANTS.FLOAT_MAT4,
+  sampler2D: CONSTANTS.SAMPLER_2D,
 };
 
 // Calls with nothing to answer: recorded, and return nothing.
@@ -108,12 +131,16 @@ const RECORDED_ONLY = [
   "beginTransformFeedback",
   "endTransformFeedback",
   "drawArrays",
+  "pixelStorei",
+  "texParameteri",
+  "texImage2D",
 ] as const;
 
 export function mockWebGL(options: MockGLOptions = {}): MockGL {
   const calls: MockGLCall[] = [];
   const uniforms = new Map<string, number>();
   const liveBuffers = new Set<unknown>();
+  const liveTextures = new Set<unknown>();
   const uniformNames = new Map<unknown, string>();
   const shaderTypes = new Map<unknown, number>();
   // Every uniform any shader source declares: the program's active uniforms (none compiled away).
@@ -139,7 +166,22 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
       if (name === CONSTANTS.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS) {
         return options.maxFeedbackComponents ?? 64;
       }
+      if (name === CONSTANTS.MAX_TEXTURE_SIZE) {
+        return options.maxTextureSize ?? 2048;
+      }
+      if (name === CONSTANTS.MAX_VERTEX_TEXTURE_IMAGE_UNITS) {
+        return options.maxVertexTextureUnits ?? 16;
+      }
       return name === CONSTANTS.MAX_VERTEX_ATTRIBS ? (options.maxVertexAttribs ?? 16) : undefined;
+    },
+    createTexture: () => {
+      const texture = handle();
+      liveTextures.add(texture);
+      return texture;
+    },
+    deleteTexture: (...args: unknown[]) => {
+      record("deleteTexture", args);
+      liveTextures.delete(args[0]);
     },
     createBuffer: () => {
       const buffer = handle();
@@ -202,12 +244,18 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
     };
   }
 
-  return { context: context as unknown as WebGL2RenderingContext, calls, uniforms, liveBuffers };
+  return {
+    context: context as unknown as WebGL2RenderingContext,
+    calls,
+    uniforms,
+    liveBuffers,
+    liveTextures,
+  };
 }
 
 /**
  * A WebGL2 renderer around a fresh {@link mockWebGL} context, reporting no device limits. Its own
- * calls are recorded as `state.useProgram` and `resetState`.
+ * calls are recorded as `state.<method>` and `resetState`.
  */
 export function mockRenderer(options: MockGLOptions = {}): MockRenderer {
   const gl = mockWebGL(options);
@@ -218,6 +266,15 @@ export function mockRenderer(options: MockGLOptions = {}): MockRenderer {
     state: {
       useProgram: (program: unknown) => {
         gl.calls.push({ name: "state.useProgram", args: [program] });
+      },
+      activeTexture: (slot: unknown) => {
+        gl.calls.push({ name: "state.activeTexture", args: [slot] });
+      },
+      bindTexture: (type: unknown, texture: unknown) => {
+        gl.calls.push({ name: "state.bindTexture", args: [type, texture] });
+      },
+      unbindTexture: () => {
+        gl.calls.push({ name: "state.unbindTexture", args: [] });
       },
     },
     resetState: () => {
