@@ -605,6 +605,7 @@ describe("trail material", () => {
       });
     // WebGL1's minimum; no gpuKernel, so the renderer is only read for its limits.
     const renderer = {
+      isWebGLRenderer: true,
       capabilities: { isWebGL2: false, maxAttributes: 8, maxVaryings: 8 },
     } as unknown as WebGLRenderer;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);

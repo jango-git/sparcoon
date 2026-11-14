@@ -5,6 +5,17 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## 0.20.1 - 2026-11-14
+
+Effects exported for 0.20.0 play as they are.
+
+### Added
+
+- three 0.180 to 0.187 are supported. The peer range is now `>=0.157.0 <0.188.0`.
+- An effect given a `WebGPURenderer` fails with an error saying that it needs a `WebGLRenderer`. The
+  constructor throws it, `compile()` rejects with it, and an effect built without `renderer` throws
+  it on its first draw by one. Before, the first case threw a `TypeError` and the last drew nothing.
+
 ## 0.20.0 - 2026-11-13
 
 ### Added

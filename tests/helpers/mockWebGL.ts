@@ -212,6 +212,7 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
 export function mockRenderer(options: MockGLOptions = {}): MockRenderer {
   const gl = mockWebGL(options);
   const renderer = {
+    isWebGLRenderer: true,
     capabilities: { isWebGL2: true },
     getContext: () => gl.context,
     state: {

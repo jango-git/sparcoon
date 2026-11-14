@@ -1,4 +1,11 @@
-import type { ShaderMaterial, WebGLRenderer } from "three";
+import {
+  Group,
+  type Material,
+  PerspectiveCamera,
+  Scene,
+  type ShaderMaterial,
+  type WebGLRenderer,
+} from "three";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { FXEffect } from "../../src/effect/FXEffect";
@@ -16,7 +23,7 @@ import { emitterUniform, particlesOf } from "../helpers/internals";
 // Only `capabilities.isWebGL2` is ever read off the renderer, so a minimal stand-in is enough -
 // building a real WebGLRenderer needs an actual GL context, unavailable under headless vitest.
 function rendererWithCapability(isWebGL2: boolean): WebGLRenderer {
-  return { capabilities: { isWebGL2 } } as unknown as WebGLRenderer;
+  return { isWebGLRenderer: true, capabilities: { isWebGL2 } } as unknown as WebGLRenderer;
 }
 
 // Distinguishes which target artifact got selected: the albedo expression round-trips into the
@@ -76,6 +83,45 @@ describe("FXEffect render-target selection", () => {
       renderer: rendererWithCapability(true),
     });
     expect(fragmentShaderOf(effect, "e")).toContain("vec4 diffuseColor = vec4(2.0);");
+  });
+
+  it("refuses a renderer that is not a WebGLRenderer, in the constructor and in compile()", async () => {
+    const webgpu = { isWebGPURenderer: true } as unknown as WebGLRenderer;
+    const spec = effectSpec({ emitters: [emitterSpec("e")] });
+    expect(() => new TestEffect(spec, { world: newWorld(), renderer: webgpu })).toThrow(
+      "needs a WebGLRenderer",
+    );
+    const effect = new TestEffect(spec, { world: newWorld() });
+    await expect(effect.compile(webgpu, new PerspectiveCamera())).rejects.toThrow(
+      "needs a WebGLRenderer",
+    );
+  });
+
+  it("checks the drawing renderer on the first draw when none was passed, then unhooks", () => {
+    const webgpu = { isWebGPURenderer: true } as unknown as WebGLRenderer;
+    const webgl = { isWebGLRenderer: true } as unknown as WebGLRenderer;
+    const effect = new TestEffect(
+      effectSpec({ emitters: [emitterSpec("e")], meshes: [meshSpec("m")] }),
+      { world: newWorld() },
+    );
+    const mesh = particlesOf(effect.getEmitter("e")!);
+    const ownHook = (): void => {};
+    effect.getMesh("m")!.onBeforeRender = ownHook;
+    const draw = (renderer: WebGLRenderer): void => {
+      mesh.onBeforeRender(
+        renderer,
+        new Scene(),
+        new PerspectiveCamera(),
+        mesh.geometry,
+        mesh.material as Material,
+        new Group(),
+      );
+    };
+    expect(() => draw(webgpu)).toThrow("needs a WebGLRenderer");
+    expect(() => draw(webgpu)).toThrow("needs a WebGLRenderer");
+    draw(webgl);
+    expect(Object.prototype.hasOwnProperty.call(mesh, "onBeforeRender")).toBe(false);
+    expect(effect.getMesh("m")!.onBeforeRender).toBe(ownHook);
   });
 
   it("applies the same selection to VFX meshes", () => {

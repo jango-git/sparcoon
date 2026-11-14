@@ -200,6 +200,41 @@ function writeParameterBaseline(
 // makes the shared slot writer a no-op on the binding side.
 const NO_BEHAVIOR_BINDINGS = { bindings: {} } as unknown as FXBehaviorArtifact;
 
+// Effects draw with `ShaderMaterial`s and drive raw WebGL2 buffers, which `WebGPURenderer` does not
+// run, even on its WebGL2 backend. Refused up front, so the caller gets this message and not a
+// TypeError or a blank frame.
+function requireWebGLRenderer(renderer: WebGLRenderer): void {
+  if ((renderer as { isWebGLRenderer?: unknown }).isWebGLRenderer !== true) {
+    throw new Error("FXEffect: needs a WebGLRenderer - WebGPURenderer is not supported");
+  }
+}
+
+/**
+ * Checks the renderer of an effect built without `options.renderer` on its first draw: three calls
+ * every drawn object's `onBeforeRender` with the renderer drawing it. Once one mesh passed, the
+ * check is removed from every mesh that still has it, so later frames pay nothing and a hook the
+ * caller set in the meantime stays. A failing check stays and throws every frame.
+ */
+function checkRendererOnFirstDraw(effect: Object3D): void {
+  const meshes: Object3D[] = [];
+  effect.traverse((object) => {
+    if (object instanceof Mesh) {
+      meshes.push(object);
+    }
+  });
+  const check = (renderer: WebGLRenderer): void => {
+    requireWebGLRenderer(renderer);
+    for (const mesh of meshes) {
+      if (mesh.onBeforeRender === check) {
+        Reflect.deleteProperty(mesh, "onBeforeRender");
+      }
+    }
+  };
+  for (const mesh of meshes) {
+    mesh.onBeforeRender = check;
+  }
+}
+
 /**
  * Runtime for a whole exported Sparcoon project: a `Group` that builds every emitter + VFX mesh
  * from precompiled artifacts and drives the shared timeline. Add it to your scene, call `play()`,
@@ -262,6 +297,9 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     this.world = options.world ?? FXWorld.getDefault();
     applyTransform(this, specification.transform);
     const geometries = geometriesFromAssets(assets);
+    if (options.renderer !== undefined) {
+      requireWebGLRenderer(options.renderer);
+    }
     const isWebGL2 = options.renderer?.capabilities.isWebGL2 ?? false;
     // Checked before anything is built: a throw past here would leave emitters registered in
     // the world with no effect to dispose them.
@@ -364,6 +402,9 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
 
     // Self-subscribe: from here the world drives this effect every frame; dispose() unsubscribes.
     this.world.registerEffect(this);
+    if (options.renderer === undefined) {
+      checkRendererOnFirstDraw(this);
+    }
   }
 
   /**
@@ -513,6 +554,11 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
    * not cover and how to keep the programs compiled.
    */
   public compile(renderer: WebGLRenderer, camera: Camera, scene?: Object3D): Promise<void> {
+    try {
+      requireWebGLRenderer(renderer);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     if (this.disposed) {
       return Promise.resolve();
     }

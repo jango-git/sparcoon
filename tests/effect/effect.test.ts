@@ -2,17 +2,16 @@ import { Group, PerspectiveCamera, type ShaderMaterial, Texture } from "three";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
+import { FX_CORE_LIFECYCLE, FX_CORE_LIFECYCLE_STRIDE, FX_LIFETIME } from "../../src/coreLayout";
 import type {
   FXEffectEmitterSpec,
   FXEffectReaction,
   FXEffectSpec,
 } from "../../src/effect/FXEffectSpec";
-import { FX_CORE_LIFECYCLE, FX_CORE_LIFECYCLE_STRIDE, FX_LIFETIME } from "../../src/coreLayout";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
 import { effectSpec, emitterSpec as baseEmitterSpec, TestEffect } from "../helpers/effectSpecs";
-import { fieldBehavior } from "../helpers/slots";
 import {
   bindingValue,
   emitterUniform,
@@ -20,6 +19,7 @@ import {
   particlesOf,
   registeredObjectCount,
 } from "../helpers/internals";
+import { fieldBehavior } from "../helpers/slots";
 
 type EmitterOverrides = Partial<Omit<FXEffectEmitterSpec, "render">> & {
   render?: FXRenderArtifact;

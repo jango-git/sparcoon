@@ -30,7 +30,11 @@ describe("FXEffect.compile", () => {
           finish = resolve;
         }),
     );
-    const renderer = { compile: vi.fn(), compileAsync } as unknown as WebGLRenderer;
+    const renderer = {
+      isWebGLRenderer: true,
+      compile: vi.fn(),
+      compileAsync,
+    } as unknown as WebGLRenderer;
     const target = effect();
     const scene = new Scene();
 
@@ -51,14 +55,21 @@ describe("FXEffect.compile", () => {
   it("lights the effect by itself without a scene", async () => {
     const compileAsync = vi.fn(() => Promise.resolve());
     const target = effect();
-    await target.compile({ compileAsync } as unknown as WebGLRenderer, camera);
+    await target.compile(
+      { isWebGLRenderer: true, compileAsync } as unknown as WebGLRenderer,
+      camera,
+    );
     expect(compileAsync).toHaveBeenCalledWith(target, camera, null);
   });
 
   it("compiles the whole scene synchronously on three r157", async () => {
     const compile = vi.fn();
     const scene = new Scene();
-    await effect().compile({ compile } as unknown as WebGLRenderer, camera, scene);
+    await effect().compile(
+      { isWebGLRenderer: true, compile } as unknown as WebGLRenderer,
+      camera,
+      scene,
+    );
     expect(compile).toHaveBeenCalledWith(scene, camera);
   });
 
@@ -66,7 +77,10 @@ describe("FXEffect.compile", () => {
     const compileAsync = vi.fn(() => Promise.resolve());
     const target = effect();
     target.dispose();
-    await target.compile({ compileAsync } as unknown as WebGLRenderer, camera);
+    await target.compile(
+      { isWebGLRenderer: true, compileAsync } as unknown as WebGLRenderer,
+      camera,
+    );
     expect(compileAsync).not.toHaveBeenCalled();
   });
 });

@@ -16,13 +16,14 @@ import type { FXSlotLayout } from "./FXParticleSlot.js";
  * needs a CPU array three uploads itself - so this duck-types both: `isGLBufferAttribute` makes
  * `WebGLAttributes` register `buffer` as is, and `isInterleavedBufferAttribute` over an
  * `isInstancedInterleavedBuffer` makes `WebGLBindingStates` bind it with `stride`/`offset` and a
- * divisor. Its `data` is itself, because three looks the buffer up through `data` - before or
- * after checking `isGLBufferAttribute`, depending on the version; this works in either order
- * (checked against three 0.157, 0.165 and 0.179 on real WebGL2).
+ * divisor (three >= 0.187 takes `stride` only from an `isInterleavedBuffer`, else `itemSize`). Its
+ * `data` is itself, because three looks the buffer up through `data` - before or after checking
+ * `isGLBufferAttribute`, depending on the version; this works in either order.
  */
 export class FXInterleavedGLAttribute {
   public readonly isGLBufferAttribute = true;
   public readonly isInterleavedBufferAttribute = true;
+  public readonly isInterleavedBuffer = true;
   public readonly isInstancedInterleavedBuffer = true;
   public readonly meshPerAttribute = 1;
   public readonly type: number;
