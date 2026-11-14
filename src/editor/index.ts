@@ -13,17 +13,22 @@ export type {
   FXEmitterBurstOptions,
   FXEmitterOptions,
   FXEmitterPlayOptions,
-  FXParticleDeath,
-  FXParticleDeathListener,
+  FXParticleEvent,
+  FXParticleEventKind,
+  FXParticleEventListener,
   FXSpawnOrigin,
 } from "../emitter/FXEmitter.Internal.js";
 export { FXEmitter } from "../emitter/FXEmitter.js";
 export type { FXFromArtifactsOptions } from "../emitter/FXFromArtifactsOptions.js";
 
-// What makes an emitter spawn - the timeline's events and the death reactions - fired the same way
-// by the runtime's FXEffect and the editor's preview.
-export type { FXDeathSource, FXSpawnAction, FXSpawnTarget } from "../effect/FXSpawnAction.js";
-export { connectDeathReaction, fireSpawnAction } from "../effect/FXSpawnAction.js";
+// What makes an emitter spawn - the timeline's events and the reactions to particle births and
+// deaths - fired the same way by the runtime's FXEffect and the editor's preview.
+export type {
+  FXParticleEventSource,
+  FXSpawnAction,
+  FXSpawnTarget,
+} from "../effect/FXSpawnAction.js";
+export { connectReaction, fireSpawnAction } from "../effect/FXSpawnAction.js";
 export type { FXInheritCopies } from "../emitter/FXInheritance.js";
 
 // Self-contained VFX mesh (the mesh twin of FXEmitter): build one from a render artifact and let
@@ -38,6 +43,9 @@ export { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 
 // What a play's rate counts per, for the editor's inspector, loader and agent to offer and read.
 export { asEmissionBasis, FX_EMISSION_BASES } from "../emitter/FXEmitter.Internal.js";
+
+// Which particle events a reaction can fire on, for the editor's inspector, loader and agent.
+export { asParticleEventKind, FX_PARTICLE_EVENT_KINDS } from "../emitter/FXEmitter.Internal.js";
 
 // Shared keyframe/transform sampling: the editor bakes keyframes and the runtime samples them, so
 // both sides must sample identically - a frozen contract, never a one-sided edit.

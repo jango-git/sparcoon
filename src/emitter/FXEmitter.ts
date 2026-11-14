@@ -26,18 +26,19 @@ import { FXWorld } from "../world/FXWorld.js";
 import type { FXApplyRenderArtifactOptions } from "./FXApplyRenderArtifactOptions.js";
 import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 import { playBirthAges, spreadBirthAges } from "./FXBirthAges.Internal.js";
-import { FXDeathQueue } from "./FXDeathQueue.Internal.js";
 import type {
   FXApplyValues,
   FXEmissionBasis,
   FXEmitterBurstOptions,
   FXEmitterOptions,
   FXEmitterPlayOptions,
-  FXParticleDeathListener,
+  FXParticleEventKind,
+  FXParticleEventListener,
   FXSpawnOrigin,
 } from "./FXEmitter.Internal.js";
 import {
   asEmissionBasis,
+  asParticleEventKind,
   EMITTER_DEFAULT_CAST_SHADOW,
   EMITTER_DEFAULT_EXPECTED_CAPACITY,
   EMITTER_DEFAULT_PREWARM_MAX_STEP_COUNT,
@@ -45,6 +46,7 @@ import {
   EMITTER_DEFAULT_RECEIVE_SHADOW,
   EMITTER_DEFAULT_SORT_FRACTION,
   FX_EMISSION_BASES,
+  FX_PARTICLE_EVENT_KINDS,
 } from "./FXEmitter.Internal.js";
 import type { FXEmitterDriver } from "./FXEmitterDriver.Internal.js";
 import type { FXFromArtifactsOptions } from "./FXFromArtifactsOptions.js";
@@ -53,6 +55,7 @@ import { assertValidInherited, inheritDefaultsOf } from "./FXInheritance.js";
 import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
 import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
 import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
+import { FXParticleEventChannel } from "./FXParticleEventChannel.Internal.js";
 
 /**
  * Particle emitter - one instanced billboard/mesh draw call, per-particle state driven by a
@@ -64,7 +67,7 @@ import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
  * A thin facade over one {@link FXEmitterDriver} (JS or GPU - see `FXEmitterDriver.Internal.ts`),
  * chosen once by {@link fromArtifacts} and never switched mid-playback. This class itself owns only
  * what is genuinely backend-independent: play/burst/stop/prewarm scheduling, the births queue and
- * when the driver seeds it (see {@link tick}), death listeners, sort-fraction timing,
+ * when the driver seeds it (see {@link tick}), particle event listeners, sort-fraction timing,
  * object motion tracking, the render material and the optional {@link FXTrail} (with its own
  * material) - both CAN be replaced in place, by {@link applyRenderArtifact} and
  * {@link applyTrailArtifact}, without touching the driver or its particle state.
@@ -127,13 +130,12 @@ export class FXEmitter extends Object3D {
   private readonly maxLifetime: number | undefined;
   private sinceLastBirth = 0;
 
-  // What a birth no death spawned inherits (see FXInheritLayout).
+  // What a birth no reaction spawned inherits (see FXInheritLayout).
   private readonly defaultInherited: Float32Array;
 
-  // Particle-death listeners, and the deaths ticks found, handed out after the whole world ticked
-  // (afterWorldTick).
-  private readonly deathListeners = new Set<FXParticleDeathListener>();
-  private readonly deaths: FXDeathQueue;
+  // Each kind of particle event: its listeners, and the events ticks found, handed out after the
+  // whole world ticked (afterWorldTick).
+  private readonly events: Readonly<Record<FXParticleEventKind, FXParticleEventChannel>>;
   // This tick's births at a pose other than its own, seeded after its pass (reused per tick).
   private readonly birthsElsewhere: FXDueBirth[] = [];
 
@@ -171,7 +173,11 @@ export class FXEmitter extends Object3D {
     super();
     this.world = world;
     this.defaultInherited = defaultInherited;
-    this.deaths = new FXDeathQueue(driver.slot);
+    const channel = (kind: FXParticleEventKind): FXParticleEventChannel =>
+      new FXParticleEventChannel(driver.slot, (sink) => {
+        driver.watch(kind, sink);
+      });
+    this.events = { birth: channel("birth"), death: channel("death") };
     this.limits = limits;
     this.trailLimitWarning = trailLimitWarning;
     this.driver = driver;
@@ -245,22 +251,22 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * What a birth of this emitter inherits when no particle's death hands it anything (see
+   * What a birth of this emitter inherits when no reaction hands it anything (see
    * `FXSpawnOrigin.inherited`): the behavior's `inherit` defaults, as many floats as its layout.
    */
   public get inheritDefaults(): ArrayLike<number> {
     return this.defaultInherited;
   }
 
-  /** The particle slot this emitter simulates: what {@link FXParticleDeath.slot} lays out. */
+  /** The particle slot this emitter simulates: what {@link FXParticleEvent.slot} lays out. */
   public get particleSlot(): FXSlotLayout {
     return this.driver.slot;
   }
 
-  /** Whether {@link onParticleDeath} works here: a CPU-driven emitter's particles' deaths are seen,
-   *  a GPU-driven one's never leave the GPU. */
-  public get reportsParticleDeaths(): boolean {
-    return this.driver.reportsDeaths;
+  /** Whether {@link onParticleEvent} works here: a CPU-driven emitter's particles' births and
+   *  deaths are seen, a GPU-driven one's never leave the GPU. */
+  public get reportsParticleEvents(): boolean {
+    return this.driver.reportsEvents;
   }
 
   /**
@@ -438,8 +444,9 @@ export class FXEmitter extends Object3D {
     this.pendingBursts.length = 0;
     this.activePlays.length = 0;
     this.dueBirths.length = 0;
-    this.deathListeners.clear();
-    this.deaths.clear();
+    for (const channel of Object.values(this.events)) {
+      channel.destroy();
+    }
 
     // The material owns no per-emitter GPU resources; the driver teardown disposes the instanced
     // geometry and the mounted material (plus, for a GPU-driven emitter, the compiled program+VAO)
@@ -541,48 +548,51 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * Calls `listener` for each of this emitter's particles that dies - of age, or killed by its
-   * behavior's update (`kill`) - once per death, after every emitter of this world has ticked (so
-   * a listener spawning elsewhere does it the same way whatever order the emitters tick in: the
-   * births land on the next tick). A particle a birth
-   * overwrites in a full ring, or one {@link reset} clears, does not die; nor do the particles of
-   * {@link prewarm}. Watching costs a copy of the particle positions per tick while any listener
-   * is attached.
+   * Calls `listener` for each `kind` event of this emitter's particles, after every emitter of
+   * this world has ticked (so a listener spawning elsewhere does it the same way whatever order
+   * the emitters tick in: the births land on the next tick). Watching costs a copy of each
+   * event's slot, and for deaths also a copy of the particle positions per tick, while any
+   * listener of that kind is attached.
+   *
+   * - `"birth"`: once per particle born alive, however its birth came about (a burst, a play, a
+   *   death reaction).
+   * - `"death"`: once per particle that dies of age or is killed by its behavior's update (`kill`).
+   *   A particle a birth overwrites in a full ring, or one {@link reset} clears, does not die.
+   *
+   * Neither is reported for the particles of {@link prewarm}.
    * @returns Detaches `listener`.
-   * @throws On a GPU-driven emitter (see {@link reportsParticleDeaths}): its particles' ages live
-   *   on the GPU, and reading them back would stall the pipeline. Build a death source without a
-   *   GPU kernel.
+   * @throws On a kind that is neither. On a GPU-driven emitter (see {@link reportsParticleEvents}):
+   *   its particles' state lives on the GPU, and reading it back would stall the pipeline. Build
+   *   an event source without a GPU kernel.
    */
-  public onParticleDeath(listener: FXParticleDeathListener): () => void {
-    if (!this.driver.reportsDeaths) {
+  public onParticleEvent(kind: FXParticleEventKind, listener: FXParticleEventListener): () => void {
+    // Checked at runtime too: a plain-JS host can pass any string.
+    if (asParticleEventKind(kind) === undefined) {
       throw new Error(
-        "FXEmitter.onParticleDeath: a GPU-driven emitter cannot report its particles' deaths - " +
+        `FXEmitter.onParticleEvent: expected one of ${FX_PARTICLE_EVENT_KINDS.join(", ")}, ` +
+          `got ${kind}`,
+      );
+    }
+    if (!this.driver.reportsEvents) {
+      throw new Error(
+        `FXEmitter.onParticleEvent: a GPU-driven emitter cannot report its particles' ${kind}s - ` +
           "build it without a gpuKernel",
       );
     }
     if (this.destroyed) {
       return NO_OP;
     }
-    this.deathListeners.add(listener);
-    if (this.deathListeners.size === 1) {
-      this.driver.watchDeaths(this.deaths.record);
-    }
-    return (): void => {
-      // Deaths already queued are still handed to the listeners attached when they are (the
-      // dispatch snapshots them); with none left, nothing new is queued.
-      if (this.deathListeners.delete(listener) && this.deathListeners.size === 0) {
-        this.driver.watchDeaths(undefined);
-      }
-    };
+    return this.events[kind].listen(listener);
   }
 
   /**
-   * @internal Hands this tick's deaths to the {@link onParticleDeath} listeners. Driven by
-   * {@link FXWorld.update} after every object of the world ticked.
+   * @internal Hands this tick's particle events to their {@link onParticleEvent} listeners:
+   * deaths, then births, as a tick produces them. Driven by {@link FXWorld.update} after every
+   * object of the world ticked.
    */
   public afterWorldTick(): void {
-    // A snapshot: a listener may detach itself (or another), or reset this emitter.
-    this.deaths.dispatch([...this.deathListeners]);
+    this.events.death.dispatch();
+    this.events.birth.dispatch();
   }
 
   /**
@@ -644,8 +654,11 @@ export class FXEmitter extends Object3D {
       // Outside the world's tick, so its reset is this call's to make.
       flushStateResets();
     }
-    // Deaths of a simulated past are not events: nothing should spawn where they happened.
-    this.deaths.clearPending();
+    // Births and deaths of a simulated past are not events: nothing should spawn where they
+    // happened.
+    for (const channel of Object.values(this.events)) {
+      channel.clearPending();
+    }
   }
 
   /**
@@ -659,7 +672,9 @@ export class FXEmitter extends Object3D {
     this.pendingBursts.length = 0;
     this.activePlays.length = 0;
     this.dueBirths.length = 0;
-    this.deaths.clear();
+    for (const channel of Object.values(this.events)) {
+      channel.clear();
+    }
     this.settle();
     // A restarted effect should not report a teleport spike from wherever the emitter was last
     // posed - drop the velocity/angular-velocity baseline along with the particles.
@@ -1054,7 +1069,7 @@ export class FXEmitter extends Object3D {
     return sinceDeath >= 0 && (this.trail === undefined || this.trail.oldestPointAge <= sinceDeath);
   }
 
-  // Deaths already found stay queued for afterWorldTick: settling is no death of its own.
+  // Events already found stay queued for afterWorldTick: settling is no death of its own.
   private settle(): void {
     this.driver.reset();
     this.trail?.reset();
@@ -1146,7 +1161,7 @@ export class FXEmitter extends Object3D {
 // Returned by post-destroy `burst`/`play` - never matches a scheduled handler.
 const DEAD_HANDLER = -1;
 
-// Returned by `onParticleDeath` on a destroyed emitter.
+// Returned by `onParticleEvent` on a destroyed emitter.
 const NO_OP = (): void => undefined;
 
 const ZERO_VECTOR: readonly number[] = [0, 0, 0];

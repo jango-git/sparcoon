@@ -43,10 +43,11 @@ export interface FXEmitterTransform {
 }
 
 /**
- * What a behavior's newborns can take from the particle whose death spawned them: `stride` floats,
- * handed to its spawn as `inherited` (see {@link FXBehaviorArtifact.spawn}). A birth no death
- * spawned - a timeline's, a host's - gets `defaults`, as does any value the dying particle's
- * emitter does not hold. Which float is which is the editor's to lay out; the runtime only copies.
+ * What a behavior's newborns can take from the particle whose birth or death spawned them: `stride`
+ * floats, handed to its spawn as `inherited` (see {@link FXBehaviorArtifact.spawn}). A birth no
+ * reaction spawned - a timeline's, a host's - gets `defaults`, as does any value the source
+ * particle's emitter does not hold. Which float is which is the editor's to lay out; the runtime
+ * only copies.
  */
 export interface FXInheritLayout {
   readonly stride: number;

@@ -5,6 +5,29 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## Unreleased
+
+### Added
+
+- **Birth reactions**: an emitter can spawn at every birth of another emitter's particles, the same
+  way it spawns at their deaths - a burst or a finite play from where the particle was born, with
+  attribute inheritance. Its births land one frame after the particle's. As with deaths, the
+  source runs on the CPU whatever its GPU setting.
+- `FXEmitter.onParticleEvent("birth", listener)` reports each particle born alive, where its spawn
+  placed it and with the velocity of the pose it was born from. Births of `prewarm` are not
+  reported.
+
+### Changed
+
+- **Breaking:** one API for both kinds of particle event. Replace `onParticleDeath(listener)` with
+  `onParticleEvent("death", listener)`, `reportsParticleDeaths` with `reportsParticleEvents`, and
+  the types `FXParticleDeath` and `FXParticleDeathListener` with `FXParticleEvent` and
+  `FXParticleEventListener`. In `sparcoon/editor`, `connectDeathReaction(source, target, ...)`
+  becomes `connectReaction(source, kind, target, ...)` and `FXDeathSource` becomes
+  `FXParticleEventSource`.
+- `FXEffectReaction` takes `on: "birth" | "death"`. Without it a reaction fires on deaths, so
+  effects exported before keep their behavior.
+
 ## 0.20.1 - 2026-11-14
 
 Effects exported for 0.20.0 play as they are.

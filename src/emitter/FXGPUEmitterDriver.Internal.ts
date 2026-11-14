@@ -9,7 +9,8 @@ import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
 import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXAgedBirths, FXBirthAges } from "./FXBirthAges.Internal.js";
-import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
+import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
+import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 
@@ -114,14 +115,14 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     return true;
   }
 
-  // Age and death live in transform-feedback buffers only; seeing them would take a readback.
-  public get reportsDeaths(): boolean {
+  // Births and deaths live in transform-feedback buffers only; seeing them would take a readback.
+  public get reportsEvents(): boolean {
     return false;
   }
 
-  public watchDeaths(sink: FXParticleDeathSink | undefined): void {
+  public watch(kind: FXParticleEventKind, sink: FXParticleEventSink | undefined): void {
     if (sink !== undefined) {
-      throw new Error("FXEmitter: a GPU-driven emitter cannot report its particles' deaths");
+      throw new Error(`FXEmitter: a GPU-driven emitter cannot report its particles' ${kind}s`);
     }
   }
 

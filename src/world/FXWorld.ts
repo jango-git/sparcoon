@@ -10,9 +10,9 @@ import { flushStateResets } from "../render/FXDeferredStateReset.Internal.js";
 export interface FXWorldObject {
   onWorldTick(deltaTime: number, elapsedTime: number): void;
   /**
-   * Runs once every object of the world has ticked: an emitter hands out the particle deaths its
-   * tick found here, so whatever a listener spawns lands on the next tick whichever order the
-   * objects tick in.
+   * Runs once every object of the world has ticked: an emitter hands out the particle births and
+   * deaths its tick found here, so whatever a listener spawns lands on the next tick whichever
+   * order the objects tick in.
    */
   afterWorldTick?(): void;
   destroy(): void;
@@ -61,9 +61,9 @@ export class FXWorld {
 
   /**
    * Advances this world by `deltaTime` seconds: every playing effect drives its own timeline and
-   * meshes, then every registered emitter and mesh ticks once, then the particle deaths of that
-   * tick reach their listeners. Call exactly once per frame, before rendering. A disposed world is
-   * a no-op.
+   * meshes, then every registered emitter and mesh ticks once, then the particle births and deaths
+   * of that tick reach their listeners. Call exactly once per frame, before rendering. A disposed
+   * world is a no-op.
    */
   public update(deltaTime: number): void {
     if (this.disposed) {
@@ -84,8 +84,8 @@ export class FXWorld {
       // frame would draw through three's stale state.
       flushStateResets();
     }
-    // Iterated live: a death listener may dispose an object (or the whole world). One skipped
-    // that way hands its deaths out next frame - nothing is lost.
+    // Iterated live: an event listener may dispose an object (or the whole world). One skipped
+    // that way hands its events out next frame - nothing is lost.
     for (const object of this.objects) {
       object.afterWorldTick?.();
     }

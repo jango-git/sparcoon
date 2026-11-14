@@ -5,6 +5,7 @@ import {
   FX_AGE,
   FX_CORE_POSITION_STRIDE,
   FX_ID,
+  FX_LIFETIME,
   FX_POSITION_X,
   FX_POSITION_Y,
   FX_POSITION_Z,
@@ -19,7 +20,8 @@ import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
 import { FXCPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 import { birthAgeAt } from "./FXBirthAges.Internal.js";
-import type { FXEmitterDriver, FXParticleDeathSink } from "./FXEmitterDriver.Internal.js";
+import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
+import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
 import { particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
 
@@ -55,10 +57,12 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
   // The first overflow of this emitter's ring is reported once, in development builds.
   private warnedAboutOverflow = false;
 
-  // Death reporting (watchDeaths): where deaths go, every slot's position before this tick's update
-  // (a death's velocity is how far it moved since), and the tick's delta it is divided by. The
-  // snapshot is allocated on the first watch and only taken while one is set.
-  private deathSink: FXParticleDeathSink | undefined;
+  // Event reporting (watch): where births and deaths go. For deaths also every slot's position
+  // before this tick's update (a death's velocity is how far it moved since), and the tick's delta
+  // it is divided by. The snapshot is allocated on the first death watch and only taken while one
+  // is set.
+  private birthSink: FXParticleEventSink | undefined;
+  private deathSink: FXParticleEventSink | undefined;
   private positionsBeforeUpdate = new Float32Array(0);
   private tickDeltaTime = 0;
 
@@ -104,11 +108,15 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     return this.simulation.canSpawn;
   }
 
-  public get reportsDeaths(): boolean {
+  public get reportsEvents(): boolean {
     return true;
   }
 
-  public watchDeaths(sink: FXParticleDeathSink | undefined): void {
+  public watch(kind: FXParticleEventKind, sink: FXParticleEventSink | undefined): void {
+    if (kind === "birth") {
+      this.birthSink = sink;
+      return;
+    }
     this.deathSink = sink;
     const size = this.mesh.instanceCapacity * FX_CORE_POSITION_STRIDE;
     if (sink !== undefined && this.positionsBeforeUpdate.length !== size) {
@@ -149,6 +157,9 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
       // Re-checked (defensive): no spawn function would leave the freshly zeroed rows born dead.
       if (this.simulation.canSpawn) {
         this.simulation.spawn(slots, range.start, range.count, transform, inherited);
+      }
+      if (this.birthSink !== undefined) {
+        this.reportBirths(this.birthSink, range.start, range.count, transform.velocity);
       }
       // `claim` marked the range for upload, and the upload waits for the next render - so it
       // carries what the spawn wrote too.
@@ -238,6 +249,25 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
 
   public destroy(): void {
     this.mesh.destroy();
+  }
+
+  // The slots `[start, start + count)` a spawn just seeded, each born alive, with the velocity of
+  // the pose it was seeded from. One born dead (a lifetime of 0) never lived.
+  private reportBirths(
+    sink: FXParticleEventSink,
+    start: number,
+    count: number,
+    velocity: ArrayLike<number>,
+  ): void {
+    const { slots } = this.mesh;
+    const { stride } = this.mesh.slot;
+    const lifecycle = this.mesh.core.lifecycle;
+    for (let slot = start; slot < start + count; slot++) {
+      const offset = slot * stride;
+      if (slots[offset + lifecycle + FX_AGE] < slots[offset + lifecycle + FX_LIFETIME]) {
+        sink(slots, offset, velocity[0], velocity[1], velocity[2]);
+      }
+    }
   }
 
   // One death found by advanceAges: its slot after this tick's update, and its velocity over it.

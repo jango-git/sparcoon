@@ -6,6 +6,7 @@ import type {
   FXParticleKernelArtifact,
   FXRenderArtifactsByGLSLTier,
 } from "../artifact/FXArtifact.js";
+import type { FXParticleEventKind } from "../emitter/FXEmitter.Internal.js";
 import type { FXInheritCopies } from "../emitter/FXInheritance.js";
 import type { FXWorld } from "../world/FXWorld.js";
 import type { FXSpawnAction } from "./FXSpawnAction.js";
@@ -62,13 +63,17 @@ export interface FXTransformTrack {
 export type FXEffectEvent = FXSpawnAction & { readonly time: number };
 
 /**
- * A death reaction: a spawn action fired at every death of the `source` emitter's particles, from
- * where it died (see `FXEmitter.onParticleDeath`). A play here has a finite duration.
+ * A reaction: a spawn action fired at every birth or death of the `source` emitter's particles,
+ * from where the particle was born or died (see `FXEmitter.onParticleEvent`). A play here has a
+ * finite duration.
  */
 export type FXEffectReaction = FXSpawnAction & {
   /** The index of the source in {@link FXEffectSpec.emitters}. */
   readonly source: number;
-  /** What its births inherit of the dying particle (see `FXInheritCopies`); omitted when nothing. */
+  /** Which of the source's particle events fires it. default "death" */
+  readonly on?: FXParticleEventKind;
+  /** What its births inherit of the source's particle (see `FXInheritCopies`); omitted when
+   *  nothing. */
   readonly copies?: FXInheritCopies;
 };
 
@@ -114,8 +119,9 @@ export interface FXEffectEmitterSpec {
   readonly tracks: readonly FXTrack[];
   readonly events: readonly FXEffectEvent[];
   /**
-   * What this emitter spawns when other emitters' particles die; omitted when nothing. A source
-   * is built on the CPU whatever its `gpuBehavior` - only the CPU simulation sees deaths.
+   * What this emitter spawns when other emitters' particles are born or die; omitted when nothing.
+   * A source is built on the CPU whatever its `gpuBehavior` - only the CPU simulation sees its
+   * particles' births and deaths.
    */
   readonly reactions?: readonly FXEffectReaction[];
   /** Transform channels the editor marked "fake": never sampled from `transformTracks`, left for

@@ -6,15 +6,16 @@ import type {
   FXInheritLayout,
 } from "../../src/artifact/FXArtifact";
 import {
+  FX_AGE,
   FX_CORE_LIFECYCLE,
   FX_CORE_LIFECYCLE_STRIDE,
   FX_CORE_POSITION,
   FX_ID,
   FX_LIFETIME,
 } from "../../src/coreLayout";
-import { connectDeathReaction, fireSpawnAction } from "../../src/effect/FXSpawnAction";
+import { connectReaction, fireSpawnAction } from "../../src/effect/FXSpawnAction";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
-import type { FXParticleDeath } from "../../src/emitter/FXEmitter.Internal";
+import type { FXParticleEvent, FXParticleEventKind } from "../../src/emitter/FXEmitter.Internal";
 import { FXWorld } from "../../src/world/FXWorld";
 import { killingBehavior, placingBehavior, unlitArtifact } from "../helpers/artifacts";
 import { landBirths } from "../helpers/internals";
@@ -38,20 +39,24 @@ function emitterIn(world: FXWorld, behavior: FXBehaviorArtifact, capacity = 16):
   return FXEmitter.fromArtifacts(unlitArtifact(), behavior, { expectedCapacity: capacity }, world);
 }
 
-/** Copies each death out of the reused object the listener receives. */
-function collectDeaths(emitter: FXEmitter): FXParticleDeath[] {
-  const deaths: FXParticleDeath[] = [];
-  emitter.onParticleDeath((death) => {
-    deaths.push({
-      position: [...death.position],
-      velocity: [...death.velocity],
-      slot: death.slot.slice(),
+/** Copies each `kind` event out of the reused object the listener receives. */
+function collectEvents(emitter: FXEmitter, kind: FXParticleEventKind): FXParticleEvent[] {
+  const events: FXParticleEvent[] = [];
+  emitter.onParticleEvent(kind, (event) => {
+    events.push({
+      position: [...event.position],
+      velocity: [...event.velocity],
+      slot: event.slot.slice(),
     });
   });
-  return deaths;
+  return events;
 }
 
-describe("FXEmitter.onParticleDeath", () => {
+function collectDeaths(emitter: FXEmitter): FXParticleEvent[] {
+  return collectEvents(emitter, "death");
+}
+
+describe('FXEmitter.onParticleEvent("death")', () => {
   it("reports each death once, after the world ticked, where it died and how it moved", () => {
     const world = newWorld();
     const emitter = emitterIn(world, placingBehavior(0.25));
@@ -98,7 +103,7 @@ describe("FXEmitter.onParticleDeath", () => {
       },
       destroy: () => undefined,
     });
-    emitter.onParticleDeath(() => {
+    emitter.onParticleEvent("death", () => {
       seen.push(1);
     });
     emitter.burst(1);
@@ -156,7 +161,7 @@ describe("FXEmitter.onParticleDeath", () => {
     const world = newWorld();
     const emitter = emitterIn(world, placingBehavior(0.05));
     let calls = 0;
-    emitter.onParticleDeath(() => {
+    emitter.onParticleEvent("death", () => {
       calls += 1;
       emitter.reset();
     });
@@ -170,7 +175,7 @@ describe("FXEmitter.onParticleDeath", () => {
     const world = newWorld();
     const emitter = emitterIn(world, placingBehavior(0.05));
     let calls = 0;
-    emitter.onParticleDeath(() => {
+    emitter.onParticleEvent("death", () => {
       calls += 1;
       throw new Error("listener failed");
     });
@@ -185,7 +190,7 @@ describe("FXEmitter.onParticleDeath", () => {
     const world = newWorld();
     const emitter = emitterIn(world, placingBehavior(0.05));
     let calls = 0;
-    const detach = emitter.onParticleDeath(() => {
+    const detach = emitter.onParticleEvent("death", () => {
       calls += 1;
       detach();
     });
@@ -208,7 +213,7 @@ describe("death reactions", () => {
     const poses: FXEmitterTransform[] = [];
     const target = emitterIn(world, placingBehavior(10, poses));
     const source = emitterIn(world, placingBehavior(0.15));
-    connectDeathReaction(source, target, { kind: "burst", count: 3 });
+    connectReaction(source, "death", target, { kind: "burst", count: 3 });
     source.burst(1);
     world.update(0.1); // born
     world.update(0.1); // age 0.1, x 0.2
@@ -224,7 +229,7 @@ describe("death reactions", () => {
     const source = emitterIn(world, placingBehavior(1));
     const target = emitterIn(world, placingBehavior(1));
     expect(() =>
-      connectDeathReaction(source, target, { kind: "play", rate: 10, duration: 0 }),
+      connectReaction(source, "death", target, { kind: "play", rate: 10, duration: 0 }),
     ).toThrow(/finite duration/);
   });
 
@@ -233,7 +238,7 @@ describe("death reactions", () => {
     const source = emitterIn(world, placingBehavior(1));
     const target = emitterIn(world, placingBehavior(1));
     expect(() =>
-      connectDeathReaction(source, target, {
+      connectReaction(source, "death", target, {
         kind: "play",
         rate: 10,
         duration: 1,
@@ -290,6 +295,7 @@ function taggingBehavior(
 // The slot taggingBehavior lays out: position 0..2, lifecycle 3..5, tag 6..7.
 const TAG_OFFSET = 6;
 const LIFETIME_OFFSET = 3 + FX_LIFETIME;
+const AGE_OFFSET = 3 + FX_AGE;
 
 describe("a death's slot", () => {
   it("is the whole slot as the particle died, taken before a birth of the same tick claims it", () => {
@@ -323,7 +329,7 @@ describe("inheritance", () => {
     const inherits: number[][] = [];
     const target = emitterIn(world, taggingBehavior(10, { inherit, inherits }));
     const source = emitterIn(world, taggingBehavior(0.05, { firstTag: 20 }));
-    connectDeathReaction(source, target, { kind: "burst", count: 2 }, copies);
+    connectReaction(source, "death", target, { kind: "burst", count: 2 }, copies);
     return { world, source, inherits };
   }
 
@@ -399,15 +405,168 @@ describe("inheritance", () => {
     const target = emitterIn(world, taggingBehavior(10, { inherit }));
     const source = emitterIn(world, taggingBehavior(1));
     const action = { kind: "burst", count: 1 } as const;
-    expect(() => connectDeathReaction(source, target, action, [TAG_OFFSET, 0])).toThrow(/triples/);
-    expect(() => connectDeathReaction(source, target, action, [TAG_OFFSET, 0, 3])).toThrow(
+    expect(() => connectReaction(source, "death", target, action, [TAG_OFFSET, 0])).toThrow(
+      /triples/,
+    );
+    expect(() => connectReaction(source, "death", target, action, [TAG_OFFSET, 0, 3])).toThrow(
       /does not copy within/,
     );
-    expect(() => connectDeathReaction(source, target, action, [0, 2, 2])).toThrow(
+    expect(() => connectReaction(source, "death", target, action, [0, 2, 2])).toThrow(
       /does not copy within/,
     );
-    expect(() => connectDeathReaction(source, target, action, [0, 0, 0])).toThrow(
+    expect(() => connectReaction(source, "death", target, action, [0, 0, 0])).toThrow(
       /does not copy within/,
     );
+  });
+});
+
+describe('FXEmitter.onParticleEvent("birth")', () => {
+  it("reports each birth once, after the world ticked, where it was placed and how its pose moved", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, placingBehavior(10));
+    const births = collectEvents(emitter, "birth");
+    emitter.burst(1, { origin: { position: [1, 2, 3], velocity: [0, 5, 0] } });
+    expect(births).toEqual([]);
+    world.update(0.1);
+    expect(births).toHaveLength(1);
+    expect(births[0].position).toEqual([1, 2, 3]);
+    expect(births[0].velocity).toEqual([0, 5, 0]);
+    world.update(0.1);
+    expect(births).toHaveLength(1);
+  });
+
+  it("reports every birth of a burst with its own slot, as its spawn left it", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, taggingBehavior(10, { firstTag: 30 }));
+    const births = collectEvents(emitter, "birth");
+    emitter.burst(3);
+    world.update(0.1);
+    expect(births.map((birth) => [...birth.slot.subarray(TAG_OFFSET)])).toEqual([
+      [30, -1],
+      [31, -1],
+      [32, -1],
+    ]);
+    // Not updated yet: born at age 0.
+    expect(births[0].slot[AGE_OFFSET]).toBe(0);
+  });
+
+  it("does not report a birth seeded dead", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, taggingBehavior(0));
+    const births = collectEvents(emitter, "birth");
+    emitter.burst(2);
+    world.update(0.1);
+    expect(births).toEqual([]);
+  });
+
+  it("reports only the births a burst larger than the ring seeds", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, placingBehavior(10), 2);
+    const births = collectEvents(emitter, "birth");
+    emitter.burst(5);
+    world.update(0.1);
+    expect(births).toHaveLength(2);
+  });
+
+  it("hands out a tick's deaths before its births", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, placingBehavior(0.05));
+    const seen: string[] = [];
+    emitter.onParticleEvent("birth", () => {
+      seen.push("birth");
+    });
+    emitter.onParticleEvent("death", () => {
+      seen.push("death");
+    });
+    emitter.burst(1);
+    world.update(0.1); // born
+    emitter.burst(1);
+    world.update(0.1); // the first dies in the update, the second is born after it
+    expect(seen).toEqual(["birth", "death", "birth"]);
+  });
+
+  it("drops the births of the past prewarm() simulates", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, placingBehavior(10));
+    const births = collectEvents(emitter, "birth");
+    emitter.play(10, { duration: 1 });
+    emitter.prewarm(0.5);
+    expect(emitter.particleCount).toBeGreaterThan(0);
+    world.update(0);
+    expect(births).toEqual([]);
+  });
+
+  it("drops the births a reset() lands on before they are handed out", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, placingBehavior(10));
+    const births = collectEvents(emitter, "birth");
+    // Ticks after the emitter, so it resets it between its births and their hand-out.
+    world.registerObject({
+      onWorldTick: () => {
+        emitter.reset();
+      },
+      destroy: () => undefined,
+    });
+    emitter.burst(1);
+    world.update(0.1);
+    expect(births).toEqual([]);
+  });
+
+  it("stops reporting births once the last listener detached, deaths still reported", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, placingBehavior(0.05));
+    const deaths = collectDeaths(emitter);
+    let births = 0;
+    const detach = emitter.onParticleEvent("birth", () => {
+      births += 1;
+    });
+    detach();
+    emitter.burst(1);
+    world.update(0.1);
+    world.update(0.1);
+    expect(births).toBe(0);
+    expect(deaths).toHaveLength(1);
+  });
+
+  it("refuses a kind that is no particle event", () => {
+    const world = newWorld();
+    const emitter = emitterIn(world, placingBehavior(1));
+    expect(() => emitter.onParticleEvent("spawn" as FXParticleEventKind, () => undefined)).toThrow(
+      /expected one of birth, death/,
+    );
+  });
+});
+
+describe("birth reactions", () => {
+  it("bursts the target a tick later from where the source's particle was born", () => {
+    const world = newWorld();
+    const poses: FXEmitterTransform[] = [];
+    const target = emitterIn(world, placingBehavior(10, poses));
+    const source = emitterIn(world, placingBehavior(10));
+    connectReaction(source, "birth", target, { kind: "burst", count: 3 });
+    source.burst(1, { origin: { position: [1, 0, 0], velocity: [4, 0, 0] } });
+    world.update(0.1); // the source's particle is born
+    expect(target.particleCount).toBe(0);
+    world.update(0.1); // the reaction's burst lands
+    expect(target.particleCount).toBe(3);
+    expect(poses).toHaveLength(1);
+    expect(poses[0].worldMatrix[12]).toBeCloseTo(1, 6);
+    expect(poses[0].velocity).toEqual([4, 0, 0]);
+  });
+
+  it("hands its births what its copies take of the newborn", () => {
+    const world = newWorld();
+    const inherits: number[][] = [];
+    const inherit: FXInheritLayout = { stride: 2, defaults: [7, 8] };
+    const target = emitterIn(world, taggingBehavior(10, { inherit, inherits }));
+    const source = emitterIn(world, taggingBehavior(10, { firstTag: 40 }));
+    connectReaction(source, "birth", target, { kind: "burst", count: 1 }, [TAG_OFFSET, 1, 1]);
+    source.burst(2);
+    world.update(0.1);
+    world.update(0.1);
+    expect(inherits).toEqual([
+      [7, 40],
+      [7, 41],
+    ]);
   });
 });

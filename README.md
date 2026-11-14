@@ -42,8 +42,8 @@ screen and press **Load**.
 - Effects made of particle emitters and meshes under a shared timeline.
 - Billboard and mesh particles, particle trails.
 - Collisions with planes, boxes, spheres and cones.
-- Particle death events for reactions between emitters and for listeners in your code, with
-  attribute inheritance.
+- Particle birth and death events for reactions between emitters and for listeners in your code,
+  with attribute inheritance.
 - Soft particles, scene lighting and shadows.
 - GPU simulation.
 
@@ -205,20 +205,26 @@ if (sparks) {
 
 - `origin` sets the birth point and velocity, and rotation and scale come from the emitter.
 
-### Particle deaths
+### Particle births and deaths
 
 ```ts
 const shells = effect.getEmitter("Shells");
-const stopListening = shells?.onParticleDeath((death) => {
+const stopListening = shells?.onParticleEvent("death", (death) => {
   playBang(death.position); // the object is reused, so copy what you keep
 });
+shells?.onParticleEvent("birth", (birth) => playLaunch(birth.position));
 ```
 
-- Only a CPU emitter reports deaths (`reportsParticleDeaths`). The editor moves reaction sources to
-  the CPU itself.
-- Listeners run after every emitter of the world has ticked.
-- `death.slot` holds every attribute of the dead particle. To let the particles of your own burst
-  inherit values, pass them in `origin.inherited`. Without it the particles get the default values.
+- Only a CPU emitter reports births and deaths (`reportsParticleEvents`). The editor moves reaction
+  sources to the CPU itself.
+- Listeners run after every emitter of the world has ticked: in one frame deaths first, then
+  births.
+- A birth is reported at the position its spawn chose, with the velocity of the emitter or of the
+  spawn origin. A death is reported after the particle's last update, with how fast it moved over
+  its last frame.
+- `slot` holds every attribute of the particle. At a birth only what its spawn wrote is set. To let
+  the particles of your own burst inherit values, pass them in `origin.inherited`. Without it the
+  particles get the default values.
 
 ### Sorting and capacity
 

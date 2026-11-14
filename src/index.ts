@@ -83,8 +83,9 @@ export type {
   FXEmissionBasis,
   FXEmitterBurstOptions,
   FXEmitterPlayOptions,
-  FXParticleDeath,
-  FXParticleDeathListener,
+  FXParticleEvent,
+  FXParticleEventKind,
+  FXParticleEventListener,
   FXSpawnOrigin,
 } from "./emitter/FXEmitter.Internal.js";
 export type { FXEmitter } from "./emitter/FXEmitter.js";

@@ -513,12 +513,14 @@ describe("FXEmitter GPU driver", () => {
     expect(draws(gl)).toHaveLength(2);
   });
 
-  it("refuses to report deaths: its particles' ages never leave the GPU", () => {
+  it("refuses to report births and deaths: its particles' state never leaves the GPU", () => {
     const { emitter } = gpuEmitter(8);
-    expect(() => emitter.onParticleDeath(() => undefined)).toThrow(/GPU-driven/);
+    expect(emitter.reportsParticleEvents).toBe(false);
+    expect(() => emitter.onParticleEvent("death", () => undefined)).toThrow(/GPU-driven/);
+    expect(() => emitter.onParticleEvent("birth", () => undefined)).toThrow(/GPU-driven/);
   });
 
-  it("builds a death-reaction source on the CPU in an effect, whatever its GPU kernel", () => {
+  it("builds a reaction source on the CPU in an effect, whatever its GPU kernel", () => {
     const world = new FXWorld();
     worlds.push(world);
     const withKernel = { behavior: behaviorArtifact({ lifetime: 1 }), gpuBehavior: kernel() };
@@ -530,6 +532,27 @@ describe("FXEmitter GPU driver", () => {
           emitterSpec("sparks", {
             ...withKernel,
             reactions: [{ source: 0, kind: "burst", count: 2 }],
+          }),
+        ],
+      }),
+      { world, renderer: mockRenderer().renderer },
+    );
+    expect(isGPUDriven(effect.getEmitter("shell")!)).toBe(false);
+    expect(isGPUDriven(effect.getEmitter("sparks")!)).toBe(true);
+  });
+
+  it("builds a birth-reaction source on the CPU too", () => {
+    const world = new FXWorld();
+    worlds.push(world);
+    const withKernel = { behavior: behaviorArtifact({ lifetime: 1 }), gpuBehavior: kernel() };
+    const effect = new TestEffect(
+      effectSpec({
+        duration: 1,
+        emitters: [
+          emitterSpec("shell", withKernel),
+          emitterSpec("sparks", {
+            ...withKernel,
+            reactions: [{ source: 0, on: "birth", kind: "burst", count: 2 }],
           }),
         ],
       }),

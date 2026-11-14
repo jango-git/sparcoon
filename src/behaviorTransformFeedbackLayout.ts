@@ -27,6 +27,7 @@ export const FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM = "u_fxObject
 // their ages as `vec2(first, step)` - birth `k` of the tail is `first + k * step` seconds old.
 export const FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM = "u_fxBirthAgeCount";
 export const FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM = "u_fxBirthAges";
-// What the pass's births take from the particle whose death spawned them (`FXInheritLayout`), as
-// `vec4[max(1, ceil(stride / 4))]`: float `k` of the layout is component `k % 4` of element `k / 4`.
+// What the pass's births take from the particle whose birth or death spawned them
+// (`FXInheritLayout`), as `vec4[max(1, ceil(stride / 4))]`: float `k` of the layout is component
+// `k % 4` of element `k / 4`.
 export const FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM = "u_fxInherited";

@@ -14,6 +14,7 @@ import type {
   FXRenderArtifactsByGLSLTier,
 } from "../artifact/FXArtifact.js";
 import { ownValue } from "../artifact/FXValueSlots.Internal.js";
+import { asParticleEventKind } from "../emitter/FXEmitter.Internal.js";
 import { FXEmitter } from "../emitter/FXEmitter.js";
 import { assertValidInheritCopies } from "../emitter/FXInheritance.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
@@ -46,11 +47,7 @@ import type {
   FXTransformChannel,
 } from "./FXEffectSpec.js";
 import { checkRuntimeVersion } from "./FXRuntimeVersion.Internal.js";
-import {
-  assertDeathReactionAction,
-  connectDeathReaction,
-  fireSpawnAction,
-} from "./FXSpawnAction.js";
+import { assertReactionAction, connectReaction, fireSpawnAction } from "./FXSpawnAction.js";
 
 const VECTOR_COMPONENTS: readonly ["x", "y", "z", "w"] = ["x", "y", "z", "w"];
 const PARAMETER_UNIFORM_PREFIX = "u_param_";
@@ -303,7 +300,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     const isWebGL2 = options.renderer?.capabilities.isWebGL2 ?? false;
     // Checked before anything is built: a throw past here would leave emitters registered in
     // the world with no effect to dispose them.
-    const deathSources = deathReactionSources(specification);
+    const eventSources = reactionSources(specification);
 
     for (const [index, emitterSpec] of specification.emitters.entries()) {
       const textures = texturesForSlots(emitterSpec.externalSlots, assets);
@@ -333,7 +330,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           // picking `render`'s "standard" tier above. FXEmitter itself decides whether GPU setup
           // then actually succeeds, falling back to `emitterSpec.behavior` in place if not - this
           // effect never needs to know which one ends up driving a given emitter.
-          gpuKernel: isWebGL2 && !deathSources.has(index) ? emitterSpec.gpuBehavior : undefined,
+          gpuKernel: isWebGL2 && !eventSources.has(index) ? emitterSpec.gpuBehavior : undefined,
           renderer: options.renderer,
           trail,
         },
@@ -361,8 +358,9 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     // Once every emitter exists: a reaction may name any of them as its source.
     for (const [index, emitterSpec] of specification.emitters.entries()) {
       for (const reaction of emitterSpec.reactions ?? []) {
-        connectDeathReaction(
+        connectReaction(
           this.emitters[reaction.source],
+          reaction.on ?? "death",
           this.emitters[index],
           reaction,
           reaction.copies,
@@ -763,12 +761,13 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
 
 /**
  * The indices of the emitters some reaction in `specification` listens to - built on the CPU, the
- * only simulation that sees deaths.
- * @throws On a reaction naming an emitter the effect does not have, one that cannot be fired by
- *   a death (see {@link assertDeathReactionAction}), or one whose copies do not fit its source's
- *   slot and its emitter's inherit layout (see {@link assertValidInheritCopies}).
+ * only simulation that sees its particles' births and deaths.
+ * @throws On a reaction naming an emitter the effect does not have, one naming no particle event,
+ *   one that cannot be fired by a particle event (see {@link assertReactionAction}), or one whose
+ *   copies do not fit its source's slot and its emitter's inherit layout (see
+ *   {@link assertValidInheritCopies}).
  */
-function deathReactionSources(specification: FXEffectSpec): ReadonlySet<number> {
+function reactionSources(specification: FXEffectSpec): ReadonlySet<number> {
   const sources = new Set<number>();
   for (const emitter of specification.emitters) {
     for (const reaction of emitter.reactions ?? []) {
@@ -782,7 +781,13 @@ function deathReactionSources(specification: FXEffectSpec): ReadonlySet<number> 
             "which does not exist",
         );
       }
-      assertDeathReactionAction(reaction, `FXEffect: emitter "${emitter.name}"`);
+      if (reaction.on !== undefined && asParticleEventKind(reaction.on) === undefined) {
+        throw new Error(
+          `FXEffect: emitter "${emitter.name}" reacts on ${reaction.on}, which is no ` +
+            "particle event",
+        );
+      }
+      assertReactionAction(reaction, `FXEffect: emitter "${emitter.name}"`);
       // A source is built on the CPU, so its slot is its JS behavior's.
       assertValidInheritCopies(
         reaction.copies ?? [],

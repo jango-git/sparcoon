@@ -8,6 +8,7 @@ import type {
   FXEffectReaction,
   FXEffectSpec,
 } from "../../src/effect/FXEffectSpec";
+import type { FXParticleEventKind } from "../../src/emitter/FXEmitter.Internal";
 import { buildPrimitiveGeometry } from "../../src/instancedParticle/primitiveGeometry";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
@@ -562,7 +563,7 @@ describe("FXEffect once-through playback", () => {
   });
 });
 
-describe("FXEffect death reactions", () => {
+describe("FXEffect reactions", () => {
   function shellAndSparks(reaction: FXEffectReaction): FXEffectSpec {
     return effectSpec({
       duration: 10,
@@ -588,6 +589,19 @@ describe("FXEffect death reactions", () => {
     expect(effect.getEmitter("sparks")!.particleCount).toBe(4);
   });
 
+  it("spawns on the reacting emitter one tick after each birth of the source's particles", () => {
+    const world = newWorld();
+    const effect = makeEffect(
+      world,
+      shellAndSparks({ source: 0, on: "birth", kind: "burst", count: 4 }),
+    );
+    effect.play();
+    world.update(0.1); // the shell is born
+    expect(effect.getEmitter("sparks")!.particleCount).toBe(0);
+    world.update(0.1);
+    expect(effect.getEmitter("sparks")!.particleCount).toBe(4);
+  });
+
   it("refuses a bad reaction before building anything", () => {
     const world = newWorld();
     expect(() => makeEffect(world, shellAndSparks({ source: 5, kind: "burst", count: 4 }))).toThrow(
@@ -596,6 +610,17 @@ describe("FXEffect death reactions", () => {
     expect(() =>
       makeEffect(world, shellAndSparks({ source: 0, kind: "play", rate: 4, duration: 0 })),
     ).toThrow(/finite duration/);
+    expect(() =>
+      makeEffect(
+        world,
+        shellAndSparks({
+          source: 0,
+          on: "spawn" as FXParticleEventKind,
+          kind: "burst",
+          count: 4,
+        }),
+      ),
+    ).toThrow(/no particle event/);
     // Sparks inherit nothing, so no copy fits them.
     expect(() =>
       makeEffect(world, shellAndSparks({ source: 0, kind: "burst", count: 4, copies: [0, 0, 1] })),

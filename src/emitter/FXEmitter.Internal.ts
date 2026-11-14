@@ -114,24 +114,50 @@ export interface FXEmitterPlayOptions {
 }
 
 /**
- * One particle that just died (of age, or killed), handed to {@link FXEmitter.onParticleDeath}
- * listeners. The same object is reused for every death: read it during the call, copy what you
+ * What happens to a particle that {@link FXEmitter.onParticleEvent} reports: it is born
+ * (`"birth"`), or it dies of age or is killed by its behavior's update (`"death"`).
+ */
+export type FXParticleEventKind = "birth" | "death";
+
+// Keyed by the type itself, so a kind added to FXParticleEventKind cannot be left out of the list.
+const PARTICLE_EVENT_KIND_SET: Readonly<Record<FXParticleEventKind, true>> = {
+  birth: true,
+  death: true,
+};
+
+/** Every particle event kind, for tools that offer them. */
+export const FX_PARTICLE_EVENT_KINDS = Object.keys(
+  PARTICLE_EVENT_KIND_SET,
+) as readonly FXParticleEventKind[];
+
+/** `value` as a particle event kind, or `undefined` when it names none (a file's raw input). */
+export function asParticleEventKind(value: unknown): FXParticleEventKind | undefined {
+  return FX_PARTICLE_EVENT_KINDS.find((kind) => kind === value);
+}
+
+/**
+ * One particle that was just born or just died, handed to {@link FXEmitter.onParticleEvent}
+ * listeners. The same object is reused for every event: read it during the call, copy what you
  * keep.
  */
-export interface FXParticleDeath {
-  /** `[x, y, z]`: the particle's position after its last update. */
+export interface FXParticleEvent {
+  /** `[x, y, z]`: at a birth, where its spawn placed it; at a death, after its last update. */
   readonly position: readonly number[];
-  /** `[x, y, z]` per second: how far it moved over its last tick. */
+  /**
+   * `[x, y, z]` per second: at a birth, the velocity of the pose it was born from (the emitter's
+   * motion, or a spawn origin's velocity); at a death, how far it moved over its last tick.
+   */
   readonly velocity: readonly number[];
   /**
-   * Its whole slot after its last update: every field its behavior declares, back to back in the
-   * order of the behavior's `buffers` ({@link FXEmitter.particleSlot}).
+   * Its whole slot at that moment: every field its behavior declares, back to back in the order of
+   * the behavior's `buffers` ({@link FXEmitter.particleSlot}). At a birth only its id, its age and
+   * what its spawn wrote are set; every other field is 0.
    */
   readonly slot: Float32Array;
 }
 
-/** Receives the deaths of an emitter's particles; see {@link FXEmitter.onParticleDeath}. */
-export type FXParticleDeathListener = (death: FXParticleDeath) => void;
+/** Receives one kind of event of an emitter's particles; see {@link FXEmitter.onParticleEvent}. */
+export type FXParticleEventListener = (event: FXParticleEvent) => void;
 
 export const EMITTER_DEFAULT_EXPECTED_CAPACITY = 256;
 export const EMITTER_DEFAULT_RECEIVE_SHADOW = false;

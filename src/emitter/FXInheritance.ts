@@ -2,14 +2,14 @@ import type { FXInheritLayout } from "../artifact/FXArtifact.js";
 import { assertValidNumber } from "../miscellaneous/asserts.js";
 
 /**
- * Inheritance: what a newborn takes from the particle whose death spawned it. A behavior's
- * {@link FXInheritLayout} says how many floats its births inherit and what a birth no death spawned
- * gets; a death reaction's {@link FXInheritCopies} say which floats of the dying particle's slot
+ * Inheritance: what a newborn takes from the particle whose birth or death spawned it. A behavior's
+ * {@link FXInheritLayout} says how many floats its births inherit and what a birth no reaction
+ * spawned gets; a reaction's {@link FXInheritCopies} say which floats of the source particle's slot
  * fill which of them. The runtime only checks and copies - which float is which is the editor's.
  */
 
 /**
- * What a death reaction copies from the dying particle into what its births inherit: triples
+ * What a reaction copies from the source particle into what its births inherit: triples
  * `[from, to, count]` back to back - `count` floats of the particle's slot from `from` on, into the
  * target's inherit layout from `to` on. Every float no triple writes keeps the target's default.
  */
@@ -65,7 +65,7 @@ export function inheritFrom(
 }
 
 /**
- * The defaults `inherit` hands a birth no death spawned - nothing without a layout.
+ * The defaults `inherit` hands a birth no reaction spawned - nothing without a layout.
  * @throws When `inherit` is not a whole layout: a negative or fractional stride, or defaults of
  *   another length or not finite.
  */

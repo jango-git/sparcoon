@@ -127,7 +127,7 @@ describe("FXEmitter.destroy", () => {
     expect(emitter.hasTrail).toBe(false);
 
     const listener = vi.fn();
-    emitter.onParticleDeath(listener)();
+    emitter.onParticleEvent("death", listener)();
     expect(listener).not.toHaveBeenCalled();
   });
 });
