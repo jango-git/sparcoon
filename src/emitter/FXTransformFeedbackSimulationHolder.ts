@@ -22,6 +22,7 @@ import {
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../behaviorTransformFeedbackLayout.js";
+import { FX_PARTICLE_ID_RANGE } from "../coreLayout.js";
 import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
@@ -41,6 +42,9 @@ export interface FXKernelSpawnRange {
   readonly count: number;
   readonly aged?: FXAgedBirths;
 }
+
+/** A birth probe's range: vertex 0 alone. */
+const PROBE_RANGE: FXKernelSpawnRange = { start: 0, count: 1 };
 
 /** WebGL's cap on a vertex attribute stride, in bytes - one particle's slot is that stride. */
 const MAX_VERTEX_STRIDE_BYTES = 255;
@@ -84,10 +88,10 @@ export class FXTransformFeedbackSimulationHolder {
   // that needs exact precision.
   private randSeedCounter = 0;
 
-  // Running total of particles ever spawned by this emitter - the base a newborn's id offsets
-  // from this tick's relative spawn index. Never reset (no reset() exists on this class, only
-  // destroy()): a stop/replay must not reissue ids already handed out, same reasoning as
-  // randSeedCounter above.
+  // Particles ever spawned by this emitter, modulo FX_PARTICLE_ID_RANGE - the base a newborn's id
+  // offsets from this tick's relative spawn index (the kernel wraps the sum the same way). Never
+  // reset (no reset() exists on this class, only destroy()): a stop/replay must not reissue ids
+  // just handed out, same reasoning as randSeedCounter above.
   private spawnIdBase = 0;
 
   /** `surfaces` are the tables of the artifact's `meshSurfaces`, by uniform. */
@@ -144,25 +148,16 @@ export class FXTransformFeedbackSimulationHolder {
     inherited: Float32Array,
   ): void {
     const gl = this.gl;
-    this.randSeedCounter += 1;
-
-    this.bindProgramAndInputs(mesh);
+    this.preparePass(mesh, deltaTime, spawnRange, emitter, inherited);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, mesh.writeBuffer());
-
-    this.setUniforms(deltaTime, spawnRange, emitter, inherited, mesh.capacity);
-
-    gl.enable(gl.RASTERIZER_DISCARD);
-    gl.beginTransformFeedback(gl.POINTS);
-    gl.drawArrays(gl.POINTS, 0, mesh.capacity);
-    gl.endTransformFeedback();
-    gl.disable(gl.RASTERIZER_DISCARD);
+    this.capture(0, mesh.capacity);
 
     // A bound base stays "active" for its binding point otherwise.
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
     mesh.swapBuffers();
 
     // Consumed - advance past every id this tick's spawn range just claimed.
-    this.spawnIdBase += spawnRange.count;
+    this.spawnIdBase = (this.spawnIdBase + spawnRange.count) % FX_PARTICLE_ID_RANGE;
 
     // Our raw gl.bindVertexArray() call above is invisible to three's own VAO-identity cache
     // (WebGLBindingStates has no scoped, public way to invalidate just this mesh's entry) - the
@@ -197,8 +192,6 @@ export class FXTransformFeedbackSimulationHolder {
       return;
     }
     const gl = this.gl;
-    this.randSeedCounter += 1;
-
     const capacity = mesh.capacity;
     const head = Math.min(spawnRange.count, capacity - spawnRange.start);
     const segments: readonly (readonly [first: number, count: number])[] =
@@ -209,12 +202,10 @@ export class FXTransformFeedbackSimulationHolder {
           ]
         : [[spawnRange.start, spawnRange.count]];
 
-    this.bindProgramAndInputs(mesh);
     // dt 0: the spawn branch has no use for it, and nothing else runs in this pass.
-    this.setUniforms(0, spawnRange, emitter, inherited, capacity);
+    this.preparePass(mesh, 0, spawnRange, emitter, inherited);
 
     const slotBytes = this.slot.stride * Float32Array.BYTES_PER_ELEMENT;
-    gl.enable(gl.RASTERIZER_DISCARD);
     for (const [first, count] of segments) {
       gl.bindBufferRange(
         gl.TRANSFORM_FEEDBACK_BUFFER,
@@ -223,11 +214,8 @@ export class FXTransformFeedbackSimulationHolder {
         first * slotBytes,
         count * slotBytes,
       );
-      gl.beginTransformFeedback(gl.POINTS);
-      gl.drawArrays(gl.POINTS, first, count);
-      gl.endTransformFeedback();
+      this.capture(first, count);
     }
-    gl.disable(gl.RASTERIZER_DISCARD);
     // Released before the copy: a buffer still bound for transform feedback cannot be a copy
     // source.
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
@@ -246,7 +234,29 @@ export class FXTransformFeedbackSimulationHolder {
     gl.bindBuffer(gl.COPY_READ_BUFFER, null);
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
 
-    this.spawnIdBase += births;
+    this.spawnIdBase = (this.spawnIdBase + births) % FX_PARTICLE_ID_RANGE;
+    // Same reason as in tick(): the raw VAO bind is invisible to three's caches.
+    deferStateReset(this.renderer);
+  }
+
+  /**
+   * Seeds `target`, a buffer of one slot outside the ring, with the particle a birth from `emitter`
+   * would be now (see `FXBirthProbe`): the spawn half of {@link tick} over vertex 0 alone, whose
+   * range of one makes it a birth under the kernel's own range test. The spawn branch never reads
+   * the slot it overwrites, so the vertex's input - the ring's slot 0 - goes unseen, and no slot of
+   * `mesh` is written. It takes the id the next birth will, advancing none.
+   */
+  public seedProbe(
+    mesh: FXTransformFeedbackParticle,
+    target: WebGLBuffer,
+    emitter: FXEmitterTransform,
+    inherited: Float32Array,
+  ): void {
+    const gl = this.gl;
+    this.preparePass(mesh, 0, PROBE_RANGE, emitter, inherited);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, target);
+    this.capture(0, 1);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
     // Same reason as in tick(): the raw VAO bind is invisible to three's caches.
     deferStateReset(this.renderer);
   }
@@ -268,6 +278,32 @@ export class FXTransformFeedbackSimulationHolder {
         this.bindings[name].value = values[name];
       }
     }
+  }
+
+  /**
+   * Readies a pass of the program over `mesh`'s current half: a fresh random seed, the program and
+   * its inputs bound, and every uniform set for `spawnRange`.
+   */
+  private preparePass(
+    mesh: FXTransformFeedbackParticle,
+    deltaTime: number,
+    spawnRange: FXKernelSpawnRange,
+    emitter: FXEmitterTransform,
+    inherited: Float32Array,
+  ): void {
+    this.randSeedCounter += 1;
+    this.bindProgramAndInputs(mesh);
+    this.setUniforms(deltaTime, spawnRange, emitter, inherited, mesh.capacity);
+  }
+
+  /** Runs the bound program over vertices `[first, first + count)` into the bound feedback buffer. */
+  private capture(first: number, count: number): void {
+    const gl = this.gl;
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.beginTransformFeedback(gl.POINTS);
+    gl.drawArrays(gl.POINTS, first, count);
+    gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
   }
 
   /** Binds the program and wires the read half's slot fields as its vertex inputs. */

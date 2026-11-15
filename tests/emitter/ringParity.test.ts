@@ -46,7 +46,9 @@ function positionX(emitter: FXEmitter, slot: number): number {
 describe("JS backend tick order matches the GPU fused pass", () => {
   it("does not update a particle in the tick it is born in", () => {
     const agesSeen: number[] = [];
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), steppingBehavior(agesSeen));
+    const emitter = FXEmitter.fromArtifacts(steppingBehavior(agesSeen), {
+      particles: unlitArtifact(),
+    });
     try {
       // Born inside the tick (a delayed burst expiring) - seeded, not stepped.
       emitter.burst(1, { delay: 0.01 });
@@ -65,7 +67,9 @@ describe("JS backend tick order matches the GPU fused pass", () => {
 
   it("does not update an undelayed burst in the tick it lands in either", () => {
     const agesSeen: number[] = [];
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), steppingBehavior(agesSeen));
+    const emitter = FXEmitter.fromArtifacts(steppingBehavior(agesSeen), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(1);
       tickEmitter(emitter, 0.1);
@@ -79,7 +83,9 @@ describe("JS backend tick order matches the GPU fused pass", () => {
 
   it("lets the update read the age as of the previous tick, then ages the particle", () => {
     const agesSeen: number[] = [];
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), steppingBehavior(agesSeen));
+    const emitter = FXEmitter.fromArtifacts(steppingBehavior(agesSeen), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(1);
       tickEmitter(emitter, 0.25); // born
@@ -94,7 +100,9 @@ describe("JS backend tick order matches the GPU fused pass", () => {
 
 describe("fixed ring capacity", () => {
   it("defaults to 256 particles and never grows", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 10 }), {
+      particles: unlitArtifact(),
+    });
     try {
       expect(emitter.particleCapacity).toBe(256);
       emitter.burst(300);
@@ -108,7 +116,8 @@ describe("fixed ring capacity", () => {
   });
 
   it("reports overwritten live particles once the ring is full", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 10 }), {
+      particles: unlitArtifact(),
       expectedCapacity: 4,
     });
     try {
@@ -125,7 +134,8 @@ describe("fixed ring capacity", () => {
   });
 
   it("reuses dead slots without counting them as overflow", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 1 }), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 1 }), {
+      particles: unlitArtifact(),
       expectedCapacity: 4,
     });
     try {
@@ -144,7 +154,8 @@ describe("fixed ring capacity", () => {
 
   it("clears every particle and rewinds the ring on reset()", () => {
     const agesSeen: number[] = [];
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), steppingBehavior(agesSeen), {
+    const emitter = FXEmitter.fromArtifacts(steppingBehavior(agesSeen), {
+      particles: unlitArtifact(),
       expectedCapacity: 4,
     });
     try {
@@ -180,7 +191,10 @@ describe("an idle JS emitter (nothing alive)", () => {
 
   it("skips the update, the aging and the uploads once the last particle died", () => {
     const { behavior, updates } = countingBehavior(0.1);
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behavior, { expectedCapacity: 1000 });
+    const emitter = FXEmitter.fromArtifacts(behavior, {
+      particles: unlitArtifact(),
+      expectedCapacity: 1000,
+    });
     try {
       emitter.burst(1000);
       landBirths(emitter);
@@ -225,7 +239,9 @@ describe("particle ids", () => {
   }
 
   it("numbers births in order across bursts, never reusing an id", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 10 }), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(3);
       landBirths(emitter);
@@ -238,7 +254,9 @@ describe("particle ids", () => {
   });
 
   it("keeps the id counter across reset(): a replay never reissues an id handed out", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 10 }), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(2); // ids 0, 1
       landBirths(emitter);
@@ -252,7 +270,9 @@ describe("particle ids", () => {
   });
 
   it("keeps every survivor in its own slot when an earlier slot's particle dies", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 10 }), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(3); // ids 0, 1, 2 at slots 0, 1, 2
       landBirths(emitter);
@@ -269,7 +289,8 @@ describe("particle ids", () => {
 
   it("takes one id per birth asked for, seeded or not, as the GPU kernel numbers them", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 10 }), {
+      particles: unlitArtifact(),
       expectedCapacity: 4,
     });
     try {
@@ -293,7 +314,8 @@ describe("ring overflow warning", () => {
 
   it("warns once per emitter, on the first overflow, in a development build", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 10 }), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 10 }), {
+      particles: unlitArtifact(),
       expectedCapacity: 2,
     });
     try {

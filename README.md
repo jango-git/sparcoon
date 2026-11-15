@@ -40,7 +40,7 @@ screen and press **Load**.
 ## Features
 
 - Effects made of particle emitters and meshes under a shared timeline.
-- Billboard and mesh particles, particle trails.
+- Billboard and mesh particles, particle trails and ribbons.
 - Random points on the surface of a mesh, evenly by area.
 - Collisions with planes, boxes, spheres and cones.
 - Particle birth and death events for reactions between emitters and for listeners in your code,
@@ -239,7 +239,7 @@ if (sparks?.sort !== undefined) {
 - An emitter sorts its particles back to front when the editor gives it a sort interval, on the CPU
   and on the GPU. Whether it sorts is fixed when the effect is built: an emitter without sorting
   has no `sort`, and the camera and fraction of one with it can be changed.
-- An emitter with a trail does not sort.
+- An emitter with a trail or a ribbon, or one that does not draw its particles, does not sort.
 - On the GPU a sort compares every slot with every other, so its cost grows with the square of the
   capacity. A sorted GPU emitter also copies its particles into a texture on every frame they
   change.
@@ -336,9 +336,9 @@ const assets: MyEffectAssets = {
 - Argument checks run only in a development build and are removed with `NODE_ENV=production`.
 - An effect exported for another minor version logs a warning naming both versions. The runtime's
   version is `FX_RUNTIME_VERSION`.
-- Given a `renderer`, a trail that needs more vertex attributes, varyings, uniforms or textures than
-  the GPU offers (a heavy trail on WebGL1) is skipped with a warning, and its particles draw without
-  it.
+- Given a `renderer`, a trail or a ribbon that needs more vertex attributes, varyings, uniforms or
+  textures than the GPU offers (a heavy one on WebGL1) is skipped with a warning, and its particles
+  draw without it.
 
 ## The `sparcoon/editor` entry point
 

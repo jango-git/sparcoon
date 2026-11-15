@@ -45,7 +45,7 @@ function gravityBehavior(gravity: number): FXBehaviorArtifact {
 
 describe("FXEmitter.applyValues - behavior bindings", () => {
   it("scrubs a binding value that the next update tick reads", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), gravityBehavior(-1));
+    const emitter = FXEmitter.fromArtifacts(gravityBehavior(-1), { particles: unlitArtifact() });
     try {
       emitter.burst(1);
       landBirths(emitter);
@@ -63,7 +63,7 @@ describe("FXEmitter.applyValues - behavior bindings", () => {
   });
 
   it("ignores an unknown binding name", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), gravityBehavior(-1));
+    const emitter = FXEmitter.fromArtifacts(gravityBehavior(-1), { particles: unlitArtifact() });
     try {
       emitter.applyValues({ bindings: { nope$9: 42 } });
       // The real binding is untouched.

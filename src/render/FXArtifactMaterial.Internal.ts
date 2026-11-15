@@ -51,7 +51,7 @@ import {
 // fragment-stage read (`world-matrix`, `inverse-world-matrix` - the artifact's targets list it in
 // both stages) needs its own declaration, or the fragment shader fails to compile. At the vertex
 // stage's precision (highp) where the fragment stage has it, so the two declarations link.
-const FX_FRAGMENT_MODEL_MATRIX = [
+export const FX_FRAGMENT_MODEL_MATRIX = [
   "#ifdef GL_FRAGMENT_PRECISION_HIGH",
   "uniform highp mat4 modelMatrix;",
   "#else",
@@ -100,7 +100,7 @@ function readProperties(reads: FXParticleReads): string[] {
 }
 
 /** The particle properties a program's fragment stage reads - each one a varying. */
-function fragmentReadProperties(program: FXRenderProgram): ReadonlySet<string> {
+export function fragmentReadProperties(program: FXRenderProgram): ReadonlySet<string> {
   return new Set(readProperties(program.fragment.particleReads));
 }
 
@@ -138,13 +138,13 @@ export interface FXParticleLayout {
   /**
    * The fields the render reads that nothing writes. Attributes have no defaults, so such a field
    * is always zero: the shader declares it as that constant - no buffer, no attribute slot - the
-   * same as a trail reading a field its emitter does not hold (see {@link FXTrailLayout.missing}).
+   * same as a trail reading a field its emitter does not hold (see {@link FXStripLayout.missing}).
    */
   readonly missing: Readonly<Record<string, GLTypeInfo>>;
 }
 
 /** The GLSL type of a packed view: `float` .. `vec4`. */
-function viewType(view: FXPackedAttribute): string {
+export function viewType(view: FXPackedAttribute): string {
   return floatGLSLType(view.components);
 }
 
@@ -164,7 +164,7 @@ function memberSwizzle(view: FXPackedAttribute, member: FXPackedMember): string 
  * the member's components of the view bound as `attributeName(view)`. GLSL ES 1.00 throughout -
  * a swizzle of an attribute is an ordinary expression.
  */
-function unpackStatements(
+export function unpackStatements(
   views: readonly FXPackedAttribute[],
   attributeName: (view: FXPackedAttribute) => string,
   target: (member: FXPackedMember) => string,
@@ -295,7 +295,7 @@ const FX_FLAT_DEFINE = [
 ].join("\n");
 
 /** The declarations of what a program carries between its stages - the same in both stages. */
-function graphVaryings(program: FXRenderProgram): string {
+export function graphVaryings(program: FXRenderProgram): string {
   const flat = program.varyings.some((varying) => varying.interpolation === "flat");
   return [
     ...(flat ? [FX_FLAT_DEFINE] : []),
@@ -307,7 +307,7 @@ function graphVaryings(program: FXRenderProgram): string {
 }
 
 /** GLSL expression for a vertex output slot, or its default when the slot is unbound. */
-function outputOrDefault(
+export function outputOrDefault(
   outputs: Readonly<Record<string, string>>,
   slot: string,
   fallback: string,
@@ -365,7 +365,7 @@ interface FXSurfaceFrame {
   readonly normalTransform: boolean;
 }
 
-function surfaceFrame(reads: FXSurfaceReads, threeNormals: boolean): FXSurfaceFrame {
+export function surfaceFrame(reads: FXSurfaceReads, threeNormals: boolean): FXSurfaceFrame {
   const varyings: string[] = [];
   const vertex: string[] = [];
   const fragment: string[] = [];
@@ -470,7 +470,7 @@ export function createMaterialSlots(
 }
 
 /** Wires `slots` into a material's uniforms by reference: a later write is drawn next frame. */
-function bindUniforms(uniforms: Record<string, IUniform>, slots: FXMaterialSlots): void {
+export function bindUniforms(uniforms: Record<string, IUniform>, slots: FXMaterialSlots): void {
   uniforms["u_time"] = slots.time;
   uniforms["u_deltaTime"] = slots.deltaTime;
   uniforms["objectVelocity"] = slots.velocity;
@@ -544,7 +544,7 @@ function hashString(input: string): string {
 // Stable program-cache key from one of the artifact's programs and how its external textures are
 // bound (a region slot is its own program variant): identical programs bound alike share one
 // compiled program.
-function programCacheKey(
+export function programCacheKey(
   render: FXRenderArtifact,
   program: FXRenderProgram,
   external: FXExternalTextureBindings,
@@ -651,7 +651,7 @@ function intensityLine(outputs: Readonly<Record<string, string>>): string {
 /** The fragment tail every color material ends with: the graph's `albedo`, the render mode's
  *  discard, the `intensity` multiplier, then three's opaque -> tone mapping -> color space -> fog
  *  chunks and the blend tail. */
-function colorFragmentTail(program: FXRenderProgram, renderMode: FXRenderMode): string[] {
+export function colorFragmentTail(program: FXRenderProgram, renderMode: FXRenderMode): string[] {
   return [
     `vec4 diffuseColor = ${program.outputs["albedo"]};`,
     alphaDiscardLines(renderMode, program.outputs),
@@ -670,7 +670,7 @@ function colorFragmentTail(program: FXRenderProgram, renderMode: FXRenderMode): 
  * blending (additive is in-shader), the render mode's transparency/depth flags, a program
  * cache key from the artifact's GLSL, and - when the artifact reads it - the camera depth.
  */
-function colorMaterial(options: {
+export function colorMaterial(options: {
   readonly render: FXRenderArtifact;
   readonly name: string;
   readonly uniforms: Record<string, IUniform>;
@@ -1388,387 +1388,4 @@ export function buildMeshArtifactDepthMaterial(
   material.customProgramCacheKey = (): string => `fx-mesh-depth_${cacheKey}`;
 
   return material;
-}
-
-// Trail material path: one ribbon segment per (history frame, particle slot) instance, compiled
-// against the editor's trail render target. It shares the particle path's attribute-free helpers
-// and the particle builtins - each one interpolated along the segment between two recorded points
-// of a particle's path instead of read off a live particle.
-
-/** The most history frames a trail may keep - the size of the shader's packed age table. */
-export const FX_TRAIL_MAX_FRAMES = 64;
-
-/** The trail's per-tick uniforms, updated in place by the trail that owns them. */
-export interface FXTrailUniforms {
-  /** The frame being recorded into (a `"gpu"` history: the segment starting there is skipped). */
-  readonly head: { value: number };
-  /** The history length in frames. */
-  readonly frames: { value: number };
-  /** Seconds the whole trail spans, head to tail - what `p_uv.x` runs 0 -> 1 over. */
-  readonly span: { value: number };
-  /** The trail's clock: a `"cpu"` point's age is this minus the time it was recorded. */
-  readonly now: { value: number };
-  /**
-   * A `"cpu"` history's oldest valid start time: a segment starting at a point recorded before it
-   * is not part of the trail. Lies strictly between the tail frame's time and the time of the
-   * point the head frame held one lap ago - the one a `"cpu"` history leaves un-uploaded in frame
-   * 0 while the head is there (see `FXCPUTrailHistory`), which this rejects.
-   */
-  readonly tail: { value: number };
-  /** A `"gpu"` history's seconds since each frame was recorded, four per vec4. */
-  readonly ages: { value: Float32Array };
-}
-
-/** A trail's uniforms as they read before its first record: `frames` frames spanning `span`. */
-export function createTrailUniforms(frames: number, span: number): FXTrailUniforms {
-  return {
-    head: { value: 0 },
-    frames: { value: frames },
-    span: { value: span },
-    now: { value: 0 },
-    tail: { value: 0 },
-    ages: { value: new Float32Array(FX_TRAIL_MAX_FRAMES) },
-  };
-}
-
-/**
- * The names the trail shader reads one recorded field by at a segment's start (A) and end (B) -
- * vertex-shader globals the prologue fills from the packed views (see {@link FXTrailLayout.packed}),
- * which are themselves named by this applied to the view's name (`a_tA_pack0`). The CPU point and
- * joint vec4s are real attributes under these names.
- */
-export function trailAttributeNames(name: string): { readonly a: string; readonly b: string } {
-  return { a: `a_tA_${name}`, b: `a_tB_${name}` };
-}
-
-/** The same for a `"gpu"` history's point before a segment's start (position and lifecycle). */
-export function trailPreviousAttributeName(name: string): string {
-  return `a_tC_${name}`;
-}
-
-/** A `"gpu"` history's per-instance attribute: the frame a segment starts at. */
-export const FX_TRAIL_FRAME_ATTRIBUTE = "a_trailFrame";
-
-/** A `"cpu"` history's packed point: `vec4(position, id + 1)`, `0` when dead. */
-export const FX_TRAIL_CPU_POINT = "trailPoint";
-/** A `"cpu"` history's packed joint: `vec4(tangent, time recorded)`. */
-export const FX_TRAIL_CPU_TANGENT = "trailTangent";
-
-/**
- * What a trail material reads from its history: the layout (see `FXTrailHistory.kind`), the
- * particle fields it records and how they are packed into attributes, and the fields the trail
- * reads that it does not hold - read as zero, the value the particle path gives an attribute
- * nothing simulates. Built only by `trailHistoryLayout`, which both drivers and the trail budget go
- * through; the history mounts exactly these views and the material declares exactly these.
- */
-export interface FXTrailLayout {
-  readonly kind: "cpu" | "gpu";
-  readonly recorded: Readonly<Record<string, GLTypeInfo>>;
-  readonly missing: Readonly<Record<string, GLTypeInfo>>;
-  /**
-   * The recorded fields as packed views of one point, each mounted twice - at the segment's start
-   * and end, named by {@link trailAttributeNames} of the view's name. Offsets are in floats into a
-   * point: on `"cpu"` the history's own point (after its packed point and joint), on `"gpu"` the
-   * kernel's slot, which the history copies whole.
-   */
-  readonly packed: readonly FXPackedAttribute[];
-  /** `"gpu"` only (empty on `"cpu"`): views of the position and lifecycle at the point before a
-   *  segment's start, named by {@link trailPreviousAttributeName}. */
-  readonly previous: readonly FXPackedAttribute[];
-  /** Floats per point: the `"cpu"` history's stride, or the kernel's slot stride on `"gpu"`. */
-  readonly stride: number;
-}
-
-/**
- * The segment's two points and how they join, per history layout. Both define `fxTrailPosA` /
- * `fxTrailPosB`, `fxTrailLinked` (both points alive, one particle, and a real segment of its
- * path), `fxTrailTangent` (the joint direction at this vertex's end, zero when there is none) and
- * the vertex's `p_trailAge`.
- *
- * The joint tangent at a point is the direction the path arrived there from - one value for both
- * segments meeting at the point, so their shared vertices coincide and the ribbon has no seams.
- */
-function trailPrologue(kind: "cpu" | "gpu"): string[] {
-  if (kind === "cpu") {
-    const point = trailAttributeNames(FX_TRAIL_CPU_POINT);
-    const tangent = trailAttributeNames(FX_TRAIL_CPU_TANGENT);
-    return [
-      `vec3 fxTrailPosA = ${point.a}.xyz;`,
-      `vec3 fxTrailPosB = ${point.b}.xyz;`,
-      // The end must be newer than the start (from the head frame on lies the oldest one), and
-      // the start no older than the tail (frame 0 still holds last lap's point while the head is
-      // there - see FXTrailUniforms.tail).
-      "bool fxTrailLinked =",
-      `  ${point.a}.w > 0.5 && abs(${point.a}.w - ${point.b}.w) < 0.5 &&`,
-      `  ${tangent.b}.w > ${tangent.a}.w && ${tangent.a}.w >= u_trailTail;`,
-      `vec3 fxTrailTangent = fxTrailT < 0.5 ? ${tangent.a}.xyz : ${tangent.b}.xyz;`,
-      `p_trailAge = u_trailNow - mix(${tangent.a}.w, ${tangent.b}.w, fxTrailT);`,
-    ];
-  }
-  const position = trailAttributeNames(FX_CORE_POSITION);
-  const lifecycle = trailAttributeNames(FX_CORE_LIFECYCLE);
-  const previousPosition = trailPreviousAttributeName(FX_CORE_POSITION);
-  const previousLifecycle = trailPreviousAttributeName(FX_CORE_LIFECYCLE);
-  const frame = FX_TRAIL_FRAME_ATTRIBUTE;
-  return [
-    `vec3 fxTrailPosA = ${position.a};`,
-    `vec3 fxTrailPosB = ${position.b};`,
-    "bool fxTrailLinked =",
-    `  abs(${frame} - u_trailHead) > 0.5 &&`,
-    `  abs(${lifecycle.a}.z - ${lifecycle.b}.z) < 0.5 &&`,
-    `  ${lifecycle.a}.x < ${lifecycle.a}.y && ${lifecycle.b}.x < ${lifecycle.b}.y;`,
-    // The point before the start is this particle's previous point when the segment ending at the
-    // start is itself linked - the same test, one frame earlier.
-    `float fxTrailPrevious = mod(${frame} + u_trailFrames - 1.0, u_trailFrames);`,
-    "bool fxTrailHasPrevious =",
-    "  abs(fxTrailPrevious - u_trailHead) > 0.5 &&",
-    `  abs(${previousLifecycle}.z - ${lifecycle.a}.z) < 0.5 &&`,
-    `  ${previousLifecycle}.x < ${previousLifecycle}.y;`,
-    "vec3 fxTrailTangent = fxTrailPosB - fxTrailPosA;",
-    `if (fxTrailT < 0.5) { fxTrailTangent = fxTrailHasPrevious ? fxTrailPosA - ${previousPosition} : vec3(0.0); }`,
-    `float fxTrailNext = mod(${frame} + 1.0, u_trailFrames);`,
-    `p_trailAge = mix(fxTrailAgeOf(${frame}), fxTrailAgeOf(fxTrailNext), fxTrailT);`,
-  ];
-}
-
-/**
- * The attribute declarations a history layout's prologue reads, and the statements that split its
- * packed views back into the A / B / previous globals of every field ({@link trailAttributeNames}),
- * which the prologue and the property assignments read - unchanged by packing.
- */
-function trailLayoutAttributes(layout: FXTrailLayout): {
-  readonly declarations: string[];
-  readonly unpack: string[];
-} {
-  const declarations: string[] = [];
-  const unpack: string[] = [];
-  if (layout.kind === "cpu") {
-    for (const name of [FX_TRAIL_CPU_POINT, FX_TRAIL_CPU_TANGENT]) {
-      const { a, b } = trailAttributeNames(name);
-      declarations.push(`attribute vec4 ${a};`, `attribute vec4 ${b};`);
-    }
-  } else {
-    declarations.push(`attribute float ${FX_TRAIL_FRAME_ATTRIBUTE};`);
-  }
-  const ends = [
-    { views: layout.packed, named: (name: string): string => trailAttributeNames(name).a },
-    { views: layout.packed, named: (name: string): string => trailAttributeNames(name).b },
-    { views: layout.previous, named: trailPreviousAttributeName },
-  ];
-  for (const { views, named } of ends) {
-    for (const view of views) {
-      declarations.push(`attribute ${viewType(view)} ${named(view.name)};`);
-      for (const member of view.members) {
-        declarations.push(`${floatGLSLType(member.components)} ${named(member.name)};`);
-      }
-    }
-    unpack.push(
-      ...unpackStatements(
-        views,
-        (view) => named(view.name),
-        (member) => named(member.name),
-      ),
-    );
-  }
-  return { declarations, unpack };
-}
-
-/**
- * The `p_<name>` property each particle field becomes - the same names the particle path declares,
- * a varying only when the fragment stage reads it. The position is always one (the ribbon is built
- * around it); a recorded field is interpolated between the segment's points; a missing one is zero.
- */
-function declareTrailProperties(
-  program: FXRenderProgram,
-  layout: FXTrailLayout,
-): {
-  vertexDeclarations: string;
-  fragmentDeclarations: string;
-  assignments: string;
-} {
-  const properties: Record<string, GLTypeInfo> = {
-    ...layout.missing,
-    ...layout.recorded,
-    [FX_CORE_POSITION]: { glslTypeName: "vec3", bufferSize: 3, instantiable: true },
-  };
-  const fragmentReads = fragmentReadProperties(program);
-  const vertexDeclarations: string[] = [];
-  const fragmentDeclarations: string[] = [];
-  const assignments: string[] = [];
-  for (const name in properties) {
-    const { glslTypeName } = properties[name];
-    if (fragmentReads.has(name)) {
-      vertexDeclarations.push(`varying ${glslTypeName} p_${name};`);
-      fragmentDeclarations.push(`varying ${glslTypeName} p_${name};`);
-    } else {
-      vertexDeclarations.push(`${glslTypeName} p_${name};`);
-    }
-    if (name === FX_CORE_POSITION) {
-      assignments.push(`p_${name} = mix(fxTrailPosA, fxTrailPosB, fxTrailT);`);
-    } else if (name in layout.recorded) {
-      const { a, b } = trailAttributeNames(name);
-      assignments.push(`p_${name} = mix(${a}, ${b}, fxTrailT);`);
-    } else {
-      assignments.push(`p_${name} = ${glslTypeName}(0.0);`);
-    }
-  }
-  return {
-    vertexDeclarations: vertexDeclarations.join("\n"),
-    fragmentDeclarations: fragmentDeclarations.join("\n"),
-    assignments: assignments.join("\n"),
-  };
-}
-
-/** Seconds since `frame` was recorded, from the packed age table - a vertex shader may index a
- *  uniform array dynamically, WebGL1 included. */
-const TRAIL_AGE_LOOKUP = [
-  "float fxTrailAgeOf(float frame) {",
-  "  float index = floor(frame + 0.5);",
-  "  float row = floor(index / 4.0);",
-  "  float column = index - row * 4.0;",
-  "  vec4 ages = u_trailAges[int(row)];",
-  "  return column < 0.5 ? ages.x : (column < 1.5 ? ages.y : (column < 2.5 ? ages.z : ages.w));",
-  "}",
-].join("\n");
-
-/**
- * Builds a trail artifact's material: a camera-facing ribbon through every particle's recorded
- * path. Each instance is the segment from history frame `f` to the next one, for one particle slot;
- * the base quad's `position.x` runs along it (0 -> 1) and `position.y` across it (-1 -> 1). Unlit
- * and without a surface frame: a ribbon has no authored normal (the editor keeps the nodes that
- * read one out of a trail graph).
- *
- * A segment whose points are not linked (see {@link trailPrologue}), or that has no length, is
- * pushed outside the clip volume, as the particle path hides a dead particle.
- */
-export function buildTrailArtifactMaterial(
-  render: FXRenderArtifact,
-  layout: FXTrailLayout,
-  slots: FXMaterialSlots,
-  trailUniforms: FXTrailUniforms,
-): ShaderMaterial {
-  const program = render.color;
-  const renderMode = render.options?.renderMode ?? "blending";
-  if (!("albedo" in program.outputs)) {
-    throw new Error("buildTrailArtifactMaterial: render artifact has no 'albedo' output");
-  }
-  if (isLitArtifact(render)) {
-    throw new Error("buildTrailArtifactMaterial: a trail is unlit - its graph calls lighting");
-  }
-  if (
-    layout.kind === "gpu" &&
-    (!(FX_CORE_POSITION in layout.recorded) || !(FX_CORE_LIFECYCLE in layout.recorded))
-  ) {
-    throw new Error("buildTrailArtifactMaterial: a gpu history must record position and lifecycle");
-  }
-  // A ribbon has no surface normal or tangent of its own (the editor's trail target offers neither).
-  const { surfaceReads } = program.fragment;
-  if (surfaceReads.normal || surfaceReads.tangent) {
-    throw new Error("buildTrailArtifactMaterial: a trail has no surface normal or tangent");
-  }
-  const frame = surfaceFrame(surfaceReads, false);
-  const width = outputOrDefault(program.outputs, "width", "0.1");
-  const properties = declareTrailProperties(program, layout);
-  const attributes = trailLayoutAttributes(layout);
-  const ageVectors = FX_TRAIL_MAX_FRAMES / 4;
-  const sharedDeclarations = [
-    "varying vec2 p_uv;",
-    "uniform float u_time;",
-    "uniform float u_deltaTime;",
-    "uniform vec3 objectVelocity;",
-    "uniform vec3 objectAngularVelocity;",
-    "varying float p_cameraDistance;",
-    frame.varyings,
-  ];
-
-  const vertexShader = [
-    FX_CORE_PARTICLE_DEFINES,
-    ...attributes.declarations,
-    ...sharedDeclarations,
-    // Seconds since this vertex's point of the path was recorded - what p_uv.x is made of.
-    "float p_trailAge;",
-    "uniform float u_trailSpan;",
-    ...(layout.kind === "cpu"
-      ? ["uniform float u_trailNow;", "uniform float u_trailTail;"]
-      : [
-          "uniform float u_trailHead;",
-          "uniform float u_trailFrames;",
-          `uniform vec4 u_trailAges[${String(ageVectors)}];`,
-        ]),
-    properties.vertexDeclarations,
-    graphVaryings(program),
-    program.vertex.uniformDeclarations.join("\n"),
-    program.vertex.helperFunctions.join("\n"),
-    "#include <common>",
-    "#include <fog_pars_vertex>",
-    ...(layout.kind === "gpu" ? [TRAIL_AGE_LOOKUP] : []),
-    "void main() {",
-    "float fxTrailT = position.x;",
-    "float fxTrailSide = position.y;",
-    ...attributes.unpack,
-    ...trailPrologue(layout.kind),
-    properties.assignments,
-    // Along the trail from its head (0) to its tail (1), and across it (0 -> 1).
-    "p_uv = vec2(clamp(p_trailAge / max(u_trailSpan, 1e-6), 0.0, 1.0), fxTrailSide * 0.5 + 0.5);",
-    program.vertex.body.join("\n"),
-    `float fxTrailWidth = ${width};`,
-    "vec3 fxTrailDirection = fxTrailPosB - fxTrailPosA;",
-    // A point with no joint (a particle's first or last point) faces its own segment.
-    "if (dot(fxTrailTangent, fxTrailTangent) < 1e-12) { fxTrailTangent = fxTrailDirection; }",
-    "vec3 fxTrailAcross = cross(fxTrailTangent, cameraPosition - PARTICLE_POSITION);",
-    "float fxTrailAcrossLength = length(fxTrailAcross);",
-    "bool fxTrailVisible = fxTrailLinked && dot(fxTrailDirection, fxTrailDirection) > 1e-12 && fxTrailAcrossLength > 1e-10;",
-    "fxTrailAcross = fxTrailVisible ? fxTrailAcross / fxTrailAcrossLength : vec3(0.0);",
-    "vec3 fxModelPos = PARTICLE_POSITION + fxTrailAcross * (fxTrailSide * 0.5 * fxTrailWidth);",
-    frame.vertex,
-    "vec4 mvPosition = viewMatrix * vec4(fxModelPos, 1.0);",
-    "p_cameraDistance = length(mvPosition.xyz);",
-    "gl_Position = projectionMatrix * mvPosition;",
-    "if (!fxTrailVisible) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); }",
-    "#ifdef USE_ALPHAHASH",
-    "  vPosition = fxModelPos;",
-    "#endif",
-    "#include <fog_vertex>",
-    "}",
-  ].join("\n");
-
-  const fragmentShader = [
-    FX_FRAGMENT_MODEL_MATRIX,
-    FX_CORE_PARTICLE_DEFINES,
-    ...sharedDeclarations,
-    properties.fragmentDeclarations,
-    graphVaryings(program),
-    program.fragment.uniformDeclarations.join("\n"),
-    externalSamplingFunctions(slots.external),
-    cameraDepthFunctions(render),
-    program.fragment.helperFunctions.join("\n"),
-    "#include <common>",
-    "#include <alphahash_pars_fragment>",
-    "#include <fog_pars_fragment>",
-    "void main() {",
-    frame.fragment,
-    program.fragment.body.join("\n"),
-    ...colorFragmentTail(program, renderMode),
-    "}",
-  ].join("\n");
-
-  const uniforms: Record<string, IUniform> = { ...UniformsUtils.clone(UniformsLib.fog) };
-  bindUniforms(uniforms, slots);
-  uniforms["u_trailHead"] = trailUniforms.head;
-  uniforms["u_trailFrames"] = trailUniforms.frames;
-  uniforms["u_trailSpan"] = trailUniforms.span;
-  uniforms["u_trailNow"] = trailUniforms.now;
-  uniforms["u_trailTail"] = trailUniforms.tail;
-  uniforms["u_trailAges"] = trailUniforms.ages;
-
-  return colorMaterial({
-    render,
-    name: "FXTrailArtifactMaterial",
-    uniforms,
-    vertexShader,
-    fragmentShader,
-    renderMode,
-    lit: false,
-    cacheKey: `fx-trail-${layout.kind}_${programCacheKey(render, program, slots.external)}`,
-  });
 }

@@ -110,6 +110,14 @@ export class FXInstancedParticle extends Mesh {
     return this.capacity;
   }
 
+  /**
+   * The slot the next birth takes: in birth order, a ring that has gone round runs from it (the
+   * oldest particle) to the slot before it (the newest). Unsorted only: a sort moves it.
+   */
+  public get nextSlot(): number {
+    return this.cursor;
+  }
+
   /** Exact number of live particles, as of the last {@link advanceAges} plus births since. */
   public get liveCount(): number {
     return this.liveCountInternal;

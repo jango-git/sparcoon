@@ -10,8 +10,11 @@ import { particlesOf, tickEmitter } from "../helpers/internals";
 import { fieldOf } from "../helpers/slots";
 
 /** A plain emitter: flat-white render, a spawn that seeds lifetime 4. */
-function plainEmitter(options?: Parameters<typeof FXEmitter.fromArtifacts>[2]): FXEmitter {
-  return FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 4 }), options);
+function plainEmitter(options?: Parameters<typeof FXEmitter.fromArtifacts>[1]): FXEmitter {
+  return FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 4 }), {
+    particles: unlitArtifact(),
+    ...options,
+  });
 }
 
 describe("FXEmitter construction", () => {
@@ -21,7 +24,8 @@ describe("FXEmitter construction", () => {
     const build = vi.spyOn(FXArtifactMaterial.prototype, "buildThreeDepthMaterial");
     try {
       expect(() =>
-        FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ noSpawn: true }), {
+        FXEmitter.fromArtifacts(behaviorArtifact({ noSpawn: true }), {
+          particles: unlitArtifact(),
           castShadow: true,
         }),
       ).toThrow(/cannot seed births \(update-only\)/);
@@ -41,7 +45,9 @@ describe("FXEmitter construction", () => {
 describe("FXEmitter.reset", () => {
   it("leaves nothing to simulate until the next birth", () => {
     const update = vi.fn();
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ update }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ update }), {
+      particles: unlitArtifact(),
+    });
     try {
       tickEmitter(emitter, 0.1);
       expect(update).not.toHaveBeenCalled();
@@ -88,11 +94,10 @@ describe("FXEmitter.destroy", () => {
 
   it("never disposes an app-supplied custom geometry (it is the caller's, possibly shared)", () => {
     const custom = buildPrimitiveGeometry("box");
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact({ geometry: { type: "custom", external: "myMesh" } }),
-      behaviorArtifact({ lifetime: 4 }),
-      { geometries: { myMesh: custom } },
-    );
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 4 }), {
+      particles: unlitArtifact({ geometry: { type: "custom", external: "myMesh" } }),
+      geometries: { myMesh: custom },
+    });
     let customDisposed = 0;
     custom.addEventListener("dispose", () => customDisposed++);
 
@@ -105,7 +110,9 @@ describe("FXEmitter.destroy", () => {
       uniformDeclarations: ["uniform float u_glow;"],
       uniforms: { u_glow: { type: "float", value: 0 } },
     });
-    const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact({ lifetime: 4 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 4 }), {
+      particles: render,
+    });
     const mesh = particlesOf(emitter);
     const material = mesh.material;
     emitter.burst(2, { delay: 1 });
@@ -123,8 +130,12 @@ describe("FXEmitter.destroy", () => {
     emitter.applyRenderArtifact(unlitArtifact(), { castShadow: true });
     expect(mesh.material).toBe(material);
     expect(mesh.customDepthMaterial).toBeUndefined();
-    emitter.applyTrailArtifact({ render: unlitArtifact(), frames: 2, sampleInterval: 0.1 });
-    expect(emitter.hasTrail).toBe(false);
+    emitter.applyStripArtifact("trail", {
+      render: unlitArtifact(),
+      frames: 2,
+      sampleInterval: 0.1,
+    });
+    expect(emitter.hasStrip("trail")).toBe(false);
 
     const listener = vi.fn();
     emitter.onParticleEvent("death", listener)();

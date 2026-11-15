@@ -10,11 +10,11 @@ describe("FXEmitter wires the behavior attribute channel", () => {
   it("allocates a_fx_<name> at construction and fills it on spawn", () => {
     // Behavior seeds lifetime + a per-particle `seed` float = 0.5.
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({
         lifetime: 5,
         attributes: [{ name: "seed", components: 1, value: [0.5] }],
       }),
+      { particles: unlitArtifact() },
     );
     try {
       const mesh = particlesOf(emitter);
@@ -39,14 +39,16 @@ describe("FXEmitter wires the behavior attribute channel", () => {
     // Behavior seeds a per-particle vec3 `tint`; the material reads it back into albedo. Both
     // sides name `tint` -> a single a_fx_tint buffer.
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact({
-        attributeReads: [{ name: "tint", components: 3 }],
-        outputs: { albedo: "vec4(p_fx_tint, 1.0)" },
-      }),
       behaviorArtifact({
         lifetime: 5,
         attributes: [{ name: "tint", components: 3, valueFn: (slot) => [slot, 2 * slot, 0.5] }],
       }),
+      {
+        particles: unlitArtifact({
+          attributeReads: [{ name: "tint", components: 3 }],
+          outputs: { albedo: "vec4(p_fx_tint, 1.0)" },
+        }),
+      },
     );
     try {
       const mesh = particlesOf(emitter);
@@ -66,7 +68,6 @@ describe("FXEmitter wires the behavior attribute channel", () => {
     // An update that advances position.y by 2 units/second - the executor-model analog
     // of an `integrate-motion` node writing `position += velocity * dt`.
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({
         lifetime: 100,
         update: (fields, count, dt) => {
@@ -76,6 +77,7 @@ describe("FXEmitter wires the behavior attribute channel", () => {
           }
         },
       }),
+      { particles: unlitArtifact() },
     );
     try {
       emitter.burst(1);

@@ -29,6 +29,13 @@ export const FX_AGE = 0;
 export const FX_LIFETIME = 1;
 export const FX_ID = 2;
 
+/**
+ * How many particle ids there are: an id is the emitter's birth count modulo this, so the next
+ * birth's id is one more, wrapping from the last back to 0. The most a float32 counts exactly - past
+ * it two consecutive ids would read as one.
+ */
+export const FX_PARTICLE_ID_RANGE = 16_777_216;
+
 export const FX_CORE_POSITION_VARYING = "p_position";
 export const FX_CORE_LIFECYCLE_VARYING = "p_lifecycle";
 

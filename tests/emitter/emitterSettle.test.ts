@@ -35,7 +35,8 @@ afterEach(() => {
 
 /** A JS emitter whose particles live exactly `lifetime` seconds. */
 function emitter(lifetime: number, options: FXFromArtifactsOptions = {}): FXEmitter {
-  const built = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime }), {
+  const built = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime }), {
+    particles: unlitArtifact(),
     expectedCapacity: 4,
     ...options,
   });

@@ -34,7 +34,8 @@ describe("spreadBirthAges", () => {
 
 /** A still-standing emitter: births stay where they land. */
 function placingEmitter(): FXEmitter {
-  return FXEmitter.fromArtifacts(unlitArtifact(), placingBehavior(100, [], 0), {
+  return FXEmitter.fromArtifacts(placingBehavior(100, [], 0), {
+    particles: unlitArtifact(),
     expectedCapacity: 32,
   });
 }

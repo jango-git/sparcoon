@@ -123,17 +123,34 @@ describe("FXTransformFeedbackParticle", () => {
     }
   });
 
-  it("draws nothing until occupied, every slot once occupied, nothing again once dropped", () => {
+  it("draws nothing until a claim, every slot after one, nothing again once dropped", () => {
     const gl = mockWebGL();
     const mesh = particle(gl, 128);
     const drawn = (): number =>
       (mesh.geometry as unknown as { instanceCount: number }).instanceCount;
     try {
       expect(drawn()).toBe(0);
-      mesh.occupy();
+      mesh.claim(1);
       expect(drawn()).toBe(128);
       mesh.drop();
       expect(drawn()).toBe(0);
+    } finally {
+      mesh.destroy();
+    }
+  });
+
+  it("claims slots at a cursor that wraps at capacity and rewinds on drop", () => {
+    const gl = mockWebGL();
+    const mesh = particle(gl, 8);
+    try {
+      expect(mesh.claim(5)).toBe(0);
+      expect(mesh.claim(5)).toBe(5);
+      expect(mesh.nextSlot).toBe(2);
+      // Larger than the ring: every slot once from the old cursor.
+      expect(mesh.claim(19)).toBe(2);
+      expect(mesh.nextSlot).toBe(5);
+      mesh.drop();
+      expect(mesh.nextSlot).toBe(0);
     } finally {
       mesh.destroy();
     }

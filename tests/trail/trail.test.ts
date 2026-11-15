@@ -11,7 +11,7 @@ import { FX_CORE_LIFECYCLE, FX_CORE_POSITION } from "../../src/coreLayout";
 import type { FXEffectSpec } from "../../src/effect/FXEffectSpec";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { FXJSEmitterDriver } from "../../src/emitter/FXJSEmitterDriver.Internal";
-import { FX_RENDER_BUDGET_MINIMUMS, fxTrailRenderBudget } from "../../src/render/FXRenderBudget";
+import { FX_RENDER_BUDGET_MINIMUMS, fxStripRenderBudget } from "../../src/render/FXRenderBudget";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, renderForBothTargets, unlitArtifact } from "../helpers/artifacts";
@@ -62,7 +62,11 @@ function cpuEmitter(
   capacity = 2,
   behavior = movingBehavior(),
 ): FXEmitter {
-  return FXEmitter.fromArtifacts(unlitArtifact(), behavior, { expectedCapacity: capacity, trail });
+  return FXEmitter.fromArtifacts(behavior, {
+    particles: unlitArtifact(),
+    expectedCapacity: capacity,
+    trail,
+  });
 }
 
 /** History point (frame, slot) of `emitter`'s trail: its position x, id tag, tangent x, time. */
@@ -86,7 +90,7 @@ describe("trail history - JS backend", () => {
   it("draws frames x capacity segments once recorded, each reading two history frames of one buffer", () => {
     const emitter = cpuEmitter(trailOptions({ frames: 5 }), 3);
     try {
-      expect(emitter.hasTrail).toBe(true);
+      expect(emitter.hasStrip("trail")).toBe(true);
       const { mesh } = trailOf(emitter);
       expect(mesh.parent).toBe(emitter);
       const geometry = mesh.geometry as unknown as {
@@ -298,11 +302,12 @@ describe("trail history - JS backend", () => {
 
   it("draws the trail after the particles, however it was attached", () => {
     const built = cpuEmitter();
-    const swapped = FXEmitter.fromArtifacts(unlitArtifact(), movingBehavior(), {
+    const swapped = FXEmitter.fromArtifacts(movingBehavior(), {
+      particles: unlitArtifact(),
       expectedCapacity: 2,
     });
     try {
-      swapped.applyTrailArtifact(trailOptions());
+      swapped.applyStripArtifact("trail", trailOptions());
       for (const emitter of [built, swapped]) {
         expect(emitter.children).toEqual([particlesOf(emitter), trailOf(emitter).mesh]);
         expect(trailOf(emitter).mesh.id).toBeGreaterThan(particlesOf(emitter).id);
@@ -328,7 +333,7 @@ describe("trail history - JS backend", () => {
       const before = trailOf(emitter);
       const lit = { ...unlitArtifact(), lightingIntrinsics: ["fxLambertShade"] };
       expect(() => {
-        emitter.applyTrailArtifact(trailOptions({ render: lit }));
+        emitter.applyStripArtifact("trail", trailOptions({ render: lit }));
       }).toThrow(/unlit/);
       expect(trailOf(emitter)).toBe(before);
       expect(before.mesh.parent).toBe(emitter);
@@ -343,12 +348,16 @@ describe("trail history - JS backend", () => {
     const glow = (): FXRenderArtifact["uniforms"] => ({
       u_param_glow: { type: "float", value: 0 },
     });
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact({ uniforms: glow() }), movingBehavior(), {
+    const emitter = FXEmitter.fromArtifacts(movingBehavior(), {
+      particles: unlitArtifact({ uniforms: glow() }),
       trail: trailOptions({ render: unlitArtifact({ uniforms: glow() }) }),
     });
     try {
       emitter.applyValues({ uniforms: { u_param_glow: 0.75, u_param_other: 2 } });
-      emitter.applyTrailArtifact(trailOptions({ render: unlitArtifact({ uniforms: glow() }) }));
+      emitter.applyStripArtifact(
+        "trail",
+        trailOptions({ render: unlitArtifact({ uniforms: glow() }) }),
+      );
       const material = trailOf(emitter).mesh.material as ShaderMaterial;
       expect(material.uniforms["u_param_glow"].value).toBe(0.75);
       // A name the new trail does not declare is not added to it.
@@ -366,7 +375,8 @@ describe("trail history - JS backend", () => {
         outputs: { albedo: "fxSample_u_param_sheet(vec2(0.5))" },
       });
     const region = { texture: new Texture(), uvTransform: [1, 0, 0, 0, 1, 0] as const };
-    const emitter = FXEmitter.fromArtifacts(sampled(), movingBehavior(), {
+    const emitter = FXEmitter.fromArtifacts(movingBehavior(), {
+      particles: sampled(),
       textures: { u_param_sheet: region },
       trail: trailOptions({ render: sampled() }),
     });
@@ -376,7 +386,9 @@ describe("trail history - JS backend", () => {
       });
       // A whole texture now: the applied region is of a variant this slot cannot take.
       const sheet = new Texture();
-      emitter.applyTrailArtifact(trailOptions({ render: sampled() }), { u_param_sheet: sheet });
+      emitter.applyStripArtifact("trail", trailOptions({ render: sampled() }), {
+        u_param_sheet: sheet,
+      });
       expect(
         (trailOf(emitter).mesh.material as ShaderMaterial).uniforms["u_param_sheet"].value,
       ).toBe(sheet);
@@ -392,7 +404,8 @@ describe("trail history - JS backend", () => {
         uniformDeclarations: ["uniform float _0;"],
         uniforms: { _0: { type: "float", value: 0 } },
       });
-    const emitter = FXEmitter.fromArtifacts(own(), movingBehavior(), {
+    const emitter = FXEmitter.fromArtifacts(movingBehavior(), {
+      particles: own(),
       trail: trailOptions({ render: own() }),
     });
     try {
@@ -400,7 +413,7 @@ describe("trail history - JS backend", () => {
       const particles = particlesOf(emitter).material as ShaderMaterial;
       expect(particles.uniforms["_0"].value).toBe(1);
       expect((trailOf(emitter).mesh.material as ShaderMaterial).uniforms["_0"].value).toBe(2);
-      emitter.applyTrailArtifact(trailOptions({ render: own() }));
+      emitter.applyStripArtifact("trail", trailOptions({ render: own() }));
       expect((trailOf(emitter).mesh.material as ShaderMaterial).uniforms["_0"].value).toBe(0);
     } finally {
       emitter.destroy();
@@ -417,15 +430,18 @@ describe("trail history - JS backend", () => {
     const sheet = new Texture();
     const region = { texture: new Texture(), uvTransform: [1, 0, 0, 0, 1, 0] as const };
     // The particles bind a region, the trail a whole texture: a region fits only the particles.
-    const emitter = FXEmitter.fromArtifacts(sampled(), movingBehavior(), {
+    const emitter = FXEmitter.fromArtifacts(movingBehavior(), {
+      particles: sampled(),
       textures: { u_param_sheet: region },
       trail: trailOptions({ render: sampled() }),
     });
     try {
-      expect(() => emitter.applyTrailArtifact(trailOptions({ render: sampled() }), {})).toThrow(
-        /no texture supplied/,
-      );
-      emitter.applyTrailArtifact(trailOptions({ render: sampled() }), { u_param_sheet: sheet });
+      expect(() =>
+        emitter.applyStripArtifact("trail", trailOptions({ render: sampled() }), {}),
+      ).toThrow(/no texture supplied/);
+      emitter.applyStripArtifact("trail", trailOptions({ render: sampled() }), {
+        u_param_sheet: sheet,
+      });
       const particles = particlesOf(emitter).material as ShaderMaterial;
       const next = { texture: new Texture(), uvTransform: [0.5, 0, 0, 0, 0.5, 0] as const };
       expect(() => emitter.applyValues({ uniforms: { u_param_sheet: next } })).toThrow(
@@ -433,7 +449,9 @@ describe("trail history - JS backend", () => {
       );
       expect(particles.uniforms["u_param_sheet"].value).toBe(region.texture);
       // Not kept for a later trail either: swapping one in still works.
-      emitter.applyTrailArtifact(trailOptions({ render: sampled() }), { u_param_sheet: sheet });
+      emitter.applyStripArtifact("trail", trailOptions({ render: sampled() }), {
+        u_param_sheet: sheet,
+      });
       expect(
         (trailOf(emitter).mesh.material as ShaderMaterial).uniforms["u_param_sheet"].value,
       ).toBe(sheet);
@@ -462,21 +480,21 @@ describe("trail history - JS backend", () => {
     const sort = { camera: new PerspectiveCamera() };
     expect(() =>
       FXEmitter.fromArtifacts(
-        unlitArtifact(),
         movingBehavior(),
-        { expectedCapacity: 4, trail: trailOptions(), sort },
+        { particles: unlitArtifact(), expectedCapacity: 4, trail: trailOptions(), sort },
         world,
       ),
     ).toThrow(/trail cannot sort/);
     const sorted = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       movingBehavior(),
-      { expectedCapacity: 4, sort },
+      { particles: unlitArtifact(), expectedCapacity: 4, sort },
       world,
     );
     try {
-      expect(() => sorted.applyTrailArtifact(trailOptions())).toThrow(/sorts cannot have a trail/);
-      expect(sorted.hasTrail).toBe(false);
+      expect(() => sorted.applyStripArtifact("trail", trailOptions())).toThrow(
+        /sorts cannot have a trail/,
+      );
+      expect(sorted.hasStrip("trail")).toBe(false);
     } finally {
       sorted.destroy();
       world.dispose();
@@ -493,12 +511,12 @@ describe("trail history - JS backend", () => {
       emitter.burst(2);
       tickEmitter(emitter, 0.1);
       const before = trailOf(emitter).mesh;
-      emitter.applyTrailArtifact(trailOptions({ frames: 6 }));
+      emitter.applyStripArtifact("trail", trailOptions({ frames: 6 }));
       expect(before.parent).toBeNull();
       expect(trailOf(emitter).mesh.parent).toBe(emitter);
       expect(emitter.particleCount).toBe(2);
-      emitter.applyTrailArtifact(undefined);
-      expect(emitter.hasTrail).toBe(false);
+      emitter.applyStripArtifact("trail", undefined);
+      expect(emitter.hasStrip("trail")).toBe(false);
       expect(emitter.particleCount).toBe(2);
     } finally {
       emitter.destroy();
@@ -508,7 +526,8 @@ describe("trail history - JS backend", () => {
 
 describe("trail material", () => {
   function trailMaterial(render: FXRenderArtifact): ShaderMaterial {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: unlitArtifact(),
       trail: trailOptions({ render }),
     });
     const material = trailOf(emitter).mesh.material as ShaderMaterial;
@@ -519,8 +538,8 @@ describe("trail material", () => {
 
   it("interpolates the particle builtins between the segment's two points", () => {
     const { vertexShader } = trailMaterial(unlitArtifact());
-    expect(vertexShader).toContain("p_position = mix(fxTrailPosA, fxTrailPosB, fxTrailT);");
-    expect(vertexShader).toContain("float fxTrailWidth = 0.1;");
+    expect(vertexShader).toContain("p_position = mix(fxStripPosA, fxStripPosB, fxStripT);");
+    expect(vertexShader).toContain("float fxStripWidth = 0.1;");
     // Not read by this trail, so not recorded.
     expect(vertexShader).not.toContain("a_tA_lifecycle");
   });
@@ -529,15 +548,15 @@ describe("trail material", () => {
     const { vertexShader } = trailMaterial(
       unlitArtifact({ outputs: { albedo: "vec4(PARTICLE_AGE / PARTICLE_LIFETIME)" } }),
     );
-    expect(vertexShader).toContain("p_lifecycle = mix(a_tA_lifecycle, a_tB_lifecycle, fxTrailT);");
+    expect(vertexShader).toContain("p_lifecycle = mix(a_tA_lifecycle, a_tB_lifecycle, fxStripT);");
   });
 
   it("refuses a trail reading an attribute at another width than the emitter holds it", () => {
     expect(() =>
       FXEmitter.fromArtifacts(
-        unlitArtifact(),
         behaviorArtifact({ attributes: [{ name: "tint", components: 4, value: [1, 1, 1, 1] }] }),
         {
+          particles: unlitArtifact(),
           trail: trailOptions({
             render: reading([{ name: "tint", components: 3 }]),
           }),
@@ -549,7 +568,7 @@ describe("trail material", () => {
   it("joins segments by the stored tangent on a JS history, the previous point on a GPU one", () => {
     const { vertexShader } = trailMaterial(unlitArtifact());
     expect(vertexShader).toContain(
-      "vec3 fxTrailTangent = fxTrailT < 0.5 ? a_tA_trailTangent.xyz : a_tB_trailTangent.xyz;",
+      "vec3 fxStripTangent = fxStripT < 0.5 ? a_tA_trailTangent.xyz : a_tB_trailTangent.xyz;",
     );
   });
 
@@ -561,9 +580,9 @@ describe("trail material", () => {
 
   it("records an attribute the behavior writes and the trail reads", () => {
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({ attributes: [{ name: "heat", components: 1, value: [7] }] }),
       {
+        particles: unlitArtifact(),
         trail: trailOptions({
           render: reading([{ name: "heat", components: 1 }]),
         }),
@@ -571,7 +590,7 @@ describe("trail material", () => {
     );
     try {
       const { vertexShader } = trailOf(emitter).mesh.material as ShaderMaterial;
-      expect(vertexShader).toContain("p_fx_heat = mix(a_tA_fx_heat, a_tB_fx_heat, fxTrailT);");
+      expect(vertexShader).toContain("p_fx_heat = mix(a_tA_fx_heat, a_tB_fx_heat, fxStripT);");
     } finally {
       emitter.destroy();
     }
@@ -580,16 +599,19 @@ describe("trail material", () => {
   it("records no attribute the trail declares but never reads", () => {
     const heat = [{ name: "heat", components: 1 as const }];
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({ attributes: [{ ...heat[0], value: [7] }] }),
-      { trail: trailOptions({ render: unlitArtifact({ attributeReads: heat }) }) },
+      {
+        particles: unlitArtifact(),
+        trail: trailOptions({ render: unlitArtifact({ attributeReads: heat }) }),
+      },
     );
     try {
       const { vertexShader } = trailOf(emitter).mesh.material as ShaderMaterial;
       expect(vertexShader).not.toContain("a_tA_fx_heat");
       expect(
-        fxTrailRenderBudget(unlitArtifact({ attributeReads: heat }), behaviorSlot(heat)).attributes,
-      ).toBe(fxTrailRenderBudget(unlitArtifact(), behaviorSlot(heat)).attributes);
+        fxStripRenderBudget("trail", unlitArtifact({ attributeReads: heat }), behaviorSlot(heat))
+          .attributes,
+      ).toBe(fxStripRenderBudget("trail", unlitArtifact(), behaviorSlot(heat)).attributes);
     } finally {
       emitter.destroy();
     }
@@ -612,27 +634,28 @@ describe("trail material", () => {
       capabilities: { isWebGL2: false, maxAttributes: 8, maxVaryings: 8 },
     } as unknown as WebGLRenderer;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      behaviorArtifact({ attributes: floats(5) }),
-      { renderer, expectedCapacity: 2, trail: trailReading(5) },
-    );
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ attributes: floats(5) }), {
+      particles: unlitArtifact(),
+      renderer,
+      expectedCapacity: 2,
+      trail: trailReading(5),
+    });
     try {
-      expect(fxTrailRenderBudget(trailReading(5).render, behaviorSlot(floats(5))).attributes).toBe(
-        9,
-      );
-      expect(emitter.hasTrail).toBe(false);
+      expect(
+        fxStripRenderBudget("trail", trailReading(5).render, behaviorSlot(floats(5))).attributes,
+      ).toBe(9);
+      expect(emitter.hasStrip("trail")).toBe(false);
       emitter.burst(2);
       tickEmitter(emitter, 0.1);
       expect(emitter.particleCount).toBe(2);
       // A swap past the limit is skipped too, without a second warning.
-      emitter.applyTrailArtifact(trailReading(5));
-      expect(emitter.hasTrail).toBe(false);
+      emitter.applyStripArtifact("trail", trailReading(5));
+      expect(emitter.hasStrip("trail")).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0][0])).toContain("the trail is skipped");
       // Four floats pack into one view per end: within the limit, drawn.
-      emitter.applyTrailArtifact(trailReading(4));
-      expect(emitter.hasTrail).toBe(true);
+      emitter.applyStripArtifact("trail", trailReading(4));
+      expect(emitter.hasStrip("trail")).toBe(true);
     } finally {
       emitter.destroy();
       warn.mockRestore();
@@ -642,12 +665,11 @@ describe("trail material", () => {
   it("checks no limit without a renderer", () => {
     const floats = [0, 1, 2, 3, 4].map((i) => ({ name: `f${String(i)}`, components: 1 as const }));
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({ attributes: floats.map((f) => ({ ...f, value: [0] })) }),
-      { trail: trailOptions({ render: reading(floats) }) },
+      { particles: unlitArtifact(), trail: trailOptions({ render: reading(floats) }) },
     );
     try {
-      expect(emitter.hasTrail).toBe(true);
+      expect(emitter.hasStrip("trail")).toBe(true);
     } finally {
       emitter.destroy();
     }
@@ -657,7 +679,7 @@ describe("trail material", () => {
     const { vertexShader } = trailMaterial(
       unlitArtifact({ outputs: { albedo: "vec4(1.0)", width: "0.25 * p_uv.x" } }),
     );
-    expect(vertexShader).toContain("float fxTrailWidth = 0.25 * p_uv.x;");
+    expect(vertexShader).toContain("float fxStripWidth = 0.25 * p_uv.x;");
   });
 
   it("refuses a lit trail graph", () => {
@@ -667,11 +689,11 @@ describe("trail material", () => {
 
   it("fits the WebGL1 attribute minimum with up to four recorded floats, packed, not with five", () => {
     // The quad, then each end's packed point and joint.
-    expect(fxTrailRenderBudget(unlitArtifact(), behaviorSlot()).attributes).toBe(5);
+    expect(fxStripRenderBudget("trail", unlitArtifact(), behaviorSlot()).attributes).toBe(5);
     const floats = (names: readonly string[]): { name: string; components: 1 }[] =>
       names.map((name) => ({ name, components: 1 }));
     const budget = (names: readonly string[]): number =>
-      fxTrailRenderBudget(reading(floats(names)), behaviorSlot(floats(names))).attributes;
+      fxStripRenderBudget("trail", reading(floats(names)), behaviorSlot(floats(names))).attributes;
     expect(budget(["a"])).toBe(7);
     // Two to four floats share one vec4 view per end.
     expect(budget(["a", "b"])).toBe(7);
@@ -682,12 +704,13 @@ describe("trail material", () => {
     expect(budget(["a", "b", "c", "d", "e"])).toBe(9);
     // Read but not simulated: zero, unrecorded.
     expect(
-      fxTrailRenderBudget(reading([{ name: "a", components: 1 }]), behaviorSlot()).attributes,
+      fxStripRenderBudget("trail", reading([{ name: "a", components: 1 }]), behaviorSlot())
+        .attributes,
     ).toBe(5);
     // The GPU history over the core slot: the quad, the frame, the previous point's position and
     // lifecycle, and both ends' position and lifecycle.
     expect(
-      fxTrailRenderBudget(unlitArtifact(), behaviorSlot(), { backend: "gpu" }).attributes,
+      fxStripRenderBudget("trail", unlitArtifact(), behaviorSlot(), { backend: "gpu" }).attributes,
     ).toBe(8);
   });
 
@@ -698,16 +721,17 @@ describe("trail material", () => {
       outputs: { albedo: "vec4(PARTICLE_AGE / PARTICLE_LIFETIME)" },
     });
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({ attributes: [{ ...attributes[0], value: [1] }] }),
-      { trail: trailOptions({ render }) },
+      { particles: unlitArtifact(), trail: trailOptions({ render }) },
     );
     try {
       const mounted = Object.keys(trailOf(emitter).mesh.geometry.attributes);
       // The quad, the packed point and joint, and one view of the lifecycle (read: age/lifetime)
       // with the heat - per end.
       expect(mounted).toHaveLength(7);
-      expect(fxTrailRenderBudget(render, behaviorSlot(attributes)).attributes).toBe(mounted.length);
+      expect(fxStripRenderBudget("trail", render, behaviorSlot(attributes)).attributes).toBe(
+        mounted.length,
+      );
     } finally {
       emitter.destroy();
     }
@@ -756,7 +780,7 @@ describe("trail in an effect", () => {
     const effect = trailEffect(spec());
     try {
       const emitter = effect.getEmitter("Sparks");
-      expect(emitter?.hasTrail).toBe(true);
+      expect(emitter?.hasStrip("trail")).toBe(true);
       effect.setEmitterParam("Sparks", "glow", 0.5);
       const particles = particlesOf(emitter as FXEmitter).material as ShaderMaterial;
       const trail = trailOf(emitter as FXEmitter).mesh.material as ShaderMaterial;
@@ -773,7 +797,7 @@ describe("trail in an effect", () => {
     try {
       expect(effect.getEmitter("Sparks")?.sort).toBeUndefined();
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0][0])).toMatch(/both a trail and a sortInterval/);
+      expect(String(warn.mock.calls[0][0])).toMatch(/has a trail and has a sortInterval/);
     } finally {
       effect.dispose();
       warn.mockRestore();
@@ -865,7 +889,8 @@ describe("trail draw range", () => {
 
   it("GPU: draws every segment from the first birth on, nothing after reset", () => {
     const { renderer } = mockRenderer();
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: unlitArtifact(),
       gpuKernel: {
         vertexSource: "",
         fragmentSource: "",
@@ -907,7 +932,8 @@ describe("trail history - GPU backend", () => {
 
   it("copies the drawn slot buffer into the head frame and the mirrors of the first and last", () => {
     const { renderer, gl } = mockRenderer();
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: unlitArtifact(),
       gpuKernel: kernel,
       renderer,
       expectedCapacity: 4,
@@ -936,7 +962,8 @@ describe("trail history - GPU backend", () => {
 
   it("keeps a two-frame history: each head frame is a mirror's source as well", () => {
     const { renderer, gl } = mockRenderer();
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: unlitArtifact(),
       gpuKernel: kernel,
       renderer,
       expectedCapacity: 4,
@@ -969,7 +996,8 @@ describe("trail history - GPU backend", () => {
   it("budgets exactly the attributes a GPU-driven trail mounts", () => {
     const { renderer } = mockRenderer();
     const render = unlitArtifact({ outputs: { albedo: "vec4(PARTICLE_AGE / PARTICLE_LIFETIME)" } });
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: unlitArtifact(),
       gpuKernel: kernel,
       renderer,
       expectedCapacity: 4,
@@ -978,9 +1006,9 @@ describe("trail history - GPU backend", () => {
     try {
       const mounted = Object.keys(trailOf(emitter).mesh.geometry.attributes);
       expect(mounted).toHaveLength(8);
-      expect(fxTrailRenderBudget(render, kernel.buffers, { backend: "gpu" }).attributes).toBe(
-        mounted.length,
-      );
+      expect(
+        fxStripRenderBudget("trail", render, kernel.buffers, { backend: "gpu" }).attributes,
+      ).toBe(mounted.length);
     } finally {
       emitter.destroy();
     }

@@ -9,6 +9,14 @@ on the minor it was built for - after such an update, re-export every effect.
 
 ### Added
 
+- Ribbons: an emitter can draw a band through its particles in the order they were born, on both
+  backends. Each particle joins the one born right after it, so a ribbon follows one stream of
+  births. Along the ribbon `p_uv.x` is each point's age over its lifetime, or repeats every given
+  number of particles. With `head`, while a play emits from the emitter's pose, the ribbon reaches
+  from its newest particle to the particle a birth would seed now, computed by the behavior's spawn
+  every tick. A ribbon is skipped with a warning past the GPU's limits, as a trail is.
+- An emitter can simulate its particles without drawing them, for an emitter shown only by its trail
+  or ribbon.
 - GPU-simulated emitters sort their particles back to front. The simulation keeps the particles in
   place: on every frame they change they are copied into a texture the material reads, in an order
   a sort keeps on the GPU. A sort compares every slot with every other in one draw, so its cost
@@ -16,14 +24,24 @@ on the minor it was built for - after such an update, re-export every effect.
 
 ### Changed
 
+- **Breaking:** re-export every effect.
+- **Breaking:** `FXEmitter.fromArtifacts(behavior, options, world)` takes the particles' render
+  artifact as `options.particles`, which can be left out, instead of its first argument.
+  `applyRenderArtifact(undefined)` stops drawing the particles. `applyTrailArtifact` and
+  `hasTrail` are replaced by `applyStripArtifact(kind, options)` and `hasStrip(kind)`, which take
+  `"trail"` or `"ribbon"`. `applyValues` takes `ribbonMaterial`. In `sparcoon/editor`,
+  `fxTrailRenderBudget` is replaced by `fxStripRenderBudget(kind, ...)`.
+- Particle ids count births modulo `FX_PARTICLE_ID_RANGE` (2^24) and start over from 0. Before, past
+  that many births two consecutive ids read as one.
 - **Breaking:** whether an emitter sorts is set when it is built. Replace `sortCamera` and
   `sortFraction` with the option `sort: { camera, fraction }` of `FXEmitter.fromArtifacts`. The
   emitter's `sort` holds the camera and the fraction, both of which can still be changed, and is
   `undefined` on an emitter built without it.
 - **Breaking:** an `FXEffect` with a sorted emitter throws without `options.camera`. Before, the
   emitter did not sort.
-- `FXEmitter.fromArtifacts` throws for an emitter with both `sort` and a trail, and
-  `applyTrailArtifact` throws on an emitter that sorts. Before, sorting was skipped with a warning.
+- `FXEmitter.fromArtifacts` throws for an emitter with `sort` and a trail, a ribbon or no drawn
+  particles, and `applyStripArtifact` throws on an emitter that sorts. Before, sorting was skipped
+  with a warning.
 - In `sparcoon/editor`, `fxEmitterRenderBudget` takes `sorted` to count the GPU mesh of a sorted
   emitter, which reads its particles from textures instead of attributes.
 

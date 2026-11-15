@@ -10,20 +10,25 @@ import type {
 import { FX_CORE_BUFFERS } from "../coreLayout.js";
 import { particleLayout } from "../emitter/FXEmitterDriver.Internal.js";
 import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
-import { trailHistoryLayout, trailReadFields } from "../trail/FXTrailFields.Internal.js";
+import { stripLayout, stripReadFields } from "../strip/FXStripLayout.Internal.js";
+import type { FXStripKind } from "../strip/FXStripOptions.js";
 import {
   buildArtifactDepthMaterial,
   buildArtifactMaterial,
   buildMeshArtifactDepthMaterial,
   buildMeshArtifactMaterial,
-  buildTrailArtifactMaterial,
   createMaterialSlots,
-  createTrailUniforms,
   type FXMaterialSlots,
-  type FXTrailLayout,
 } from "./FXArtifactMaterial.Internal.js";
 import type { FXExternalTextureBinding } from "./FXExternalTexture.Internal.js";
 import type { FXParticleTextures } from "./FXParticleTextures.Internal.js";
+import {
+  buildRibbonArtifactMaterial,
+  buildTrailArtifactMaterial,
+  createRibbonUniforms,
+  createTrailUniforms,
+  type FXStripLayout,
+} from "./FXStripMaterial.Internal.js";
 
 /**
  * What one render artifact's materials take of the resources a GPU has the fewest of: vertex
@@ -409,10 +414,11 @@ function budgetParticleTextures(): FXParticleTextures {
 }
 
 /**
- * @internal What a built trail material takes, counted as {@link fxTrailRenderBudget} counts it -
- * so a trail's own check against the device and the editor's budget can never disagree.
+ * @internal What a built trail or ribbon material takes, counted as {@link fxStripRenderBudget} and
+ * {@link fxStripRenderBudget} count it - so a strip's own check against the device and the
+ * editor's budget can never disagree.
  */
-export function trailMaterialBudget(material: ShaderMaterial, alphaHash: boolean): FXRenderBudget {
+export function stripMaterialBudget(material: ShaderMaterial, alphaHash: boolean): FXRenderBudget {
   return materialBudget(material, alphaHash, 1);
 }
 
@@ -538,35 +544,45 @@ export function fxMeshRenderBudget(
   return budgetOf(materials, render.options?.renderMode === "alphaHash");
 }
 
-/** Options of {@link fxTrailRenderBudget}. */
-export interface FXTrailRenderBudgetOptions {
-  /** The history the trail draws over: `"js"` (the default, and the only one a WebGL1 tier ever
+/** Options of {@link fxStripRenderBudget}. */
+export interface FXStripRenderBudgetOptions {
+  /** The backend the strip draws over: `"js"` (the default, and the only one a WebGL1 tier ever
    *  runs) or `"gpu"`. */
   readonly backend?: "js" | "gpu";
 }
 
+/** Each strip's material, as its emitter builds it, for one count (its uniforms' values do not
+ *  change what it takes). */
+const STRIP_BUDGET_MATERIALS: Readonly<
+  Record<
+    FXStripKind,
+    (render: FXRenderArtifact, layout: FXStripLayout, slots: FXMaterialSlots) => ShaderMaterial
+  >
+> = {
+  trail: (render, layout, slots) =>
+    buildTrailArtifactMaterial(render, layout, slots, createTrailUniforms(2, 1)),
+  ribbon: (render, layout, slots) =>
+    buildRibbonArtifactMaterial(render, layout, slots, createRibbonUniforms(0)),
+};
+
 /**
- * The same for an emitter's trail artifact, over the particle slot `buffers` lays out (as for
- * {@link fxEmitterRenderBudget}). A trail's base segment has a position only, so it takes no uv or
- * normal slot; every packed view of the history takes two (the segment's two points), and a GPU
- * history adds its frame index and the previous point's views. Laid out and packed by the same
- * `trailHistoryLayout` the emitter's drivers mount from.
+ * The same for an emitter's trail or ribbon artifact (`kind`), over the particle slot `buffers`
+ * lays out (as for {@link fxEmitterRenderBudget}). A strip's base segment has a position only, so
+ * it takes no uv or normal slot; every packed view takes two (the segment's two points), and the
+ * GPU backend adds the previous point's views - and a trail's frame index. Laid out and packed by
+ * the same `stripLayout` the emitter's drivers mount from.
  */
-export function fxTrailRenderBudget(
+export function fxStripRenderBudget(
+  kind: FXStripKind,
   render: FXRenderArtifact,
   buffers: readonly FXBufferLayout[],
-  options: FXTrailRenderBudgetOptions = {},
+  options: FXStripRenderBudgetOptions = {},
 ): FXRenderBudget {
-  const layout: FXTrailLayout = trailHistoryLayout(
+  const layout = stripLayout(
     options.backend === "gpu" ? "gpu" : "cpu",
-    trailReadFields(render),
+    stripReadFields(render),
     particleSlotLayout(buffers),
   );
-  const material = buildTrailArtifactMaterial(
-    render,
-    layout,
-    budgetSlots(render),
-    createTrailUniforms(2, 1),
-  );
+  const material = STRIP_BUDGET_MATERIALS[kind](render, layout, budgetSlots(render));
   return budgetOf([material], render.options?.renderMode === "alphaHash", 1);
 }

@@ -10,7 +10,7 @@ import type {
 import { FX_CORE_LIFECYCLE, FX_CORE_POSITION, FX_LIFETIME } from "../../src/coreLayout";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
 import { packingOrder } from "../../src/render/FXAttributePacking";
-import { fxEmitterRenderBudget, fxTrailRenderBudget } from "../../src/render/FXRenderBudget";
+import { fxEmitterRenderBudget, fxStripRenderBudget } from "../../src/render/FXRenderBudget";
 import type { FXTrailOptions } from "../../src/trail/FXTrail";
 import { behaviorArtifact, programOf, unlitArtifact } from "../helpers/artifacts";
 import {
@@ -81,7 +81,6 @@ function kernelOf(buffers: readonly FXBufferLayout[]): FXParticleKernelArtifact 
 
 function cpuEmitter(render: FXRenderArtifact, trail?: FXRenderArtifact): FXEmitter {
   return FXEmitter.fromArtifacts(
-    render,
     behaviorArtifact({
       attributes: [
         { name: "color", components: 3, value: [0.1, 0.2, 0.3] },
@@ -89,7 +88,11 @@ function cpuEmitter(render: FXRenderArtifact, trail?: FXRenderArtifact): FXEmitt
         { name: "size", components: 1, value: [0.5] },
       ],
     }),
-    { expectedCapacity: 2, ...(trail === undefined ? {} : { trail: trailOptions(trail) }) },
+    {
+      particles: render,
+      expectedCapacity: 2,
+      ...(trail === undefined ? {} : { trail: trailOptions(trail) }),
+    },
   );
 }
 
@@ -98,7 +101,8 @@ function gpuEmitter(
   buffers: readonly FXBufferLayout[],
   trail?: FXRenderArtifact,
 ): FXEmitter {
-  const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact(), {
+  const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+    particles: render,
     gpuKernel: kernelOf(buffers),
     renderer: mockRenderer().renderer,
     expectedCapacity: 4,
@@ -142,7 +146,7 @@ describe("CPU trail history packing", () => {
       expect(shader).toContain("a_tA_fx_color = a_tA_pack0.xyz;");
       expect(shader).toContain("a_tB_fx_alpha = a_tB_pack0.w;");
       expect(shader).toContain("a_tA_fx_size = a_tA_pack1;");
-      expect(shader).toContain("p_fx_color = mix(a_tA_fx_color, a_tB_fx_color, fxTrailT);");
+      expect(shader).toContain("p_fx_color = mix(a_tA_fx_color, a_tB_fx_color, fxStripT);");
       expect(shader).not.toMatch(/attribute \w+ a_tA_fx_/);
     } finally {
       emitter.destroy();
@@ -155,7 +159,7 @@ describe("CPU trail history packing", () => {
     try {
       const mounted = Object.keys(trailOf(emitter).mesh.geometry.attributes);
       expect(mounted).toHaveLength(9);
-      expect(fxTrailRenderBudget(render, DECLARED_SLOT).attributes).toBe(mounted.length);
+      expect(fxStripRenderBudget("trail", render, DECLARED_SLOT).attributes).toBe(mounted.length);
     } finally {
       emitter.destroy();
     }
@@ -200,7 +204,6 @@ describe("GPU packing", () => {
     const render = colorAlphaSizeRender();
     const buffers = packedKernelBuffers();
     const emitter = FXEmitter.fromArtifacts(
-      render,
       fieldBehavior({
         buffers,
         spawn(fields, start, count): void {
@@ -211,7 +214,7 @@ describe("GPU packing", () => {
           }
         },
       }),
-      { expectedCapacity: 2 },
+      { particles: render, expectedCapacity: 2 },
     );
     try {
       const mesh = particlesOf(emitter);
@@ -234,7 +237,8 @@ describe("GPU packing", () => {
 
   it("packs the depth material the same way", () => {
     const render = colorAlphaSizeRender();
-    const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: render,
       gpuKernel: kernelOf(packedKernelBuffers()),
       renderer: mockRenderer().renderer,
       expectedCapacity: 4,
@@ -264,7 +268,8 @@ describe("GPU packing", () => {
         COLOR_ALPHA_SIZE,
       ),
     };
-    const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: render,
       gpuKernel: kernelOf(packedKernelBuffers()),
       renderer: mockRenderer().renderer,
       expectedCapacity: 4,
@@ -321,7 +326,7 @@ describe("GPU packing", () => {
       // The quad, the frame, the previous point's two views and three views per end.
       const mounted = Object.keys(mesh.geometry.attributes);
       expect(mounted).toHaveLength(10);
-      expect(fxTrailRenderBudget(render, buffers, { backend: "gpu" }).attributes).toBe(
+      expect(fxStripRenderBudget("trail", render, buffers, { backend: "gpu" }).attributes).toBe(
         mounted.length,
       );
     } finally {
@@ -339,7 +344,8 @@ describe("unwritten reads", () => {
     });
 
   it("are a zero constant on the JS path: no buffer, no attribute, not budgeted", () => {
-    const emitter = FXEmitter.fromArtifacts(glowRender(), behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: glowRender(),
       castShadow: true,
     });
     try {

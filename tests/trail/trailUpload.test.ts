@@ -38,7 +38,8 @@ function trailEmitter(frames: number, capacity: number, lifetime: number): FXEmi
     frames,
     sampleInterval: SAMPLE_INTERVAL,
   };
-  return FXEmitter.fromArtifacts(unlitArtifact(), movingBehavior(lifetime), {
+  return FXEmitter.fromArtifacts(movingBehavior(lifetime), {
+    particles: unlitArtifact(),
     expectedCapacity: capacity,
     trail,
   });

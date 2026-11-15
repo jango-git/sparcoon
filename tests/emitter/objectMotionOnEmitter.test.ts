@@ -55,10 +55,9 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
   it("reports zero motion on the very first tick (no prior pose to diff against)", () => {
     const spawnCaptures: Captured[] = [];
     const updateCaptures: Captured[] = [];
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      capturingBehavior(spawnCaptures, updateCaptures),
-    );
+    const emitter = FXEmitter.fromArtifacts(capturingBehavior(spawnCaptures, updateCaptures), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(1);
       tickEmitter(emitter, 1); // born: seeded after the (empty) update
@@ -73,10 +72,9 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
   it("reports world-space linear velocity once the emitter has actually moved", () => {
     const spawnCaptures: Captured[] = [];
     const updateCaptures: Captured[] = [];
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      capturingBehavior(spawnCaptures, updateCaptures),
-    );
+    const emitter = FXEmitter.fromArtifacts(capturingBehavior(spawnCaptures, updateCaptures), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(1);
       tickEmitter(emitter, 1); // establishes the position-(0,0,0) baseline
@@ -99,10 +97,9 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
     // the moment more than one of those fires in the same tick.
     const spawnCaptures: Captured[] = [];
     const updateCaptures: Captured[] = [];
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      capturingBehavior(spawnCaptures, updateCaptures),
-    );
+    const emitter = FXEmitter.fromArtifacts(capturingBehavior(spawnCaptures, updateCaptures), {
+      particles: unlitArtifact(),
+    });
     try {
       tickEmitter(emitter, 1); // establishes the position-(0,0,0) baseline, no particles yet
       // One particle alive before the measured tick, so its update phase has a slot to run on
@@ -133,10 +130,9 @@ describe("FXEmitter exposes world-space velocity/angular velocity to the behavio
   it("resets the velocity/angular-velocity baseline on reset(), avoiding a restart teleport spike", () => {
     const spawnCaptures: Captured[] = [];
     const updateCaptures: Captured[] = [];
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      capturingBehavior(spawnCaptures, updateCaptures),
-    );
+    const emitter = FXEmitter.fromArtifacts(capturingBehavior(spawnCaptures, updateCaptures), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(1);
       tickEmitter(emitter, 1); // baseline at (0,0,0)

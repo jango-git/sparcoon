@@ -8,6 +8,7 @@ import type {
 } from "../artifact/FXArtifact.js";
 import type { FXParticleEventKind } from "../emitter/FXEmitter.Internal.js";
 import type { FXInheritCopies } from "../emitter/FXInheritance.js";
+import type { FXStripKind, FXStripOptions } from "../strip/FXStripOptions.js";
 import type { FXWorld } from "../world/FXWorld.js";
 import type { FXSpawnAction } from "./FXSpawnAction.js";
 
@@ -81,7 +82,9 @@ export type FXEffectReaction = FXSpawnAction & {
 export interface FXEffectEmitterSpec {
   /** The editor-authored name, addressing this emitter through {@link FXEffect.getEmitter} etc. */
   readonly name: string;
-  readonly render: FXRenderArtifactsByGLSLTier;
+  /** What its particles are drawn with; absent when they are not drawn (the emitter shows only
+   *  its trail or ribbon). */
+  readonly render?: FXRenderArtifactsByGLSLTier;
   readonly behavior: FXBehaviorArtifact;
   /**
    * The standard-tier (WebGL2, transform-feedback) behavior artifact - present only when this
@@ -104,14 +107,16 @@ export interface FXEffectEmitterSpec {
    * declares it. Never exported together with a `sortInterval` above zero.
    */
   readonly trail?: FXEffectTrailSpec;
+  /** A ribbon through the particles (the emitter's ribbon graph), as {@link trail} for a trail. */
+  readonly ribbon?: FXEffectRibbonSpec;
   /** Casts a shape-aware shadow; omitted (treated as false) by pre-shadow exports. */
   readonly castShadow?: boolean;
   /** Receives shadows; omitted (treated as false) by pre-shadow exports. */
   readonly receiveShadow?: boolean;
   /**
    * The external texture slots this emitter binds from the effect's `assets` - those of its render
-   * graph and, when it has a {@link trail}, its trail graph's too: both materials are built from
-   * this one list.
+   * graph and of its trail and ribbon graphs when it has them: every material is built from this
+   * one list.
    */
   readonly externalSlots: readonly string[];
   readonly transform: FXTransform;
@@ -132,14 +137,17 @@ export interface FXEffectEmitterSpec {
   readonly liveParams: readonly string[];
 }
 
-/** An emitter's trail: its render artifact per GLSL tier and how much path it keeps. */
-export interface FXEffectTrailSpec {
+/** An emitter's strip of `K`: its options (see `FXStripOptions`), its render artifact per GLSL
+ *  tier. */
+export type FXEffectStripSpec<K extends FXStripKind> = Omit<FXStripOptions[K], "render"> & {
   readonly render: FXRenderArtifactsByGLSLTier;
-  /** Recorded points per particle. */
-  readonly frames: number;
-  /** Seconds between two recorded points. */
-  readonly sampleInterval: number;
-}
+};
+
+/** An emitter's trail: its render artifact per GLSL tier and how much path it keeps. */
+export type FXEffectTrailSpec = FXEffectStripSpec<"trail">;
+
+/** An emitter's ribbon: its render artifact per GLSL tier and how `p_uv.x` runs along it. */
+export type FXEffectRibbonSpec = FXEffectStripSpec<"ribbon">;
 
 /** One VFX mesh's precompiled render artifact, transform, and value tracks (no behavior/events). */
 export interface FXEffectMeshSpec {

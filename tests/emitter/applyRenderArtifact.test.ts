@@ -11,11 +11,11 @@ import { fieldComponents, fieldOf } from "../helpers/slots";
 describe("FXEmitter.applyRenderArtifact", () => {
   it("swaps the material and geometry without touching particle state", () => {
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact({ outputs: { albedo: "vec4(1.0)" } }),
       behaviorArtifact({
         lifetime: 5,
         attributes: [{ name: "seed", components: 1, value: [0.5] }],
       }),
+      { particles: unlitArtifact({ outputs: { albedo: "vec4(1.0)" } }) },
     );
     try {
       emitter.burst(3);
@@ -52,7 +52,7 @@ describe("FXEmitter.applyRenderArtifact", () => {
         uniformDeclarations: ["uniform float u_param_size;"],
         uniforms: { u_param_size: { type: "float", value: 0 } },
       });
-    const emitter = FXEmitter.fromArtifacts(sizeRender(), behaviorArtifact());
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), { particles: sizeRender() });
     try {
       emitter.applyValues({ uniforms: { u_param_size: 4 } });
       emitter.applyRenderArtifact(sizeRender());
@@ -70,7 +70,8 @@ describe("FXEmitter.applyRenderArtifact", () => {
         outputs: { albedo: "fxSample_u_param_sheet(vec2(0.5))" },
       });
     const region = { texture: new Texture(), uvTransform: [1, 0, 0, 0, 1, 0] as const };
-    const emitter = FXEmitter.fromArtifacts(sampled(), behaviorArtifact(), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact(), {
+      particles: sampled(),
       textures: { u_param_sheet: region },
     });
     try {
@@ -87,7 +88,9 @@ describe("FXEmitter.applyRenderArtifact", () => {
   });
 
   it("still runs ticks and integrates state after a swap", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 5 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 5 }), {
+      particles: unlitArtifact(),
+    });
     try {
       emitter.burst(2);
       emitter.applyRenderArtifact(unlitArtifact({ outputs: { albedo: "vec4(0.5)" } }));
@@ -99,7 +102,9 @@ describe("FXEmitter.applyRenderArtifact", () => {
   });
 
   it("builds and disposes a depth material when castShadow toggles on then off", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 5 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 5 }), {
+      particles: unlitArtifact(),
+    });
     try {
       const mesh = particlesOf(emitter);
       expect(mesh.customDepthMaterial).toBeUndefined();
@@ -123,7 +128,9 @@ describe("FXEmitter.applyRenderArtifact", () => {
   it("applies in place a render reading an attribute nothing writes, adding no buffer", () => {
     // The behavior writes no custom attribute, so the mesh holds exactly the two core buffers - and
     // keeps holding them (how the shader reads such an attribute: attributePackingIntegration).
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 5 }));
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 5 }), {
+      particles: unlitArtifact(),
+    });
     try {
       const mesh = particlesOf(emitter);
       const materialBefore = mesh.material;
@@ -148,11 +155,11 @@ describe("FXEmitter.applyRenderArtifact", () => {
       outputs: { albedo: "vec4(p_fx_seed)" },
     });
     const emitter = FXEmitter.fromArtifacts(
-      seedRender,
       behaviorArtifact({
         lifetime: 5,
         attributes: [{ name: "seed", components: 1, value: [0.5] }],
       }),
+      { particles: seedRender },
     );
     try {
       emitter.burst(2);
@@ -181,8 +188,8 @@ describe("FXEmitter.applyRenderArtifact", () => {
 
   it("rejects a render artifact reading a written attribute at another width", () => {
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({ lifetime: 5, attributes: [{ name: "seed", components: 1 }] }),
+      { particles: unlitArtifact() },
     );
     try {
       const mesh = particlesOf(emitter);

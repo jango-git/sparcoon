@@ -1,17 +1,23 @@
-import type { BufferGeometry, Vector3, WebGLRenderer } from "three";
+import type { Vector3, WebGLRenderer } from "three";
 
 import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
 import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
-import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
-import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
+import { FXGPURibbonPoints } from "../ribbon/FXRibbonPoints.Internal.js";
+import { stripLayout } from "../strip/FXStripLayout.Internal.js";
 import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXAgedBirths, FXBirthAges } from "./FXBirthAges.Internal.js";
+import { FXGPUBirthProbe } from "./FXBirthProbe.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
-import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
-import { attributeViews, particleLayout } from "./FXEmitterDriver.Internal.js";
+import type {
+  FXEmitterDriver,
+  FXParticleDraw,
+  FXParticleEventSink,
+  FXRibbonPointOptions,
+} from "./FXEmitterDriver.Internal.js";
+import { attributeViews, particleMeshParts } from "./FXEmitterDriver.Internal.js";
 import { FXGPUParticleOrder } from "./FXGPUParticleOrder.Internal.js";
 import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
@@ -37,13 +43,11 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   // The current render's layout over the kernel's slot (fixed by the kernel).
   private currentLayout: FXParticleLayout;
 
-  // Cursor/overwrite bookkeeping: `gpuSpawnCursor` is the next write position (mod capacity).
   // Spawns inside a tick are the births at that tick's pose (FXEmitter.tick), so
-  // `gpuSpawnRangeStart`/`gpuPendingSpawnCount` gather them into one contiguous range the tick's
-  // own pass seeds. A spawn outside a tick - a birth at another pose, or any birth on a paused
-  // tick - is seeded right away by a pass of its own instead (see spawn()), so the range is always
-  // empty between ticks.
-  private gpuSpawnCursor = 0;
+  // `gpuSpawnRangeStart`/`gpuPendingSpawnCount` gather the slots the mesh's cursor hands them into
+  // one contiguous range the tick's own pass seeds. A spawn outside a tick - a birth at another
+  // pose, or any birth on a paused tick - is seeded right away by a pass of its own instead (see
+  // spawn()), so the range is always empty between ticks.
   private gpuSpawnRangeStart = 0;
   private gpuPendingSpawnCount = 0;
   // The gathered births born earlier in the tick: the range's tail, so nothing may follow them.
@@ -57,7 +61,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   private readonly order: FXGPUParticleOrder | undefined;
 
   constructor(options: FXGPUEmitterDriverOptions) {
-    const { kernel, renderer, material, capacity, baseGeometry, surfaces, sorted } = options;
+    const { kernel, renderer, draw, capacity, surfaces, sorted } = options;
     // The holder first: it checks the kernel fits this GPU before any particle buffer exists. A
     // throw from here on (a render the slot cannot draw among them) goes to the caller
     // (FXEmitter.fromArtifacts), which falls back to FXJSEmitterDriver - so what is already
@@ -66,16 +70,17 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     let order: FXGPUParticleOrder | undefined;
     try {
       order = sorted ? new FXGPUParticleOrder(renderer, simulation.slot, capacity) : undefined;
-      this.currentLayout = particleLayout(simulation.slot, material.artifact, order?.textures);
-      const threeMaterial = material.buildThreeMaterial(this.currentLayout);
+      const parts = particleMeshParts(simulation.slot, draw, order?.textures);
+      this.currentLayout = parts.layout;
       this.mesh = new FXTransformFeedbackParticle(
         renderer.getContext() as WebGL2RenderingContext,
         simulation.slot,
-        attributeViews(this.currentLayout),
+        attributeViews(parts.layout),
         capacity,
-        threeMaterial,
-        baseGeometry,
+        parts.material,
+        parts.baseGeometry,
       );
+      this.mesh.visible = parts.visible;
     } catch (error) {
       order?.destroy();
       simulation.destroy();
@@ -141,12 +146,9 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
         "FXGPUEmitterDriver.spawn: a tick's births at its pose share one inheritance",
       );
     }
-    // Cursor advances by `count`, wrapping at capacity - the buffer slots this claims may already
-    // be occupied by still-alive particles, which are simply overwritten (the scheme's cheapness is
-    // not checking occupancy at all).
-    const start = this.gpuSpawnCursor;
-    this.gpuSpawnCursor = (this.gpuSpawnCursor + count) % this.mesh.capacity;
-    this.mesh.occupy();
+    // The slots claimed may already be occupied by still-alive particles, which are simply
+    // overwritten (the scheme's cheapness is not checking occupancy at all).
+    const start = this.mesh.claim(count);
     if (this.ticking) {
       this.gpuPendingSpawnCount += count;
       this.gpuTickInherited = inherited;
@@ -166,7 +168,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       count,
     );
     this.order?.slotsWritten();
-    this.gpuSpawnRangeStart = this.gpuSpawnCursor;
+    this.gpuSpawnRangeStart = this.mesh.nextSlot;
   }
 
   public beginTick(): void {
@@ -191,7 +193,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     );
     this.order?.slotsWritten();
     // Consumed - the next tick's range starts wherever the cursor now sits.
-    this.gpuSpawnRangeStart = this.gpuSpawnCursor;
+    this.gpuSpawnRangeStart = this.mesh.nextSlot;
     this.gpuPendingSpawnCount = 0;
     this.gpuAgedSpawns = undefined;
     this.gpuTickInherited = NOTHING_INHERITED;
@@ -207,7 +209,6 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
 
   public reset(): void {
     this.mesh.drop();
-    this.gpuSpawnCursor = 0;
     // Also drops a range gathered but not yet seeded, so nothing cancelled here spawns later.
     this.gpuSpawnRangeStart = 0;
     this.gpuPendingSpawnCount = 0;
@@ -215,14 +216,18 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.gpuTickInherited = NOTHING_INHERITED;
   }
 
-  public applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void {
+  public applyRenderArtifact(draw: FXParticleDraw | undefined): void {
     // Over this driver's OWN kernel slot (never a JS behavior artifact's): it depends on the kernel
     // alone, so it always fits - a new unwritten read is one more zero constant. Throws (before
     // anything changes) only on a read at another width than held.
-    const layout = particleLayout(this.mesh.slot, material.artifact, this.order?.textures);
-    const threeMaterial = material.buildThreeMaterial(layout);
-    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry, attributeViews(layout));
-    this.currentLayout = layout;
+    const parts = particleMeshParts(this.mesh.slot, draw, this.order?.textures);
+    this.mesh.replaceMaterialAndBaseGeometry(
+      parts.material,
+      parts.baseGeometry,
+      attributeViews(parts.layout),
+    );
+    this.mesh.visible = parts.visible;
+    this.currentLayout = parts.layout;
   }
 
   public createTrailHistory(
@@ -230,8 +235,26 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     frames: number,
   ): FXGPUTrailHistory {
     // The kernel's slot: what one copy records, at the offsets the history views it by.
-    const layout = trailHistoryLayout("gpu", reads, this.mesh.slot);
+    const layout = stripLayout("gpu", reads, this.mesh.slot);
     return new FXGPUTrailHistory(this.gl, this.mesh, layout, frames);
+  }
+
+  // `p_uv.x` is worked out in the shader, from the slot's id or age.
+  public createRibbonPoints(
+    reads: Readonly<Record<string, GLTypeInfo>>,
+    { head }: FXRibbonPointOptions,
+  ): FXGPURibbonPoints {
+    const layout = stripLayout("gpu", reads, this.mesh.slot);
+    const probe = head
+      ? new FXGPUBirthProbe(
+          this.gl,
+          this.mesh.slot.stride * Float32Array.BYTES_PER_ELEMENT,
+          (buffer, transform, inherited) => {
+            this.simulation.seedProbe(this.mesh, buffer, transform, inherited);
+          },
+        )
+      : undefined;
+    return new FXGPURibbonPoints(this.gl, this.mesh, layout, probe);
   }
 
   public destroy(): void {
@@ -244,9 +267,9 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
 export interface FXGPUEmitterDriverOptions {
   readonly kernel: FXParticleKernelArtifact;
   readonly renderer: WebGLRenderer;
-  readonly material: FXArtifactMaterial;
+  /** What it draws its particles with; `undefined` when it does not draw them. */
+  readonly draw: FXParticleDraw | undefined;
   readonly capacity: number;
-  readonly baseGeometry: BufferGeometry;
   /** The tables of the kernel's `meshSurfaces`, by uniform. */
   readonly surfaces: Readonly<Record<string, FXSurfaceTable>>;
   /** Draws back to front, in the order {@link FXEmitterDriver.prepareDraw} keeps. */

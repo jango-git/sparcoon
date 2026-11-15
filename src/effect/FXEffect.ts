@@ -31,6 +31,7 @@ import {
 import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import { FXMeshMaterial } from "../render/FXMeshMaterial.js";
 import { compilePrograms } from "../render/FXProgramCompile.Internal.js";
+import { FX_STRIP_KINDS, type FXStripKind, type FXStripOptions } from "../strip/FXStripOptions.js";
 import { FXWorld } from "../world/FXWorld.js";
 import {
   frameOfTime,
@@ -45,6 +46,7 @@ import type {
   FXEffectOptions,
   FXEffectPlayOptions,
   FXEffectSpec,
+  FXEffectStripSpec,
   FXTransform,
   FXTransformChannel,
 } from "./FXEffectSpec.js";
@@ -255,7 +257,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
   // The render artifacts resolved (by render target) from each emitter/mesh spec's
   // FXRenderArtifactsByGLSLTier - parallel to `emitters`/`meshes`, read by the parameter-drive path
   // instead of re-resolving the spec's map on every call. An emitter has its particles' artifact,
-  // then its trail's when it has one; a mesh has one.
+  // its trail's and its ribbon's, each when it has one; a mesh has one.
   private readonly emitterRenders: FXRenderArtifact[][] = [];
   private readonly meshRenders: FXRenderArtifact[] = [];
   private readonly meshMaterials: FXMeshMaterial[] = [];
@@ -309,21 +311,19 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
 
     for (const [index, emitterSpec] of specification.emitters.entries()) {
       const textures = texturesForSlots(emitterSpec.externalSlots, assets);
-      const render = resolveRenderArtifact(emitterSpec.render, isWebGL2);
-      const trail =
-        emitterSpec.trail === undefined
+      const render =
+        emitterSpec.render === undefined
           ? undefined
-          : {
-              render: resolveRenderArtifact(emitterSpec.trail.render, isWebGL2),
-              frames: emitterSpec.trail.frames,
-              sampleInterval: emitterSpec.trail.sampleInterval,
-            };
-      const renders = trail === undefined ? [render] : [render, trail.render];
+          : resolveRenderArtifact(emitterSpec.render, isWebGL2);
+      const strips = stripOptionsOf(emitterSpec, isWebGL2);
+      const renders = [render, ...FX_STRIP_KINDS.map((kind) => strips[kind]?.render)].filter(
+        (each): each is FXRenderArtifact => each !== undefined,
+      );
       const sort = sorts[index];
       const emitter = FXEmitter.fromArtifacts(
-        render,
         emitterSpec.behavior,
         {
+          ...(render === undefined ? {} : { particles: render }),
           textures,
           geometries,
           expectedCapacity: emitterSpec.expectedCapacity,
@@ -338,7 +338,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           // effect never needs to know which one ends up driving a given emitter.
           gpuKernel: isWebGL2 && !eventSources.has(index) ? emitterSpec.gpuBehavior : undefined,
           renderer: options.renderer,
-          trail,
+          ...strips,
           ...(sort === undefined ? {} : { sort }),
         },
         this.world,
@@ -755,10 +755,33 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
   }
 }
 
+/** The options of each strip `emitterSpec` has, its render artifact resolved for the tier. */
+function stripOptionsOf(
+  emitterSpec: FXEffectEmitterSpec,
+  isWebGL2: boolean,
+): { readonly [K in FXStripKind]?: FXStripOptions[K] } {
+  const { trail, ribbon } = emitterSpec;
+  return {
+    ...(trail === undefined ? {} : { trail: resolveStrip<"trail">(trail, isWebGL2) }),
+    ...(ribbon === undefined ? {} : { ribbon: resolveStrip<"ribbon">(ribbon, isWebGL2) }),
+  };
+}
+
+/** A strip's options from its spec: the same fields, with the render artifact of the tier. */
+function resolveStrip<K extends FXStripKind>(
+  spec: FXEffectStripSpec<K>,
+  isWebGL2: boolean,
+): FXStripOptions[K] {
+  // `Omit<options, "render">` plus a render artifact is the options, which TypeScript cannot follow
+  // through the generic `K`.
+  return { ...spec, render: resolveRenderArtifact(spec.render, isWebGL2) } as FXStripOptions[K];
+}
+
 /**
  * How the emitter of `emitterSpec` sorts, from `camera`: not at all without a sort interval, nor
- * with a trail, which wins - the editor never exports the two together (on the CPU a sort moves
- * particles between the slots a trail records), so that is a hand-edited or mismatched spec.
+ * without drawn particles or with a trail or a ribbon, which win - the editor never exports them
+ * together (on the CPU a sort moves particles between the slots a strip follows), so that is a
+ * hand-edited or mismatched spec.
  * @throws When it sorts and there is no camera.
  */
 function sortOptionsOf(
@@ -768,10 +791,18 @@ function sortOptionsOf(
   if (emitterSpec.sortInterval <= 0) {
     return undefined;
   }
-  if (emitterSpec.trail !== undefined) {
+  const conflict =
+    emitterSpec.render === undefined
+      ? "draws no particles"
+      : emitterSpec.trail !== undefined
+        ? "has a trail"
+        : emitterSpec.ribbon !== undefined
+          ? "has a ribbon"
+          : undefined;
+  if (conflict !== undefined) {
     warnInDevelopment(
-      `FXEffect: emitter "${emitterSpec.name}" has both a trail and a sortInterval - ` +
-        "depth sorting is skipped on an emitter with a trail.",
+      `FXEffect: emitter "${emitterSpec.name}" ${conflict} and has a sortInterval - ` +
+        "depth sorting is skipped.",
     );
     return undefined;
   }

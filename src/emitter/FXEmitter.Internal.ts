@@ -14,16 +14,18 @@ import type { FXUniformValue } from "../render/FXExternalTexture.js";
 export interface FXApplyValues {
   /**
    * Parameters: one namespace per emitter, so a name drives every material declaring it - the
-   * particles' and the trail's. A trail or particle material swapped in later starts from them.
+   * particles', the trail's and the ribbon's. A material swapped in later starts from them.
    */
   readonly uniforms?: Readonly<Record<string, FXUniformValue>>;
   /**
    * The particle material's own uniforms, by its render artifact's names - a tool scrubbing what
-   * it recompiled. A generated name is the graph's own, so it never reaches the trail.
+   * it recompiled. A generated name is the graph's own, so it never reaches another material.
    */
   readonly particleMaterial?: Readonly<Record<string, FXUniformValue>>;
   /** The trail material's own uniforms, by its render artifact's names (see `particleMaterial`). */
   readonly trailMaterial?: Readonly<Record<string, FXUniformValue>>;
+  /** The ribbon material's own uniforms, by its render artifact's names (see `particleMaterial`). */
+  readonly ribbonMaterial?: Readonly<Record<string, FXUniformValue>>;
   /** A `number`, or a `Float32Array` curve LUT. */
   readonly bindings?: Readonly<Record<string, number | Float32Array>>;
 }
@@ -42,9 +44,9 @@ export interface FXEmitterOptions {
   castShadow: boolean;
   /**
    * Draws the particles back to front from a camera. Whether an emitter sorts is fixed when it is
-   * built: its camera and fraction can change later (see {@link FXEmitterSort}), not that. Not
-   * with a `trail`, which records each slot's path - on the CPU a sort moves particles between
-   * slots.
+   * built: its camera and fraction can change later (see {@link FXEmitterSort}), not that. Only
+   * with drawn particles, and not with a `trail` or a `ribbon`, which follow the particle slots -
+   * on the CPU a sort moves particles between slots.
    */
   sort: FXEmitterSortOptions;
   /**

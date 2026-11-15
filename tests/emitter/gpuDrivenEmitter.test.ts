@@ -83,12 +83,12 @@ function emitterOn(
   world: FXWorld = newWorld(),
 ): { emitter: FXEmitter; world: FXWorld } {
   const emitter = FXEmitter.fromArtifacts(
-    unlitArtifact(),
     behaviorArtifact({
       lifetime: 5,
       ...(options.inherit === undefined ? {} : { inherit: options.inherit }),
     }),
     {
+      particles: unlitArtifact(),
       gpuKernel: options.gpuKernel ?? kernel(),
       renderer: mock.renderer,
       expectedCapacity: options.capacity ?? 16,
@@ -124,7 +124,8 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
   });
 
   it("builds the JS driver for a gpuKernel given without a renderer", () => {
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 5 }), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 5 }), {
+      particles: unlitArtifact(),
       gpuKernel: kernel(),
     });
     try {
@@ -583,9 +584,9 @@ describe("FXEmitter GPU driver depth sort", () => {
     const mock = mockRenderer(options);
     const world = newWorld();
     const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
       behaviorArtifact({ lifetime: 5 }),
       {
+        particles: unlitArtifact(),
         gpuKernel: kernel(),
         renderer: mock.renderer,
         expectedCapacity: capacity,

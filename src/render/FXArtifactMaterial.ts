@@ -1,24 +1,27 @@
 import type { Material, ShaderMaterial } from "three";
 
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
-import type {
-  FXMaterialSlots,
-  FXParticleLayout,
-  FXTrailLayout,
-  FXTrailUniforms,
-} from "./FXArtifactMaterial.Internal.js";
+import type { FXMaterialSlots, FXParticleLayout } from "./FXArtifactMaterial.Internal.js";
 import {
   advanceMaterialSlots,
   applyArtifactUniformValues,
   assertArtifactUniformValues,
   buildArtifactDepthMaterial,
   buildArtifactMaterial,
-  buildTrailArtifactMaterial,
   createMaterialSlots,
 } from "./FXArtifactMaterial.Internal.js";
 import type { FXDrawInputs } from "./FXDrawInputs.js";
 import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
+import type {
+  FXRibbonUniforms,
+  FXStripLayout,
+  FXTrailUniforms,
+} from "./FXStripMaterial.Internal.js";
+import {
+  buildRibbonArtifactMaterial,
+  buildTrailArtifactMaterial,
+} from "./FXStripMaterial.Internal.js";
 
 /**
  * @internal Runtime material driver: wraps a precompiled {@link FXRenderArtifact} and builds the
@@ -66,10 +69,18 @@ export class FXArtifactMaterial {
 
   /** The trail material over a history of `layout` (see {@link buildTrailArtifactMaterial}). */
   public buildThreeTrailMaterial(
-    layout: FXTrailLayout,
+    layout: FXStripLayout,
     trailUniforms: FXTrailUniforms,
   ): ShaderMaterial {
     return buildTrailArtifactMaterial(this.artifact, layout, this.slots, trailUniforms);
+  }
+
+  /** The ribbon material over points of `layout` (see {@link buildRibbonArtifactMaterial}). */
+  public buildThreeRibbonMaterial(
+    layout: FXStripLayout,
+    ribbonUniforms: FXRibbonUniforms,
+  ): ShaderMaterial {
+    return buildRibbonArtifactMaterial(this.artifact, layout, this.slots, ribbonUniforms);
   }
 
   /**

@@ -20,7 +20,8 @@ describe("FXEmitter depth sort order", () => {
    */
   function frontRow(pose: (emitter: FXEmitter) => void): [number, number] {
     const camera = new PerspectiveCamera();
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
+    const emitter = FXEmitter.fromArtifacts(staticBehavior(), {
+      particles: unlitArtifact(),
       sort: { camera, fraction: 1 },
     });
     try {
@@ -73,7 +74,8 @@ describe("FXEmitter depth sort cadence", () => {
     sorts: () => number;
   } {
     const camera = new PerspectiveCamera();
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
+    const emitter = FXEmitter.fromArtifacts(staticBehavior(), {
+      particles: unlitArtifact(),
       sort: fraction === undefined ? { camera } : { camera, fraction },
     });
     emitter.burst(2);
@@ -148,9 +150,10 @@ describe("FXEmitter depth sort cadence", () => {
 
 describe("FXEmitter sort setup", () => {
   it("sorts only when built with sort, from the camera it holds now", () => {
-    const unsorted = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior());
+    const unsorted = FXEmitter.fromArtifacts(staticBehavior(), { particles: unlitArtifact() });
     const first = new PerspectiveCamera();
-    const sorted = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
+    const sorted = FXEmitter.fromArtifacts(staticBehavior(), {
+      particles: unlitArtifact(),
       sort: { camera: first },
     });
     try {
@@ -174,7 +177,8 @@ describe("FXEmitter sort setup", () => {
 
   it("rejects a negative fraction", () => {
     expect(() =>
-      FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
+      FXEmitter.fromArtifacts(staticBehavior(), {
+        particles: unlitArtifact(),
         sort: { camera: new PerspectiveCamera(), fraction: -1 },
       }),
     ).toThrow(/sort\.fraction/);

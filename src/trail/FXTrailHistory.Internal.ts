@@ -1,26 +1,23 @@
 import type { InstancedBufferGeometry } from "three";
-import {
-  DynamicDrawUsage,
-  InstancedBufferAttribute,
-  InstancedInterleavedBuffer,
-  InterleavedBufferAttribute,
-} from "three";
+import { DynamicDrawUsage, InstancedBufferAttribute, InstancedInterleavedBuffer } from "three";
 
 import { FX_AGE, FX_ID, FX_LIFETIME } from "../coreLayout.js";
 import type { FXInstancedParticle } from "../instancedParticle/FXInstancedParticle.js";
-import { mountPacked } from "../instancedParticle/FXMeshGeometry.Internal.js";
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
-import { FXInterleavedGLAttribute } from "../instancedParticle/FXTransformFeedbackParticle.js";
-import type { FXTrailLayout } from "../render/FXArtifactMaterial.Internal.js";
-import {
-  FX_TRAIL_CPU_POINT,
-  FX_TRAIL_CPU_TANGENT,
-  FX_TRAIL_FRAME_ATTRIBUTE,
-  trailAttributeNames,
-  trailPreviousAttributeName,
-} from "../render/FXArtifactMaterial.Internal.js";
-import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
 import { markRange } from "../render/FXBufferUpload.Internal.js";
+import {
+  FX_TRAIL_FRAME_ATTRIBUTE,
+  type FXStripLayout,
+} from "../render/FXStripMaterial.Internal.js";
+import {
+  copyStripFields,
+  type FXPlacedStripField,
+  mountCPUStripPoints,
+  mountGPUStripPoints,
+  placeStripFields,
+  stripPointTag,
+  writeStripPoint,
+} from "../strip/FXStripLayout.Internal.js";
 
 /**
  * @internal The recorded past of every particle slot, for a trail to draw: a ring of `frames`
@@ -38,7 +35,7 @@ import { markRange } from "../render/FXBufferUpload.Internal.js";
  * - `"cpu"` (JS backend - and so the whole WebGL1 tier): packed for the WebGL1 attribute budget.
  *   Each point carries its position with the particle id (`id + 1`, `0` when dead) and its joint tangent
  *   with the time it was recorded, computed here; other fields only when the trail reads them, in
- *   the packing-friendly order `trailHistoryLayout` picks, several to an attribute.
+ *   the packing-friendly order `stripLayout` picks, several to an attribute.
  * - `"gpu"` (transform-feedback backend): whole particle slots copied inside video memory, plus a
  *   second mirror before frame 0, since the shader works the joint out from the previous point.
  */
@@ -46,10 +43,10 @@ export interface FXTrailHistory {
   readonly kind: "cpu" | "gpu";
   readonly frames: number;
   readonly capacity: number;
-  /** What it records and how (from `trailHistoryLayout`): the fields recorded per point and
+  /** What it records and how (from `stripLayout`): the fields recorded per point and
    *  interpolated along a segment, their packed views, and the trail's reads it does not hold. On
    *  `"cpu"` the position is not among the fields: it is packed into the point itself. */
-  readonly layout: FXTrailLayout;
+  readonly layout: FXStripLayout;
   /** Nothing to draw as of the last record: no particle alive and every frame dead. Always false
    *  where that cannot be seen (`"gpu"`: age and death never leave the GPU). */
   readonly idle: boolean;
@@ -65,20 +62,6 @@ export interface FXTrailHistory {
   clear(): void;
   destroy(): void;
 }
-
-/** One recorded field's place in a history point, in floats. */
-interface FXHistoryField {
-  readonly name: string;
-  readonly components: number;
-  readonly offset: number;
-}
-
-/** A point's own vec4s in a `"cpu"` history, ahead of its recorded fields - views carrying no
- *  particle field, mounted alongside the layout's packed ones. */
-const CPU_POINT_VIEWS: readonly FXPackedAttribute[] = [
-  { name: FX_TRAIL_CPU_POINT, offset: 0, components: 4, members: [] },
-  { name: FX_TRAIL_CPU_TANGENT, offset: 4, components: 4, members: [] },
-];
 
 /** The per-instance history frame each segment starts at: `floor(instance / capacity)`. */
 function segmentFrames(frames: number, capacity: number): InstancedBufferAttribute {
@@ -115,9 +98,8 @@ export class FXCPUTrailHistory implements FXTrailHistory {
 
   public readonly capacity: number;
 
-  // Where each recorded field lies in a point (read off the layout's packed views), and where it
-  // lies in the mesh's slot.
-  private readonly placed: readonly (FXHistoryField & { readonly from: number })[];
+  // Where each recorded field lies in a point and in the mesh's slot.
+  private readonly placed: readonly FXPlacedStripField[];
   private readonly stride: number;
   private readonly array: Float32Array;
   private readonly buffer: InstancedInterleavedBuffer;
@@ -132,12 +114,12 @@ export class FXCPUTrailHistory implements FXTrailHistory {
    * @param mesh - The emitter's particles. Its drawn range (every slot claimed since the last clear)
    *   must not shrink while this history is in use without a {@link clear} alongside - a slot past
    *   it would keep its last recorded point, live tag included.
-   * @param layout - A `"cpu"` `trailHistoryLayout` over `mesh`'s slot: the fields to record beside
+   * @param layout - A `"cpu"` `stripLayout` over `mesh`'s slot: the fields to record beside
    *   the packed point, where in the point, and the point's stride - this decides none of it.
    */
   constructor(
     private readonly mesh: FXInstancedParticle,
-    public readonly layout: FXTrailLayout,
+    public readonly layout: FXStripLayout,
     public readonly frames: number,
   ) {
     if (layout.kind !== "cpu") {
@@ -145,20 +127,7 @@ export class FXCPUTrailHistory implements FXTrailHistory {
     }
     this.capacity = mesh.instanceCapacity;
     const capacity = this.capacity;
-    this.placed = layout.packed.flatMap((view) =>
-      view.members.map((member) => {
-        const from = mesh.slot.fields.find((field) => field.name === member.name);
-        if (from === undefined) {
-          throw new Error(`FXCPUTrailHistory: the slot lacks the recorded "${member.name}"`);
-        }
-        return {
-          name: member.name,
-          components: member.components,
-          offset: view.offset + member.componentOffset,
-          from: from.offset,
-        };
-      }),
-    );
+    this.placed = placeStripFields(layout, mesh.slot, "FXCPUTrailHistory");
     const stride = layout.stride;
     this.stride = stride;
     this.array = new Float32Array((frames + 1) * capacity * stride);
@@ -173,21 +142,8 @@ export class FXCPUTrailHistory implements FXTrailHistory {
   }
 
   public mount(geometry: InstancedBufferGeometry): void {
-    const frameFloats = this.capacity * this.stride;
-    const views = [...CPU_POINT_VIEWS, ...this.layout.packed];
-    // Each view twice: at the segment's start, and one whole frame further on at its end.
-    for (const [end, frameOffset] of [
-      ["a", 0],
-      ["b", frameFloats],
-    ] as const) {
-      mountPacked(
-        geometry,
-        views,
-        (view) => trailAttributeNames(view.name)[end],
-        (view) =>
-          new InterleavedBufferAttribute(this.buffer, view.components, frameOffset + view.offset),
-      );
-    }
+    // The end point is one whole frame further on.
+    mountCPUStripPoints(geometry, this.layout, this.buffer, this.capacity * this.stride);
   }
 
   public record(head: number, advanced: boolean, time: number): void {
@@ -214,34 +170,15 @@ export class FXCPUTrailHistory implements FXTrailHistory {
     for (let slot = 0; slot < drawn; slot++) {
       const point = base + slot * stride;
       const before = previous + slot * stride;
-      const position = slot * sourceStride + core.position;
       const lifecycle = slot * sourceStride + core.lifecycle;
-      const x = source[position];
-      const y = source[position + 1];
-      const z = source[position + 2];
       const alive = source[lifecycle + FX_AGE] < source[lifecycle + FX_LIFETIME];
-      // The particle's id + 1, or 0 when dead - so a zero-filled (never written) point is dead.
       const tag = alive ? source[lifecycle + FX_ID] + 1 : 0;
       anyAlive ||= alive;
-      const continues = tag > 0 && array[before + 3] === tag;
-      array[point] = x;
-      array[point + 1] = y;
-      array[point + 2] = z;
-      array[point + 3] = tag;
-      array[point + 4] = continues ? x - array[before] : 0;
-      array[point + 5] = continues ? y - array[before + 1] : 0;
-      array[point + 6] = continues ? z - array[before + 2] : 0;
-      array[point + 7] = time;
+      // Linked to the previous frame's point while it holds the same particle.
+      const linked = tag > 0 && stripPointTag(array, before) === tag ? before : -1;
+      writeStripPoint(array, point, source, slot * sourceStride + core.position, tag, linked, time);
     }
-    for (const field of this.placed) {
-      for (let slot = 0; slot < drawn; slot++) {
-        const target = base + slot * stride + field.offset;
-        const origin = slot * sourceStride + field.from;
-        for (let c = 0; c < field.components; c++) {
-          array[target + c] = source[origin + c];
-        }
-      }
-    }
+    copyStripFields(this.placed, source, sourceStride, 0, array, stride, base, drawn);
     if (anyAlive !== (this.frameLive[head] === 1)) {
       this.frameLive[head] = anyAlive ? 1 : 0;
       this.liveFrames += anyAlive ? 1 : -1;
@@ -293,14 +230,14 @@ export class FXGPUTrailHistory implements FXTrailHistory {
   private readonly slotBytes: number;
 
   /**
-   * @param layout - A `"gpu"` `trailHistoryLayout` over `mesh`'s slot: the views of the recorded
+   * @param layout - A `"gpu"` `stripLayout` over `mesh`'s slot: the views of the recorded
    *   fields (position and lifecycle among them, which the shader links points into segments by)
    *   and of the previous point - this decides none of it.
    */
   constructor(
     private readonly gl: WebGL2RenderingContext,
     private readonly mesh: FXTransformFeedbackParticle,
-    public readonly layout: FXTrailLayout,
+    public readonly layout: FXStripLayout,
     public readonly frames: number,
   ) {
     if (layout.kind !== "gpu" || layout.stride !== mesh.slot.stride) {
@@ -313,34 +250,21 @@ export class FXGPUTrailHistory implements FXTrailHistory {
   }
 
   public mount(geometry: InstancedBufferGeometry): void {
-    const { stride } = this.mesh.slot;
-    const points = (this.frames + 2) * this.capacity;
-    const frameFloats = this.capacity * stride;
+    const frameFloats = this.capacity * this.mesh.slot.stride;
     // Physical frame 0 is the mirror before frame 0: the previous point of a segment starting at
     // frame f is at physical f, its start at f + 1 and its end at f + 2.
-    const mount = (
-      views: readonly FXPackedAttribute[],
-      name: (view: FXPackedAttribute) => string,
-      frameOffset: number,
-    ): void => {
-      mountPacked(
-        geometry,
-        views,
-        name,
-        (view) =>
-          new FXInterleavedGLAttribute(
-            this.gl,
-            this.buffer,
-            view.components,
-            frameOffset + view.offset,
-            stride,
-            points,
-          ),
-      );
-    };
-    mount(this.layout.packed, (view) => trailAttributeNames(view.name).a, frameFloats);
-    mount(this.layout.packed, (view) => trailAttributeNames(view.name).b, 2 * frameFloats);
-    mount(this.layout.previous, (view) => trailPreviousAttributeName(view.name), 0);
+    mountGPUStripPoints(
+      this.gl,
+      geometry,
+      this.layout,
+      this.buffer,
+      (this.frames + 2) * this.capacity,
+      {
+        previous: 0,
+        start: frameFloats,
+        end: 2 * frameFloats,
+      },
+    );
     geometry.setAttribute(FX_TRAIL_FRAME_ATTRIBUTE, segmentFrames(this.frames, this.capacity));
   }
 

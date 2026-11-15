@@ -72,7 +72,7 @@ export type { FXGLSLRenderTier } from "../artifact/FXArtifact.js";
 export type {
   FXEmitterRenderBudgetOptions,
   FXRenderBudget,
-  FXTrailRenderBudgetOptions,
+  FXStripRenderBudgetOptions,
 } from "../render/FXRenderBudget.js";
 export {
   FX_RENDER_BUDGET_MINIMUMS,
@@ -82,7 +82,7 @@ export {
   fxMeshRenderBudget,
   type FXPackedShape,
   fxPackedShape,
-  fxTrailRenderBudget,
+  fxStripRenderBudget,
   packedVectors,
 } from "../render/FXRenderBudget.js";
 
@@ -110,6 +110,11 @@ export {
 // may keep.
 export type { FXTrailOptions } from "../trail/FXTrail.js";
 export { FX_TRAIL_MAX_FRAMES } from "../trail/FXTrail.js";
+
+// Particle ribbons: the options an emitter's ribbon is built from; and every strip's, by kind.
+export type { FXRibbonOptions, FXRibbonUV } from "../ribbon/FXRibbon.js";
+export type { FXStripKind, FXStripOptions } from "../strip/FXStripOptions.js";
+export { FX_STRIP_KINDS } from "../strip/FXStripOptions.js";
 
 // External texture sampling: the function a graph calls to sample an external texture uniform -
 // the runtime defines it per slot from how the host bound it (a whole texture or a region).

@@ -19,7 +19,7 @@ import {
   fxMeshRenderBudget,
   fxPackedShape,
   packedVectors,
-  trailMaterialBudget,
+  stripMaterialBudget,
 } from "../../src/render/FXRenderBudget";
 import { layoutOf, unlitArtifact } from "../helpers/artifacts";
 
@@ -299,7 +299,7 @@ describe("render budget chunk table", () => {
     // A fragment shader of that chunk alone, counted as the budget counts one (alphaHash on: a
     // chunk may declare its varying under that define only).
     const countedVectors = (chunk: string): number =>
-      trailMaterialBudget(
+      stripMaterialBudget(
         { vertexShader: "", fragmentShader: `#include <${chunk}>` } as ShaderMaterial,
         true,
       ).varyingVectors;
@@ -352,7 +352,7 @@ describe("render budget: uniforms and texture units", () => {
       buildArtifactDepthMaterial(lit(unlitArtifact()), layoutOf(varyings), slots()),
       buildMeshArtifactMaterial(lit(unlitArtifact()), slots()),
     ];
-    const empty = trailMaterialBudget(
+    const empty = stripMaterialBudget(
       { vertexShader: "", fragmentShader: "" } as ShaderMaterial,
       true,
     );
@@ -366,7 +366,7 @@ describe("render budget: uniforms and texture units", () => {
         /^\s*uniform\s/m.test((ShaderChunk as Record<string, string>)[chunk] ?? ""),
       );
       const counted = (chunk: string): boolean => {
-        const only = trailMaterialBudget(
+        const only = stripMaterialBudget(
           {
             vertexShader: "",
             fragmentShader: "",

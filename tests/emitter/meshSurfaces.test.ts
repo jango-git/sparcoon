@@ -31,7 +31,8 @@ function sampling(seen: unknown[]): FXBehaviorArtifact {
 describe("FXEmitter mesh surfaces", () => {
   it("hands the behavior the table of the geometry its surface names", () => {
     const seen: unknown[] = [];
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), sampling(seen), {
+    const emitter = FXEmitter.fromArtifacts(sampling(seen), {
+      particles: unlitArtifact(),
       geometries: { rock: rock() },
     });
     try {
@@ -47,7 +48,8 @@ describe("FXEmitter mesh surfaces", () => {
 
   it("keeps the table through a value scrub of the same name", () => {
     const seen: unknown[] = [];
-    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), sampling(seen), {
+    const emitter = FXEmitter.fromArtifacts(sampling(seen), {
+      particles: unlitArtifact(),
       geometries: { rock: rock() },
     });
     try {
@@ -61,7 +63,7 @@ describe("FXEmitter mesh surfaces", () => {
   });
 
   it("requires the geometry", () => {
-    expect(() => FXEmitter.fromArtifacts(unlitArtifact(), sampling([]))).toThrow(
+    expect(() => FXEmitter.fromArtifacts(sampling([]), { particles: unlitArtifact() })).toThrow(
       /no geometry "rock"/,
     );
   });

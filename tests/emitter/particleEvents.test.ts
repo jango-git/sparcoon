@@ -36,7 +36,11 @@ afterEach(() => {
 });
 
 function emitterIn(world: FXWorld, behavior: FXBehaviorArtifact, capacity = 16): FXEmitter {
-  return FXEmitter.fromArtifacts(unlitArtifact(), behavior, { expectedCapacity: capacity }, world);
+  return FXEmitter.fromArtifacts(
+    behavior,
+    { particles: unlitArtifact(), expectedCapacity: capacity },
+    world,
+  );
 }
 
 /** Copies each `kind` event out of the reused object the listener receives. */

@@ -11,7 +11,9 @@ import { particlesOf, tickEmitter } from "../helpers/internals";
 
 /** A plain emitter: flat-white render, a spawn that seeds lifetime 100. */
 function plainEmitter(): FXEmitter {
-  return FXEmitter.fromArtifacts(unlitArtifact(), behaviorArtifact({ lifetime: 100 }));
+  return FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 100 }), {
+    particles: unlitArtifact(),
+  });
 }
 
 const worlds: FXWorld[] = [];
@@ -175,9 +177,8 @@ describe("FXEmitter.stop", () => {
 describe("spawning at an origin", () => {
   function emitterIn(world: FXWorld, poses: FXEmitterTransform[] = [], capacity = 16): FXEmitter {
     return FXEmitter.fromArtifacts(
-      unlitArtifact(),
       placingBehavior(10, poses),
-      { expectedCapacity: capacity },
+      { particles: unlitArtifact(), expectedCapacity: capacity },
       world,
     );
   }

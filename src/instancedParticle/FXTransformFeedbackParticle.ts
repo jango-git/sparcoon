@@ -73,6 +73,8 @@ export class FXTransformFeedbackParticle extends Mesh {
   // next transform-feedback pass writes. Never read and written in the same pass.
   private readonly slotBuffers: readonly [WebGLBuffer, WebGLBuffer];
   private currentIndex: 0 | 1 = 0;
+  // The slot the next birth takes, mod capacity: the same cursor as `FXInstancedParticle`'s.
+  private cursor = 0;
   // The views bound over the current half - the current render's (see `particleLayout`).
   private views: readonly FXPackedAttribute[] = [];
 
@@ -102,6 +104,14 @@ export class FXTransformFeedbackParticle extends Mesh {
     this.mountViews(views);
   }
 
+  /**
+   * The slot the next birth takes: in birth order, the ring runs from it (the oldest particle once
+   * the ring has gone round, a never-claimed dead slot before) to the slot before it (the newest).
+   */
+  public get nextSlot(): number {
+    return this.cursor;
+  }
+
   /** The half a transform-feedback pass reads as its input - last pass's result. */
   public readBuffer(): WebGLBuffer {
     return this.slotBuffers[this.currentIndex];
@@ -124,16 +134,25 @@ export class FXTransformFeedbackParticle extends Mesh {
     this.mountViews(this.views);
   }
 
-  /** Kills every particle at once: zeroes both halves (all dead) and draws nothing until
-   *  {@link occupy}. */
-  public drop(): void {
-    this.zeroSlotBuffers();
-    this.instancedGeometry.instanceCount = 0;
+  /**
+   * Claims `count` slots at the cursor, overwriting whatever occupies them, and draws every slot
+   * from now on; returns the first. The cursor advances by `count` mod capacity, as
+   * `FXInstancedParticle.claim`'s does: a claim larger than the ring takes every slot once from
+   * the old cursor.
+   */
+  public claim(count: number): number {
+    const start = this.cursor;
+    this.cursor = (this.cursor + count) % this.capacity;
+    this.instancedGeometry.instanceCount = this.capacity;
+    return start;
   }
 
-  /** Draws every slot from now on: call before seeding a birth. */
-  public occupy(): void {
-    this.instancedGeometry.instanceCount = this.capacity;
+  /** Kills every particle at once: zeroes both halves (all dead), rewinds the cursor and draws
+   *  nothing until the next {@link claim}. */
+  public drop(): void {
+    this.zeroSlotBuffers();
+    this.cursor = 0;
+    this.instancedGeometry.instanceCount = 0;
   }
 
   /**

@@ -4,8 +4,8 @@ import type { FXEffect } from "../../src/effect/FXEffect";
 import type { FXEmitter } from "../../src/emitter/FXEmitter";
 import type { FXInstancedParticle } from "../../src/instancedParticle/FXInstancedParticle";
 import type { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
-import type { FXTrailLayout } from "../../src/render/FXArtifactMaterial.Internal";
 import type { FXRangedBuffer } from "../../src/render/FXBufferUpload.Internal";
+import type { FXStripLayout } from "../../src/render/FXStripMaterial.Internal";
 import type { FXWorld } from "../../src/world/FXWorld";
 
 /**
@@ -19,7 +19,12 @@ interface EmitterInternals {
   readonly driver: {
     readonly simulation: { readonly bindings: Record<string, { readonly value: unknown }> };
   };
-  readonly trail: TrailInternals | undefined;
+  readonly strips: {
+    readonly strips: {
+      readonly trail?: TrailInternals;
+      readonly ribbon?: RibbonInternals;
+    };
+  };
   readonly emitterTransform: { readonly velocity: readonly number[] };
   tick(deltaTime: number): void;
   onRendering(deltaTime: number): void;
@@ -94,7 +99,7 @@ export interface TrailInternals {
     readonly stride: number;
     readonly capacity: number;
     readonly frames: number;
-    readonly layout: FXTrailLayout;
+    readonly layout: FXStripLayout;
     readonly buffer: FXRangedBuffer;
   };
   readonly uniforms: {
@@ -107,11 +112,34 @@ export interface TrailInternals {
 
 /** `emitter`'s trail; fails the test when it has none. */
 export function trailOf(emitter: FXEmitter): TrailInternals {
-  const trail = internalsOf(emitter).trail;
+  const trail = internalsOf(emitter).strips.strips.trail;
   if (trail === undefined) {
     throw new Error("trailOf: the emitter has no trail");
   }
   return trail;
+}
+
+/** What the tests read of an emitter's ribbon and its points. */
+export interface RibbonInternals {
+  readonly mesh: Mesh;
+  readonly points: {
+    readonly kind: "cpu" | "gpu";
+    readonly array?: Float32Array;
+    readonly stride?: number;
+    readonly capacity: number;
+    readonly segments: number;
+    readonly layout: FXStripLayout;
+    readonly buffer?: FXRangedBuffer;
+  };
+}
+
+/** `emitter`'s ribbon; fails the test when it has none. */
+export function ribbonOf(emitter: FXEmitter): RibbonInternals {
+  const ribbon = internalsOf(emitter).strips.strips.ribbon;
+  if (ribbon === undefined) {
+    throw new Error("ribbonOf: the emitter has no ribbon");
+  }
+  return ribbon;
 }
 
 /** Drives emitter `index` of `effect` with one frame's sampled parameter values. */

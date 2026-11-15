@@ -118,7 +118,9 @@ describe("render artifact - generated & external textures", () => {
 
   it("fails fast through fromArtifacts when an external texture slot is not supplied", () => {
     expect(() =>
-      FXEmitter.fromArtifacts(withExternalTexture(), behaviorArtifact({ lifetime: 1 })),
+      FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 1 }), {
+        particles: withExternalTexture(),
+      }),
     ).toThrow(/no texture supplied for external slot "flame"/);
   });
 
@@ -151,7 +153,8 @@ describe("render artifact - generated & external textures", () => {
       },
       attributeReads: [],
     };
-    const emitter = FXEmitter.fromArtifacts(render, behaviorArtifact({ lifetime: 5 }), {
+    const emitter = FXEmitter.fromArtifacts(behaviorArtifact({ lifetime: 5 }), {
+      particles: render,
       textures: { flame },
     });
     try {

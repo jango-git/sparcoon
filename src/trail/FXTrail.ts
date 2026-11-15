@@ -1,15 +1,15 @@
-import type { Material } from "three";
-import { BufferAttribute, InstancedBufferGeometry, Mesh } from "three";
+import type { Mesh } from "three";
 
 import type { FXRenderArtifact } from "../artifact/FXArtifact.js";
+import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import type { FXExternalTexture } from "../render/FXExternalTexture.js";
+import type { FXRenderBudget } from "../render/FXRenderBudget.js";
 import {
   createTrailUniforms,
   FX_TRAIL_MAX_FRAMES,
   type FXTrailUniforms,
-} from "../render/FXArtifactMaterial.Internal.js";
-import { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
-import type { FXExternalTexture } from "../render/FXExternalTexture.js";
-import { type FXRenderBudget, trailMaterialBudget } from "../render/FXRenderBudget.js";
+} from "../render/FXStripMaterial.Internal.js";
+import { type FXParticleStrip, type FXStripFrame, FXStripMesh } from "../strip/FXStrip.Internal.js";
 import type { FXTrailHistory } from "./FXTrailHistory.Internal.js";
 
 /**
@@ -47,14 +47,6 @@ export function assertValidTrailOptions(options: FXTrailOptions, context: string
   }
 }
 
-/** The base quad of one segment: `x` along it (0 -> 1), `y` across it (-1 -> 1). */
-function segmentQuad(): { position: BufferAttribute; index: BufferAttribute } {
-  return {
-    position: new BufferAttribute(new Float32Array([0, -1, 0, 0, 1, 0, 1, -1, 0, 1, 1, 0]), 3),
-    index: new BufferAttribute(new Uint16Array([0, 2, 1, 1, 2, 3]), 1),
-  };
-}
-
 /** How fast the measured time between two head moves follows a change (per move). */
 const GAP_SMOOTHING = 0.2;
 
@@ -67,13 +59,8 @@ const GAP_SMOOTHING = 0.2;
  * Drawn after the emitter's particles at the same depth (three breaks a transparent tie by object
  * id, and the trail is built after them), so with plain blending the ribbon lies over a particle.
  */
-export class FXTrail {
-  public readonly mesh: Mesh;
-  /** What this trail's material takes of a GPU's attributes and varyings, as built. */
-  public readonly budget: FXRenderBudget;
-
-  private readonly geometry: InstancedBufferGeometry;
-  private readonly material: FXArtifactMaterial;
+export class FXTrail implements FXParticleStrip {
+  private readonly strip: FXStripMesh;
   private readonly uniforms: FXTrailUniforms;
   private readonly frames: number;
   private readonly sampleInterval: number;
@@ -93,38 +80,37 @@ export class FXTrail {
   /**
    * @param history - Its `layout` is what the material reads: the recorded fields' packed views,
    *   and the reads it does not hold (zero).
-   * @throws A `RangeError` for invalid `options` (see {@link assertValidTrailOptions}).
+   * @param options - Valid (see {@link assertValidTrailOptions}).
    */
   constructor(
     private readonly history: FXTrailHistory,
     options: FXTrailOptions,
     textures: Readonly<Record<string, FXExternalTexture>> = {},
   ) {
-    assertValidTrailOptions(options, "FXTrail.constructor.options");
     this.frames = options.frames;
     this.sampleInterval = options.sampleInterval;
     this.advanceGap = options.sampleInterval;
     this.recordedAt = new Float64Array(this.frames);
     this.uniforms = createTrailUniforms(this.frames, (this.frames - 1) * this.sampleInterval);
 
-    this.material = new FXArtifactMaterial(options.render, textures);
-    const threeMaterial = this.material.buildThreeTrailMaterial(history.layout, this.uniforms);
-    this.budget = trailMaterialBudget(
-      threeMaterial,
-      options.render.options?.renderMode === "alphaHash",
+    const material = new FXArtifactMaterial(options.render, textures);
+    this.strip = new FXStripMesh(
+      "FXTrail",
+      material,
+      material.buildThreeTrailMaterial(history.layout, this.uniforms),
+      (geometry) => {
+        history.mount(geometry);
+      },
     );
+  }
 
-    const geometry = new InstancedBufferGeometry();
-    const quad = segmentQuad();
-    geometry.setIndex(quad.index);
-    geometry.setAttribute("position", quad.position);
-    history.mount(geometry);
-    this.geometry = geometry;
-    this.syncDrawnSegments();
+  public get mesh(): Mesh {
+    return this.strip.mesh;
+  }
 
-    this.mesh = new Mesh(geometry, threeMaterial);
-    this.mesh.frustumCulled = false;
-    this.mesh.name = "FXTrail";
+  /** What this trail's material takes of a GPU's attributes and varyings, as built. */
+  public get budget(): FXRenderBudget {
+    return this.strip.budget;
   }
 
   /** Seconds since the oldest point it still draws was recorded; 0 before its first record. */
@@ -142,7 +128,7 @@ export class FXTrail {
 
   /** The per-emitter material driver, for the clock, motion and parameter values. */
   public get artifactMaterial(): FXArtifactMaterial {
-    return this.material;
+    return this.strip.material;
   }
 
   /**
@@ -150,7 +136,11 @@ export class FXTrail {
    * to the next frame at most once per tick, once `sampleInterval` has passed since it last did;
    * otherwise the head frame is overwritten, so the trail's newest point follows the particle.
    */
-  public record(deltaTime: number): void {
+  public record({ deltaTime }: FXStripFrame): void {
+    // A paused tick moves nothing along the path.
+    if (deltaTime <= 0) {
+      return;
+    }
     this.clock += deltaTime;
     let advanced = false;
     if (this.recordedOnce) {
@@ -185,6 +175,10 @@ export class FXTrail {
     this.syncDrawnSegments();
   }
 
+  public fadedBy(sinceDeath: number): boolean {
+    return this.oldestPointAge <= sinceDeath;
+  }
+
   /** Forgets the whole recorded path: the trail is empty until the next tick records. */
   public reset(): void {
     this.history.clear();
@@ -206,11 +200,7 @@ export class FXTrail {
   }
 
   public destroy(): void {
-    this.mesh.removeFromParent();
-    // Releases three's GPU copies of every attribute, the history's included.
-    this.geometry.dispose();
-    (this.mesh.material as Material).dispose();
-    this.material.destroy();
+    this.strip.destroy();
     this.history.destroy();
   }
 
@@ -218,6 +208,6 @@ export class FXTrail {
   // whole frames, not slots.
   private syncDrawnSegments(): void {
     const visible = this.recordedOnce && !this.history.idle;
-    this.geometry.instanceCount = visible ? this.frames * this.history.capacity : 0;
+    this.strip.segments = visible ? this.frames * this.history.capacity : 0;
   }
 }

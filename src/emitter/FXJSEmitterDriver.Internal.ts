@@ -1,4 +1,4 @@
-import type { BufferGeometry, Vector3 } from "three";
+import type { Vector3 } from "three";
 
 import type { FXBehaviorArtifact, FXEmitterTransform } from "../artifact/FXArtifact.js";
 import {
@@ -6,6 +6,7 @@ import {
   FX_CORE_POSITION_STRIDE,
   FX_ID,
   FX_LIFETIME,
+  FX_PARTICLE_ID_RANGE,
   FX_POSITION_X,
   FX_POSITION_Y,
   FX_POSITION_Z,
@@ -15,14 +16,20 @@ import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import { warnInDevelopment } from "../miscellaneous/asserts.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
-import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
-import { trailHistoryLayout } from "../trail/FXTrailFields.Internal.js";
+import { FXCPURibbonPoints } from "../ribbon/FXRibbonPoints.Internal.js";
+import { stripLayout } from "../strip/FXStripLayout.Internal.js";
 import { FXCPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 import { birthAgeAt } from "./FXBirthAges.Internal.js";
+import { FXCPUBirthProbe } from "./FXBirthProbe.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
-import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
-import { attributeViews, particleLayout } from "./FXEmitterDriver.Internal.js";
+import type {
+  FXEmitterDriver,
+  FXParticleDraw,
+  FXParticleEventSink,
+  FXRibbonPointOptions,
+} from "./FXEmitterDriver.Internal.js";
+import { attributeViews, particleMeshParts } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
 import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 
@@ -51,9 +58,9 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
   // The current render's layout over the slot (the behavior's, fixed for the driver's life).
   private currentLayout: FXParticleLayout;
 
-  // Host-owned, monotonic per-emitter counter (like age, never touched by the compiled kernel/
-  // graph) - persists across reset() the same way FXTransformFeedbackSimulationHolder's
-  // randSeedCounter does, only restarting when this driver itself is rebuilt from artifacts.
+  // Host-owned per-emitter counter (like age, never touched by the compiled kernel/graph), modulo
+  // FX_PARTICLE_ID_RANGE - persists across reset() the same way FXTransformFeedbackSimulationHolder's
+  // spawnIdBase does, only restarting when this driver itself is rebuilt from artifacts.
   private nextParticleId = 0;
   // The first overflow of this emitter's ring is reported once, in development builds.
   private warnedAboutOverflow = false;
@@ -69,21 +76,21 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
 
   constructor(
     behavior: FXBehaviorArtifact,
-    material: FXArtifactMaterial,
+    draw: FXParticleDraw | undefined,
     capacity: number,
-    baseGeometry: BufferGeometry,
     surfaces: Readonly<Record<string, FXSurfaceTable>>,
   ) {
     this.simulation = new FXSimulationHolder(behavior, surfaces);
-    this.currentLayout = particleLayout(this.simulation.slot, material.artifact);
-    const threeMaterial = material.buildThreeMaterial(this.currentLayout);
+    const parts = particleMeshParts(this.simulation.slot, draw);
+    this.currentLayout = parts.layout;
     this.mesh = new FXInstancedParticle(
       this.simulation.slot,
-      attributeViews(this.currentLayout),
+      attributeViews(parts.layout),
       capacity,
-      threeMaterial,
-      baseGeometry,
+      parts.material,
+      parts.baseGeometry,
     );
+    this.mesh.visible = parts.visible;
   }
 
   public get layout(): FXParticleLayout {
@@ -138,7 +145,8 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     // Every birth asked for takes an id, seeded or not - a burst larger than the ring seeds only
     // `capacity` slots, `firstId + 0..capacity-1` in claim order, yet consumes `count` ids - exactly
     // as the GPU kernel numbers a spawn range (`u_fxSpawnIdBase + relative index`, the base then
-    // advanced by the whole count), so the two backends hand out the same ids.
+    // advanced by the whole count), so the two backends hand out the same ids, both modulo
+    // FX_PARTICLE_ID_RANGE.
     //
     // Age is host-owned too, and written before the spawn kernel runs: the kernel places a birth
     // by it (the emitter's pose that long ago), as the GPU kernel places it by the age it seeds.
@@ -147,14 +155,15 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     const idOffset = this.mesh.core.lifecycle + FX_ID;
     const ageOffset = this.mesh.core.lifecycle + FX_AGE;
     const firstId = this.nextParticleId;
-    this.nextParticleId += count;
-    let nextId = firstId;
+    this.nextParticleId = (firstId + count) % FX_PARTICLE_ID_RANGE;
+    let birth = 0;
     for (const range of this.mesh.claim(count)) {
       for (let i = range.start; i < range.start + range.count; i++) {
         if (ages !== undefined) {
-          slots[i * stride + ageOffset] = birthAgeAt(ages, nextId - firstId);
+          slots[i * stride + ageOffset] = birthAgeAt(ages, birth);
         }
-        slots[i * stride + idOffset] = nextId++;
+        slots[i * stride + idOffset] = (firstId + birth) % FX_PARTICLE_ID_RANGE;
+        birth++;
       }
       // Re-checked (defensive): no spawn function would leave the freshly zeroed rows born dead.
       if (this.simulation.canSpawn) {
@@ -228,29 +237,55 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     this.mesh.drop();
   }
 
-  public applyRenderArtifact(material: FXArtifactMaterial, baseGeometry: BufferGeometry): void {
+  public applyRenderArtifact(draw: FXParticleDraw | undefined): void {
     // Over this driver's OWN slot (never the other backend's): it depends on the behavior alone,
     // so it always fits - a new unwritten read is one more zero constant. Throws (before anything
     // changes) only on a read at another width than held.
-    const layout = particleLayout(this.mesh.slot, material.artifact);
-    const threeMaterial = material.buildThreeMaterial(layout);
-    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry, attributeViews(layout));
-    this.currentLayout = layout;
+    const parts = particleMeshParts(this.mesh.slot, draw);
+    this.mesh.replaceMaterialAndBaseGeometry(
+      parts.material,
+      parts.baseGeometry,
+      attributeViews(parts.layout),
+    );
+    this.mesh.visible = parts.visible;
+    this.currentLayout = parts.layout;
   }
 
   public createTrailHistory(
     reads: Readonly<Record<string, GLTypeInfo>>,
     frames: number,
   ): FXCPUTrailHistory {
-    return new FXCPUTrailHistory(
-      this.mesh,
-      trailHistoryLayout("cpu", reads, this.mesh.slot),
-      frames,
-    );
+    return new FXCPUTrailHistory(this.mesh, stripLayout("cpu", reads, this.mesh.slot), frames);
+  }
+
+  public createRibbonPoints(
+    reads: Readonly<Record<string, GLTypeInfo>>,
+    { tile, head }: FXRibbonPointOptions,
+  ): FXCPURibbonPoints {
+    const probe = head
+      ? new FXCPUBirthProbe(this.mesh.slot.stride, (slot, transform, inherited) => {
+          this.seedProbe(slot, transform, inherited);
+        })
+      : undefined;
+    return new FXCPURibbonPoints(this.mesh, stripLayout("cpu", reads, this.mesh.slot), tile, probe);
   }
 
   public destroy(): void {
     this.mesh.destroy();
+  }
+
+  // The particle a birth from `transform` would seed now, into the zeroed `slot` (see
+  // FXBirthProbe): the next birth's id, age 0, by the behavior's own spawn - no claim, no id taken,
+  // no event.
+  private seedProbe(
+    slot: Float32Array,
+    transform: FXEmitterTransform,
+    inherited: Float32Array,
+  ): void {
+    slot[this.mesh.core.lifecycle + FX_ID] = this.nextParticleId;
+    if (this.simulation.canSpawn) {
+      this.simulation.spawn(slot, 0, 1, transform, inherited);
+    }
   }
 
   // The slots `[start, start + count)` a spawn just seeded, each born alive, with the velocity of

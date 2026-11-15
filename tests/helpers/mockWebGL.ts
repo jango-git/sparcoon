@@ -140,6 +140,7 @@ const RECORDED_ONLY = [
   "bindBufferBase",
   "bindBufferRange",
   "copyBufferSubData",
+  "bufferSubData",
   "uniformMatrix2fv",
   "uniformMatrix3fv",
   "uniformMatrix4fv",
