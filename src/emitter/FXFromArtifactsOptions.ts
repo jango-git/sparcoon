@@ -29,8 +29,7 @@ export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
   readonly renderer?: WebGLRenderer;
   /**
    * A trail behind every particle, drawn from the recorded path of each particle slot - on either
-   * backend. Sorting is skipped on an emitter with a trail (it would move particles between
-   * slots). With `renderer`, a trail whose material takes more vertex attributes or varying
+   * backend. Not with `sort`. With `renderer`, a trail whose material takes more vertex attributes or varying
    * vectors than its GPU offers (a WebGL1 device, at 8 attributes) is skipped with a warning -
    * the particles still draw; without one, nothing is checked.
    */

@@ -1,4 +1,4 @@
-import type { Camera, Mesh, WebGLRenderer } from "three";
+import type { Mesh, WebGLRenderer } from "three";
 import { Object3D, Vector3 } from "three";
 
 import type {
@@ -32,6 +32,8 @@ import type {
   FXEmitterBurstOptions,
   FXEmitterOptions,
   FXEmitterPlayOptions,
+  FXEmitterSort,
+  FXEmitterSortOptions,
   FXParticleEventKind,
   FXParticleEventListener,
   FXSpawnOrigin,
@@ -74,10 +76,9 @@ import { surfaceTablesOf } from "./FXSurfaceTable.Internal.js";
  * {@link applyTrailArtifact}, without touching the driver or its particle state.
  */
 export class FXEmitter extends Object3D {
-  /** Camera for back-to-front depth sorting; `undefined` disables it. Distances are world-space, so any emitter/ancestor transform is handled correctly. */
-  public sortCamera?: Camera;
-  /** Fraction of frames sorting runs on (`1` = every frame, `0.1` = ~every 10th); defaults to `0.1`. */
-  public sortFraction: number;
+  /** How this emitter sorts its particles back to front; `undefined` when it was built without
+   *  `sort` (see {@link FXEmitterOptions.sort}). */
+  public readonly sort: FXEmitterSort | undefined;
 
   private readonly world: FXWorld;
   private readonly driver: FXEmitterDriver;
@@ -88,8 +89,6 @@ export class FXEmitter extends Object3D {
   private artifactMaterial: FXArtifactMaterial;
   // The optional trail behind every particle; replaced wholesale by applyTrailArtifact.
   private trail: FXTrail | undefined;
-  // Sorting gives up the slot stability a trail's history relies on - warned once, then skipped.
-  private warnedAboutTrailSorting = false;
   // What the renderer's GPU offers a trail material (see deviceLimits); `undefined` without one.
   private readonly limits: FXRenderBudget | undefined;
   // A trail past those limits is skipped - warned once per emitter, not on every swap.
@@ -195,11 +194,7 @@ export class FXEmitter extends Object3D {
       );
     }
     this.maxLifetime = options.maxLifetime;
-    this.sortCamera = options.sortCamera;
-    this.sortFraction = EMITTER_DEFAULT_SORT_FRACTION;
-    if (options.sortFraction !== undefined) {
-      this.setSortFraction(options.sortFraction, "FXEmitter.constructor.options.sortFraction");
-    }
+    this.sort = options.sort === undefined ? undefined : sortOf(options.sort);
 
     if (options.receiveShadow ?? EMITTER_DEFAULT_RECEIVE_SHADOW) {
       this.mesh.receiveShadow = true;
@@ -310,6 +305,10 @@ export class FXEmitter extends Object3D {
       );
     }
 
+    if (options.sort !== undefined) {
+      assertValidSort(options.sort, options.trail);
+    }
+
     // Before anything owns a GPU resource: a missing geometry throws on either backend.
     const geometries = options.geometries ?? {};
     const surfaces = surfaceTablesOf(behavior.meshSurfaces, geometries);
@@ -329,14 +328,15 @@ export class FXEmitter extends Object3D {
     let driver: FXEmitterDriver | undefined;
     if (options.gpuKernel !== undefined && options.renderer !== undefined) {
       try {
-        driver = new FXGPUEmitterDriver(
-          options.gpuKernel,
-          options.renderer,
+        driver = new FXGPUEmitterDriver({
+          kernel: options.gpuKernel,
+          renderer: options.renderer,
           material,
           capacity,
           baseGeometry,
-          gpuSurfaces,
-        );
+          surfaces: gpuSurfaces,
+          sorted: options.sort !== undefined,
+        });
       } catch (error) {
         console.warn(
           "FXEmitter: GPU (transform-feedback) behavior setup failed at runtime; falling back " +
@@ -660,6 +660,7 @@ export class FXEmitter extends Object3D {
         this.tick(deltaTime);
         remaining -= deltaTime;
       }
+      this.prepareDraw();
     } finally {
       // Outside the world's tick, so its reset is this call's to make.
       flushStateResets();
@@ -808,6 +809,9 @@ export class FXEmitter extends Object3D {
     if (this.destroyed) {
       return;
     }
+    if (options !== undefined && this.sort !== undefined) {
+      throw new Error("FXEmitter.applyTrailArtifact: an emitter that sorts cannot have a trail");
+    }
     // Built and started first: a throw leaves the current trail in place.
     let next: FXTrail | undefined;
     if (options !== undefined) {
@@ -860,12 +864,6 @@ export class FXEmitter extends Object3D {
     frame.objectVelocity = this.emitterTransform.velocity as [number, number, number];
     frame.objectAngularVelocity = this.emitterTransform.angularVelocity as [number, number, number];
     material.advance(frame);
-  }
-
-  private setSortFraction(value: number, context: string): void {
-    assertValidNonNegativeNumber(value, context);
-    // Clamp to [0, 1]: a value > 1 would grow `sortingAccumulator` without bound.
-    this.sortFraction = Math.min(value, 1);
   }
 
   // Throws when the behavior artifact cannot seed births. Checked at the scheduling points, NOT in
@@ -1141,31 +1139,24 @@ export class FXEmitter extends Object3D {
 
   private readonly onRendering = (deltaTime: number): void => {
     this.tick(deltaTime);
+    this.prepareDraw();
+  };
 
-    if (this.sortCamera === undefined) {
+  // After a tick: a sorted emitter readies its particles for the draw, sorting on the frames its
+  // fraction picks.
+  private prepareDraw(): void {
+    if (this.sort === undefined || this.isSettled) {
       return;
     }
-    if (this.trail !== undefined) {
-      // A sort moves particles between slots, and a trail's history is per slot - the editor
-      // never exports the two together, so this is a host setting sortCamera by hand.
-      if (!this.warnedAboutTrailSorting) {
-        this.warnedAboutTrailSorting = true;
-        console.warn(
-          "FXEmitter: sortCamera has no effect on an emitter with a trail - sorting would " +
-            "scramble the recorded particle paths.",
-        );
-      }
-      return;
-    }
-    // `sortFraction` is public, so clamp here too: a direct assignment above 1 would grow the accumulator unbounded.
-    this.sortingAccumulator += Math.min(Math.max(this.sortFraction, 0), 1);
-
+    // `fraction` is public, so clamped here: above 1 it would grow the accumulator unbounded.
+    this.sortingAccumulator += Math.min(Math.max(this.sort.fraction, 0), 1);
+    let cameraWorldPosition: Vector3 | undefined;
     if (this.sortingAccumulator >= 1) {
       this.sortingAccumulator -= 1;
-      this.sortCamera.getWorldPosition(this.sortingCameraWorldPosition);
-      this.driver.sortByDistance(this.sortingCameraWorldPosition);
+      cameraWorldPosition = this.sort.camera.getWorldPosition(this.sortingCameraWorldPosition);
     }
-  };
+    this.driver.prepareDraw(cameraWorldPosition);
+  }
 }
 
 // Returned by post-destroy `burst`/`play` - never matches a scheduled handler.
@@ -1229,6 +1220,22 @@ function deviceLimits(renderer: WebGLRenderer | undefined): FXRenderBudget | und
     fragmentUniformVectors: limit("maxFragmentUniforms"),
     vertexSamplers: limit("maxVertexTextures"),
     fragmentSamplers: limit("maxTextures"),
+  };
+}
+
+function assertValidSort(sort: FXEmitterSortOptions, trail: FXTrailOptions | undefined): void {
+  if (sort.fraction !== undefined) {
+    assertValidNonNegativeNumber(sort.fraction, "FXEmitter.fromArtifacts.options.sort.fraction");
+  }
+  if (trail !== undefined) {
+    throw new Error("FXEmitter.fromArtifacts.options: an emitter with a trail cannot sort");
+  }
+}
+
+function sortOf(options: FXEmitterSortOptions): FXEmitterSort {
+  return {
+    camera: options.camera,
+    fraction: Math.min(options.fraction ?? EMITTER_DEFAULT_SORT_FRACTION, 1),
   };
 }
 

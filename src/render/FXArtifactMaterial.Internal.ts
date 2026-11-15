@@ -40,6 +40,12 @@ import {
   lightingStubs,
 } from "./FXLightingIntrinsics.Internal.js";
 import type { FXRenderMode } from "./FXMaterialOptions.js";
+import type { FXParticleTextures } from "./FXParticleTextures.Internal.js";
+import {
+  FX_PARTICLE_ORDER_UNIFORM,
+  FX_PARTICLE_SLOTS_GLSL,
+  FX_PARTICLE_SLOTS_UNIFORM,
+} from "./FXParticleTextures.Internal.js";
 
 // Three declares `modelMatrix` in the vertex prefix only, yet sets it on every program it draws: a
 // fragment-stage read (`world-matrix`, `inverse-world-matrix` - the artifact's targets list it in
@@ -110,15 +116,25 @@ export function renderReadProperties(render: FXRenderArtifact): ReadonlySet<stri
 }
 
 /**
+ * Where a particle material reads its mesh's slots: through attributes the mesh binds, or - a
+ * sorted GPU emitter - by instance from textures (see `FXParticleTextures.Internal`), the slot the
+ * order names, `stride` floats each.
+ */
+export type FXParticleSource =
+  | { readonly kind: "attributes" }
+  | { readonly kind: "textures"; readonly stride: number; readonly textures: FXParticleTextures };
+
+/**
  * What a particle material reads from its mesh (built by the driver that owns the mesh, see
- * `particleLayout`, and by the render budget the same way): the packed attribute views the mesh
- * binds the fields the render reads through, plus the fields the render reads that the mesh does
- * not hold at all.
+ * `particleLayout`, and by the render budget the same way): the packed views of the fields the
+ * render reads, where it reads them from, plus the fields the render reads that the mesh does not
+ * hold at all.
  */
 export interface FXParticleLayout {
-  /** The views the mesh binds, each as `a_<view.name>` - every field the render reads that the
-   *  mesh holds is a member of exactly one. */
+  /** The views, each as `a_<view.name>` - every field the render reads that the mesh holds is a
+   *  member of exactly one. */
   readonly packed: readonly FXPackedAttribute[];
+  readonly source: FXParticleSource;
   /**
    * The fields the render reads that nothing writes. Attributes have no defaults, so such a field
    * is always zero: the shader declares it as that constant - no buffer, no attribute slot - the
@@ -161,11 +177,12 @@ function unpackStatements(
 }
 
 /**
- * Each packed view becomes an `a_<view.name>` attribute, split back into the `p_<name>` property
- * of every field it carries, which the generated code reads (directly, or through
- * FX_CORE_PARTICLE_DEFINES' macros) - unchanged by packing. The layout's views carry only fields
- * the render reads (see `particleLayout`), so each is declared. A missing field's property is a
- * zero constant instead. Only a property the fragment stage reads makes `p_<name>` a varying; for
+ * Each packed view becomes an `a_<view.name>` value - an attribute, or fetched from the slot
+ * textures (see {@link particleSource}) - split back into the `p_<name>` property of every field it
+ * carries, which the generated code reads (directly, or through FX_CORE_PARTICLE_DEFINES' macros) -
+ * unchanged by packing. The layout's views carry only fields the render reads (see
+ * `particleLayout`), so each is declared. A missing field's property is a zero constant instead.
+ * Only a property the fragment stage reads makes `p_<name>` a varying; for
  * the rest it is a plain vertex-shader global, so it costs none of the GPU's few varying vectors.
  * Shared by both adapters and the depth material, each for the program it draws.
  */
@@ -173,7 +190,8 @@ function declareVaryings(
   program: FXRenderProgram,
   layout: FXParticleLayout,
 ): {
-  attributeDeclarations: string;
+  sourceDeclarations: string;
+  sourceUniforms: Record<string, IUniform>;
   vertexVaryingDeclarations: string;
   fragmentVaryingDeclarations: string;
   vertexAssignments: string;
@@ -199,21 +217,67 @@ function declareVaryings(
       vertexVaryingDeclarations.push(`${glslTypeName} p_${name};`);
     }
   }
-  const views = layout.packed;
-  const attributeName = (view: FXPackedAttribute): string => `a_${view.name}`;
+  const source = particleSource(layout);
   const vertexAssignments = [
-    ...unpackStatements(views, attributeName, (member) => `p_${member.name}`),
+    ...source.assignments,
+    ...unpackStatements(layout.packed, viewName, (member) => `p_${member.name}`),
     ...Object.keys(layout.missing).map(
       (name) => `p_${name} = ${layout.missing[name].glslTypeName}(0.0);`,
     ),
   ];
   return {
-    attributeDeclarations: views
-      .map((view) => `attribute ${viewType(view)} ${attributeName(view)};`)
-      .join("\n"),
+    sourceDeclarations: source.declarations.join("\n"),
+    sourceUniforms: source.uniforms,
     vertexVaryingDeclarations: vertexVaryingDeclarations.join("\n"),
     fragmentVaryingDeclarations: fragmentVaryingDeclarations.join("\n"),
     vertexAssignments: vertexAssignments.join("\n"),
+  };
+}
+
+function viewName(view: FXPackedAttribute): string {
+  return `a_${view.name}`;
+}
+
+/**
+ * How the vertex shader gets each packed view: an attribute, or - from textures - a global it fills
+ * at the top of `main` with the view's floats of the slot its instance draws.
+ */
+function particleSource(layout: FXParticleLayout): {
+  declarations: string[];
+  uniforms: Record<string, IUniform>;
+  assignments: string[];
+} {
+  const views = layout.packed;
+  const source = layout.source;
+  if (source.kind === "attributes") {
+    return {
+      declarations: views.map((view) => `attribute ${viewType(view)} ${viewName(view)};`),
+      uniforms: {},
+      assignments: [],
+    };
+  }
+  const floats = (view: FXPackedAttribute): string => {
+    const fetches: string[] = [];
+    for (let offset = view.offset; offset < view.offset + view.components; offset += 1) {
+      fetches.push(`fxParticleSlotFloat(fxSlotStart + ${String(offset)})`);
+    }
+    return fetches.join(", ");
+  };
+  return {
+    declarations: [
+      FX_PARTICLE_SLOTS_GLSL,
+      `uniform highp usampler2D ${FX_PARTICLE_ORDER_UNIFORM};`,
+      ...views.map((view) => `${viewType(view)} ${viewName(view)};`),
+    ],
+    uniforms: {
+      [FX_PARTICLE_SLOTS_UNIFORM]: source.textures.slots,
+      [FX_PARTICLE_ORDER_UNIFORM]: source.textures.order,
+    },
+    assignments: [
+      `int fxSlotStart = ${String(source.stride)} * int(texelFetch(${FX_PARTICLE_ORDER_UNIFORM}, ` +
+        `fxParticleTexel(textureSize(${FX_PARTICLE_ORDER_UNIFORM}, 0), gl_InstanceID), 0).r);`,
+      ...views.map((view) => `${viewName(view)} = ${viewType(view)}(${floats(view)});`),
+    ],
   };
 }
 
@@ -664,7 +728,8 @@ export function buildUnlitArtifactMaterial(
     throw new Error("buildUnlitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const {
-    attributeDeclarations,
+    sourceDeclarations,
+    sourceUniforms,
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
@@ -674,7 +739,7 @@ export function buildUnlitArtifactMaterial(
 
   const vertexShader = [
     FX_CORE_PARTICLE_DEFINES,
-    attributeDeclarations,
+    sourceDeclarations,
     "varying vec2 p_uv;",
     "uniform float u_time;",
     "uniform float u_deltaTime;",
@@ -734,6 +799,7 @@ export function buildUnlitArtifactMaterial(
   // slots here; `bindUniforms` then wires the instance's live slots by reference (live scrub).
   const uniforms: Record<string, IUniform> = { ...UniformsUtils.clone(UniformsLib.fog) };
   bindUniforms(uniforms, slots);
+  Object.assign(uniforms, sourceUniforms);
 
   return colorMaterial({
     render,
@@ -768,7 +834,8 @@ function buildLitArtifactMaterial(
     throw new Error("buildLitArtifactMaterial: render artifact has no 'albedo' output");
   }
   const {
-    attributeDeclarations,
+    sourceDeclarations,
+    sourceUniforms,
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
@@ -779,7 +846,7 @@ function buildLitArtifactMaterial(
   const vertexShader = [
     "#define LAMBERT",
     FX_CORE_PARTICLE_DEFINES,
-    attributeDeclarations,
+    sourceDeclarations,
     "varying vec2 p_uv;",
     "uniform float u_time;",
     "uniform float u_deltaTime;",
@@ -853,6 +920,7 @@ function buildLitArtifactMaterial(
     UniformsLib.fog,
   ]);
   bindUniforms(uniforms, slots);
+  Object.assign(uniforms, sourceUniforms);
 
   return colorMaterial({
     render,
@@ -1151,7 +1219,8 @@ export function buildArtifactDepthMaterial(
   const program = shadowProgram(render, "buildArtifactDepthMaterial");
   const renderMode = render.options?.renderMode ?? "blending";
   const {
-    attributeDeclarations,
+    sourceDeclarations,
+    sourceUniforms,
     vertexVaryingDeclarations,
     fragmentVaryingDeclarations,
     vertexAssignments,
@@ -1161,7 +1230,7 @@ export function buildArtifactDepthMaterial(
 
   const vertexShader = [
     FX_CORE_PARTICLE_DEFINES,
-    attributeDeclarations,
+    sourceDeclarations,
     "varying vec2 p_uv;",
     "uniform float u_time;",
     "uniform float u_deltaTime;",
@@ -1223,6 +1292,7 @@ export function buildArtifactDepthMaterial(
   // or open mesh casts from both faces.
   const uniforms: Record<string, IUniform> = {};
   bindUniforms(uniforms, slots);
+  Object.assign(uniforms, sourceUniforms);
 
   const material = new ShaderMaterial({
     name: "FXArtifactDepthMaterial",

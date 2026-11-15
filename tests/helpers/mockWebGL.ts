@@ -25,6 +25,8 @@ export interface MockGLOptions {
   readonly maxTextureSize?: number;
   /** MAX_VERTEX_TEXTURE_IMAGE_UNITS; the WebGL2 minimum, 16, by default. */
   readonly maxVertexTextureUnits?: number;
+  /** Every framebuffer reports itself incomplete. */
+  readonly incompleteFramebuffer?: boolean;
 }
 
 export interface MockGL {
@@ -38,6 +40,8 @@ export interface MockGL {
   readonly liveBuffers: Set<unknown>;
   /** Textures created and not deleted yet. */
   readonly liveTextures: Set<unknown>;
+  /** Framebuffers created and not deleted yet. */
+  readonly liveFramebuffers: Set<unknown>;
 }
 
 /** The renderer surface the transform-feedback code reads, around a {@link MockGL}. */
@@ -87,6 +91,23 @@ const CONSTANTS = {
   UNPACK_PREMULTIPLY_ALPHA_WEBGL: 0x9241,
   MAX_TEXTURE_SIZE: 0x0d33,
   MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c,
+  RED: 0x1903,
+  RED_INTEGER: 0x8d94,
+  R32F: 0x822e,
+  R32UI: 0x8236,
+  UNSIGNED_INT: 0x1405,
+  PIXEL_UNPACK_BUFFER: 0x88ec,
+  UNPACK_ROW_LENGTH: 0x0cf2,
+  UNPACK_SKIP_PIXELS: 0x0cf4,
+  UNPACK_SKIP_ROWS: 0x0cf3,
+  FRAMEBUFFER: 0x8d40,
+  COLOR_ATTACHMENT0: 0x8ce0,
+  FRAMEBUFFER_COMPLETE: 0x8cd5,
+  FRAMEBUFFER_INCOMPLETE_ATTACHMENT: 0x8cd6,
+  BLEND: 0x0be2,
+  DEPTH_TEST: 0x0b71,
+  STENCIL_TEST: 0x0b90,
+  SCISSOR_TEST: 0x0c11,
 } as const;
 
 // A declared uniform's type, as `getActiveUniform` reports it.
@@ -134,6 +155,16 @@ const RECORDED_ONLY = [
   "pixelStorei",
   "texParameteri",
   "texImage2D",
+  "texStorage2D",
+  "texSubImage2D",
+  "bindTexture",
+  "activeTexture",
+  "bindFramebuffer",
+  "framebufferTexture2D",
+  "viewport",
+  "colorMask",
+  "uniform2i",
+  "uniform3f",
 ] as const;
 
 export function mockWebGL(options: MockGLOptions = {}): MockGL {
@@ -141,6 +172,7 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
   const uniforms = new Map<string, number>();
   const liveBuffers = new Set<unknown>();
   const liveTextures = new Set<unknown>();
+  const liveFramebuffers = new Set<unknown>();
   const uniformNames = new Map<unknown, string>();
   const shaderTypes = new Map<unknown, number>();
   // Every uniform any shader source declares: the program's active uniforms (none compiled away).
@@ -183,6 +215,19 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
       record("deleteTexture", args);
       liveTextures.delete(args[0]);
     },
+    createFramebuffer: () => {
+      const framebuffer = handle();
+      liveFramebuffers.add(framebuffer);
+      return framebuffer;
+    },
+    deleteFramebuffer: (...args: unknown[]) => {
+      record("deleteFramebuffer", args);
+      liveFramebuffers.delete(args[0]);
+    },
+    checkFramebufferStatus: () =>
+      options.incompleteFramebuffer === true
+        ? CONSTANTS.FRAMEBUFFER_INCOMPLETE_ATTACHMENT
+        : CONSTANTS.FRAMEBUFFER_COMPLETE,
     createBuffer: () => {
       const buffer = handle();
       liveBuffers.add(buffer);
@@ -250,6 +295,7 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
     uniforms,
     liveBuffers,
     liveTextures,
+    liveFramebuffers,
   };
 }
 
@@ -259,6 +305,16 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
  */
 export function mockRenderer(options: MockGLOptions = {}): MockRenderer {
   const gl = mockWebGL(options);
+  // three's per-object store (`renderer.properties`).
+  const store = new WeakMap<object, Record<string, unknown>>();
+  const properties = (object: object): Record<string, unknown> => {
+    let entry = store.get(object);
+    if (entry === undefined) {
+      entry = {};
+      store.set(object, entry);
+    }
+    return entry;
+  };
   const renderer = {
     isWebGLRenderer: true,
     capabilities: { isWebGL2: true },
@@ -280,6 +336,7 @@ export function mockRenderer(options: MockGLOptions = {}): MockRenderer {
     resetState: () => {
       gl.calls.push({ name: "resetState", args: [] });
     },
+    properties: { get: (object: object) => properties(object) },
   };
   return { renderer: renderer as unknown as WebGLRenderer, gl };
 }

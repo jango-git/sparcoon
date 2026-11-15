@@ -99,7 +99,7 @@ function frame(deltaSeconds: number): void {
 ```
 
 `renderer` is needed to select the shader tier and for GPU simulation. Without it the effect runs on
-Baseline and the CPU. `camera` is needed by emitters with depth sorting.
+Baseline and the CPU. An effect with depth sorting requires `camera`.
 
 ## Lifecycle
 
@@ -230,11 +230,19 @@ shells?.onParticleEvent("birth", (birth) => playLaunch(birth.position));
 ### Sorting and capacity
 
 ```ts
-sparks.sortCamera = camera; // depth sorting, undefined turns it off
-sparks.sortFraction = 0.1; // share of frames that re-sort
+if (sparks?.sort !== undefined) {
+  sparks.sort.camera = closeUpCamera; // sorts by distance from another camera
+  sparks.sort.fraction = 0.25; // share of frames that re-sort
+}
 ```
 
-- Sorting works only on the CPU and not on an emitter with a trail.
+- An emitter sorts its particles back to front when the editor gives it a sort interval, on the CPU
+  and on the GPU. Whether it sorts is fixed when the effect is built: an emitter without sorting
+  has no `sort`, and the camera and fraction of one with it can be changed.
+- An emitter with a trail does not sort.
+- On the GPU a sort compares every slot with every other, so its cost grows with the square of the
+  capacity. A sorted GPU emitter also copies its particles into a texture on every frame they
+  change.
 - An emitter's capacity is set in the editor and does not grow. A new particle takes the next slot
   even if a live one is there, so the capacity has to cover the emission rate times the lifetime.
 - `particleCount`, `particleCapacity` and `particleOverflowCount` show the occupancy. A nonzero

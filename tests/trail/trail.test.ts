@@ -457,25 +457,28 @@ describe("trail history - JS backend", () => {
     }
   });
 
-  it("skips sorting on an emitter with a trail, warning once", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("refuses to sort an emitter with a trail, built with one or given one later", () => {
     const world = new FXWorld();
-    const emitter = FXEmitter.fromArtifacts(
+    const sort = { camera: new PerspectiveCamera() };
+    expect(() =>
+      FXEmitter.fromArtifacts(
+        unlitArtifact(),
+        movingBehavior(),
+        { expectedCapacity: 4, trail: trailOptions(), sort },
+        world,
+      ),
+    ).toThrow(/trail cannot sort/);
+    const sorted = FXEmitter.fromArtifacts(
       unlitArtifact(),
       movingBehavior(),
-      { expectedCapacity: 4, trail: trailOptions(), sortCamera: new PerspectiveCamera() },
+      { expectedCapacity: 4, sort },
       world,
     );
     try {
-      emitter.sortFraction = 1;
-      const sort = vi.spyOn(particlesOf(emitter), "sortByDistance");
-      emitter.burst(3);
-      world.update(0.1);
-      world.update(0.1);
-      expect(sort).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalledTimes(1);
+      expect(() => sorted.applyTrailArtifact(trailOptions())).toThrow(/sorts cannot have a trail/);
+      expect(sorted.hasTrail).toBe(false);
     } finally {
-      emitter.destroy();
+      sorted.destroy();
       world.dispose();
     }
   });
@@ -768,7 +771,7 @@ describe("trail in an effect", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const effect = trailEffect(spec());
     try {
-      expect(effect.getEmitter("Sparks")?.sortCamera).toBeUndefined();
+      expect(effect.getEmitter("Sparks")?.sort).toBeUndefined();
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0][0])).toMatch(/both a trail and a sortInterval/);
     } finally {

@@ -22,7 +22,7 @@ import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 import { birthAgeAt } from "./FXBirthAges.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
 import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
-import { particleLayout } from "./FXEmitterDriver.Internal.js";
+import { attributeViews, particleLayout } from "./FXEmitterDriver.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
 import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 
@@ -79,7 +79,7 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     const threeMaterial = material.buildThreeMaterial(this.currentLayout);
     this.mesh = new FXInstancedParticle(
       this.simulation.slot,
-      this.currentLayout.packed,
+      attributeViews(this.currentLayout),
       capacity,
       threeMaterial,
       baseGeometry,
@@ -213,8 +213,8 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     // themselves in spawn().
   }
 
-  public sortByDistance(cameraWorldPosition: Vector3): void {
-    if (this.mesh.instanceCount === 0) {
+  public prepareDraw(cameraWorldPosition: Vector3 | undefined): void {
+    if (cameraWorldPosition === undefined || this.mesh.instanceCount === 0) {
       return;
     }
     this.mesh.sortByDistance(cameraWorldPosition);
@@ -234,7 +234,7 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     // changes) only on a read at another width than held.
     const layout = particleLayout(this.mesh.slot, material.artifact);
     const threeMaterial = material.buildThreeMaterial(layout);
-    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry, layout.packed);
+    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry, attributeViews(layout));
     this.currentLayout = layout;
   }
 

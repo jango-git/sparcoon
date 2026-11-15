@@ -5,6 +5,34 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## Unreleased
+
+### Added
+
+- GPU-simulated emitters sort their particles back to front. The simulation keeps the particles in
+  place: on every frame they change they are copied into a texture the material reads, in an order
+  a sort keeps on the GPU. A sort compares every slot with every other in one draw, so its cost
+  grows with the square of the capacity.
+
+### Changed
+
+- **Breaking:** whether an emitter sorts is set when it is built. Replace `sortCamera` and
+  `sortFraction` with the option `sort: { camera, fraction }` of `FXEmitter.fromArtifacts`. The
+  emitter's `sort` holds the camera and the fraction, both of which can still be changed, and is
+  `undefined` on an emitter built without it.
+- **Breaking:** an `FXEffect` with a sorted emitter throws without `options.camera`. Before, the
+  emitter did not sort.
+- `FXEmitter.fromArtifacts` throws for an emitter with both `sort` and a trail, and
+  `applyTrailArtifact` throws on an emitter that sorts. Before, sorting was skipped with a warning.
+- In `sparcoon/editor`, `fxEmitterRenderBudget` takes `sorted` to count the GPU mesh of a sorted
+  emitter, which reads its particles from textures instead of attributes.
+
+### Fixed
+
+- On three 0.187, a texture three uploaded after a GPU emitter sampling a mesh surface was built,
+  and before the next `FXWorld.update`, could ignore its `flipY`, `premultiplyAlpha` or
+  `unpackAlignment`.
+
 ## 0.21.0 - 2026-11-14
 
 ### Added

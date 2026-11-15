@@ -428,9 +428,13 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       });
       const mesh = meshFor(mock, first);
       try {
-        const uploads = callsNamed(mock.gl, "texImage2D");
-        expect(uploads).toHaveLength(1);
-        expect(uploads[0]?.args.slice(2, 5)).toEqual([mock.gl.context.RGBA32F, 7, 1]);
+        const storage = callsNamed(mock.gl, "texStorage2D");
+        expect(storage).toHaveLength(1);
+        expect(storage[0]?.args.slice(2, 5)).toEqual([mock.gl.context.RGBA32F, 7, 1]);
+        expect(callsNamed(mock.gl, "texSubImage2D")[0]?.args.slice(2, 6)).toEqual([0, 0, 7, 1]);
+        // Its raw calls are invisible to three, whose state is reset right after the upload.
+        const names = calls.map((call) => call.name);
+        expect(names.indexOf("resetState")).toBeGreaterThan(names.indexOf("texSubImage2D"));
 
         calls.length = 0;
         first.tick(

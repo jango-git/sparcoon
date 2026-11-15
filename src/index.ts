@@ -94,6 +94,7 @@ export type {
   FXEmissionBasis,
   FXEmitterBurstOptions,
   FXEmitterPlayOptions,
+  FXEmitterSort,
   FXParticleEvent,
   FXParticleEventKind,
   FXParticleEventListener,

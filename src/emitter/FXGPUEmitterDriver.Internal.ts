@@ -1,7 +1,7 @@
-import type { BufferGeometry, WebGLRenderer } from "three";
+import type { BufferGeometry, Vector3, WebGLRenderer } from "three";
 
 import type { FXEmitterTransform, FXParticleKernelArtifact } from "../artifact/FXArtifact.js";
-import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
+import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
@@ -11,7 +11,8 @@ import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXAgedBirths, FXBirthAges } from "./FXBirthAges.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
 import type { FXEmitterDriver, FXParticleEventSink } from "./FXEmitterDriver.Internal.js";
-import { particleLayout } from "./FXEmitterDriver.Internal.js";
+import { attributeViews, particleLayout } from "./FXEmitterDriver.Internal.js";
+import { FXGPUParticleOrder } from "./FXGPUParticleOrder.Internal.js";
 import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 
@@ -22,9 +23,11 @@ import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimula
  * slot `gpu.kernel.buffers` lays out, never a JS behavior artifact's `buffers`; a field only the
  * render reads is a zero constant in the shader, not a buffer (see `particleLayout`).
  *
- * No sorting or dead-particle compaction: every particle slot is always drawn at the fixed
- * `capacity`, and `particleCount`/`particleCapacity` both report that capacity rather than an
- * exact live count, which there is no cheap way to know.
+ * No dead-particle compaction: every particle slot is always drawn at the fixed `capacity`, and
+ * `particleCount`/`particleCapacity` both report that capacity rather than an exact live count,
+ * which there is no cheap way to know. Sorted (`sorted`), the slots never move either: the
+ * material draws them in the order a {@link FXGPUParticleOrder} keeps, reading them from its
+ * textures instead of from attributes.
  */
 export class FXGPUEmitterDriver implements FXEmitterDriver {
   public readonly mesh: FXTransformFeedbackParticle;
@@ -50,41 +53,35 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   // Between beginTick() and endTick(): spawns join the tick's pass instead of running their own.
   private ticking = false;
 
-  // Depth sorting has no GPU-driven form - warned once, not every tick, if a host sets
-  // sortCamera on one anyway.
-  private warnedAboutSortCamera = false;
+  // A sorted emitter's order, whose textures its material reads its slots from.
+  private readonly order: FXGPUParticleOrder | undefined;
 
-  constructor(
-    kernel: FXParticleKernelArtifact,
-    renderer: WebGLRenderer,
-    material: FXArtifactMaterial,
-    capacity: number,
-    baseGeometry: BufferGeometry,
-    surfaces: Readonly<Record<string, FXSurfaceTable>>,
-  ) {
-    // The slot the holder lays out below (both by particleSlotLayout), known before it exists: a
-    // render the slot cannot draw throws before any GPU resource is allocated.
-    this.currentLayout = particleLayout(particleSlotLayout(kernel.buffers), material.artifact);
-    const threeMaterial = material.buildThreeMaterial(this.currentLayout);
-
+  constructor(options: FXGPUEmitterDriverOptions) {
+    const { kernel, renderer, material, capacity, baseGeometry, surfaces, sorted } = options;
     // The holder first: it checks the kernel fits this GPU before any particle buffer exists. A
-    // throw from either goes to the caller (FXEmitter.fromArtifacts), which falls back to
-    // FXJSEmitterDriver - so what the holder already allocated is released first, or it would
-    // leak for the GL context's lifetime.
+    // throw from here on (a render the slot cannot draw among them) goes to the caller
+    // (FXEmitter.fromArtifacts), which falls back to FXJSEmitterDriver - so what is already
+    // allocated is released first, or it would leak for the GL context's lifetime.
     const simulation = new FXTransformFeedbackSimulationHolder(renderer, kernel, surfaces);
+    let order: FXGPUParticleOrder | undefined;
     try {
+      order = sorted ? new FXGPUParticleOrder(renderer, simulation.slot, capacity) : undefined;
+      this.currentLayout = particleLayout(simulation.slot, material.artifact, order?.textures);
+      const threeMaterial = material.buildThreeMaterial(this.currentLayout);
       this.mesh = new FXTransformFeedbackParticle(
         renderer.getContext() as WebGL2RenderingContext,
         simulation.slot,
-        this.currentLayout.packed,
+        attributeViews(this.currentLayout),
         capacity,
         threeMaterial,
         baseGeometry,
       );
     } catch (error) {
+      order?.destroy();
       simulation.destroy();
       throw error;
     }
+    this.order = order;
     this.simulation = simulation;
     this.gl = renderer.getContext() as WebGL2RenderingContext;
   }
@@ -168,6 +165,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       inherited,
       count,
     );
+    this.order?.slotsWritten();
     this.gpuSpawnRangeStart = this.gpuSpawnCursor;
   }
 
@@ -191,6 +189,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
       transform,
       this.gpuTickInherited,
     );
+    this.order?.slotsWritten();
     // Consumed - the next tick's range starts wherever the cursor now sits.
     this.gpuSpawnRangeStart = this.gpuSpawnCursor;
     this.gpuPendingSpawnCount = 0;
@@ -198,18 +197,8 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.gpuTickInherited = NOTHING_INHERITED;
   }
 
-  public sortByDistance(): void {
-    // No CPU-visible particle positions to sort, and no cheap way to sort GPU-resident data without
-    // a readback that would defeat the point of running on the GPU at all (an accepted loss, not a
-    // bug to work around). Never thrown - a host that sets sortCamera on a GPU
-    // emitter out of habit should not crash the world tick over it.
-    if (!this.warnedAboutSortCamera) {
-      this.warnedAboutSortCamera = true;
-      console.warn(
-        "FXEmitter: sortCamera has no effect on a GPU-driven (transform-feedback) emitter - " +
-          "back-to-front depth sorting is not supported for that backend.",
-      );
-    }
+  public prepareDraw(cameraWorldPosition: Vector3 | undefined): void {
+    this.order?.prepare(this.mesh.readBuffer(), cameraWorldPosition);
   }
 
   public applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void {
@@ -230,9 +219,9 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     // Over this driver's OWN kernel slot (never a JS behavior artifact's): it depends on the kernel
     // alone, so it always fits - a new unwritten read is one more zero constant. Throws (before
     // anything changes) only on a read at another width than held.
-    const layout = particleLayout(this.mesh.slot, material.artifact);
+    const layout = particleLayout(this.mesh.slot, material.artifact, this.order?.textures);
     const threeMaterial = material.buildThreeMaterial(layout);
-    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry, layout.packed);
+    this.mesh.replaceMaterialAndBaseGeometry(threeMaterial, baseGeometry, attributeViews(layout));
     this.currentLayout = layout;
   }
 
@@ -247,8 +236,21 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
 
   public destroy(): void {
     this.mesh.destroy();
+    this.order?.destroy();
     this.simulation.destroy();
   }
+}
+
+export interface FXGPUEmitterDriverOptions {
+  readonly kernel: FXParticleKernelArtifact;
+  readonly renderer: WebGLRenderer;
+  readonly material: FXArtifactMaterial;
+  readonly capacity: number;
+  readonly baseGeometry: BufferGeometry;
+  /** The tables of the kernel's `meshSurfaces`, by uniform. */
+  readonly surfaces: Readonly<Record<string, FXSurfaceTable>>;
+  /** Draws back to front, in the order {@link FXEmitterDriver.prepareDraw} keeps. */
+  readonly sorted: boolean;
 }
 
 // What a pass without births uploads: its spawn branch runs for no slot, so any value does.

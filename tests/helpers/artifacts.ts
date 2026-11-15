@@ -53,6 +53,7 @@ export function layoutOf(fields: Record<string, GLTypeInfo>): FXParticleLayout {
       const components = fields[name].bufferSize;
       return { name, offset: 0, components, members: [{ name, components, componentOffset: 0 }] };
     }),
+    source: { kind: "attributes" },
     missing: {},
   };
 }

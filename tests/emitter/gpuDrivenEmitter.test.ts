@@ -1,4 +1,4 @@
-import { PerspectiveCamera } from "three";
+import { PerspectiveCamera, type ShaderMaterial, type Texture } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -500,19 +500,6 @@ describe("FXEmitter GPU driver", () => {
     expect(uploaded).toContainEqual([7, 0.5, 0]);
   });
 
-  it("warns once that it cannot depth sort, and keeps ticking", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { emitter, world, gl } = gpuEmitter(8);
-    emitter.sortCamera = new PerspectiveCamera();
-    emitter.sortFraction = 1;
-    emitter.burst(1);
-    world.update(1 / 60);
-    world.update(1 / 60);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toMatch(/sortCamera has no effect on a GPU-driven/);
-    expect(draws(gl)).toHaveLength(2);
-  });
-
   it("refuses to report births and deaths: its particles' state never leaves the GPU", () => {
     const { emitter } = gpuEmitter(8);
     expect(emitter.reportsParticleEvents).toBe(false);
@@ -585,5 +572,113 @@ describe("FXEmitter GPU driver", () => {
     expect(emitter.particleCapacity).toBe(16);
     world.update(1 / 60);
     expect(mock.gl.uniforms.get(FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM)).toBe(4);
+  });
+});
+
+describe("FXEmitter GPU driver depth sort", () => {
+  function sortedEmitter(
+    options: MockGLOptions = {},
+    capacity = 8,
+  ): { emitter: FXEmitter; world: FXWorld; mock: MockRenderer } {
+    const mock = mockRenderer(options);
+    const world = newWorld();
+    const emitter = FXEmitter.fromArtifacts(
+      unlitArtifact(),
+      behaviorArtifact({ lifetime: 5 }),
+      {
+        gpuKernel: kernel(),
+        renderer: mock.renderer,
+        expectedCapacity: capacity,
+        sort: { camera: new PerspectiveCamera(), fraction: 0.5 },
+      },
+      world,
+    );
+    return { emitter, world, mock };
+  }
+
+  function vertexShaderOf(emitter: FXEmitter): string {
+    return (gpuParticlesOf(emitter).material as ShaderMaterial).vertexShader;
+  }
+
+  it("reads attributes and allocates nothing for sorting when built without sort", () => {
+    const { emitter, gl } = gpuEmitter(8);
+    expect(vertexShaderOf(emitter)).toMatch(/^attribute vec3 a_pack0;$/m);
+    expect(vertexShaderOf(emitter)).not.toMatch(/fxParticleSlots/);
+    expect(gl.liveTextures.size).toBe(0);
+    expect(gl.liveFramebuffers.size).toBe(0);
+  });
+
+  it("draws its slots from textures, in the order the textures hold, binding no attribute of them", () => {
+    const { emitter, mock } = sortedEmitter();
+    expect(isGPUDriven(emitter)).toBe(true);
+    const shader = vertexShaderOf(emitter);
+    expect(shader).toMatch(/uniform highp usampler2D fxParticleOrder;/);
+    expect(shader).not.toMatch(/^attribute vec3 a_pack0;$/m);
+    expect(shader).toMatch(/int fxSlotStart = 6 \* int\(texelFetch\(fxParticleOrder/);
+    expect(Object.keys(gpuParticlesOf(emitter).geometry.attributes)).not.toContain("a_pack0");
+    // The order is a permutation from the start: the slots in turn.
+    const upload = callsNamed(mock.gl, "texSubImage2D").find(
+      (call) => call.args[6] === mock.gl.context.RED_INTEGER,
+    );
+    expect(Array.from(upload?.args[8] as Uint32Array)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    const uniforms = (gpuParticlesOf(emitter).material as ShaderMaterial).uniforms;
+    const slots = uniforms["fxParticleSlots"].value as Texture;
+    const created = mock.renderer.properties.get(slots) as Record<string, unknown>;
+    expect(mock.gl.liveTextures.has(created["__webglTexture"])).toBe(true);
+  });
+
+  it("copies the slots after every tick that wrote them and ranks on the frames its fraction picks", () => {
+    const { emitter, world, mock } = sortedEmitter();
+    const gl = mock.gl;
+    const slotsCopies = (): number =>
+      callsNamed(gl, "texSubImage2D").filter((call) => call.args[6] === gl.context.RED).length;
+    // Every pass draws points: the transform-feedback ones, and the ranks.
+    const ranks = (): number =>
+      callsNamed(gl, "drawArrays").length - callsNamed(gl, "beginTransformFeedback").length;
+
+    emitter.burst(1);
+    world.update(1 / 60);
+    expect(slotsCopies()).toBe(1);
+    expect(ranks()).toBe(0);
+    const unpackBound = callsNamed(gl, "bindBuffer").filter(
+      (call) => call.args[0] === gl.context.PIXEL_UNPACK_BUFFER,
+    );
+    expect(unpackBound.map((call) => call.args[1])).toEqual([
+      gpuParticlesOf(emitter).readBuffer(),
+      null,
+    ]);
+
+    world.update(1 / 60);
+    expect(slotsCopies()).toBe(2);
+    expect(ranks()).toBe(1);
+    expect(gl.uniforms.get("u_capacity")).toBe(8);
+
+    // Paused: no pass wrote the slots, so nothing is copied.
+    world.update(0);
+    expect(slotsCopies()).toBe(2);
+  });
+
+  it("splits a copy into whole rows and the last partial one", () => {
+    // 6 floats a slot, 3 slots: 18 floats in rows of 8.
+    const { emitter, world, mock } = sortedEmitter({ maxTextureSize: 8 }, 3);
+    expect(isGPUDriven(emitter)).toBe(true);
+    emitter.burst(1);
+    world.update(1 / 60);
+    const copies = callsNamed(mock.gl, "texSubImage2D")
+      .filter((call) => call.args[6] === mock.gl.context.RED)
+      .map((call) => [call.args[3], call.args[4], call.args[5], call.args[8]]);
+    expect(copies).toEqual([
+      [0, 8, 2, 0],
+      [2, 2, 1, 16 * 4],
+    ]);
+  });
+
+  it("falls back to the JS driver, leaking no texture, when the order cannot be drawn into", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { emitter, mock } = sortedEmitter({ incompleteFramebuffer: true });
+    expect(isGPUDriven(emitter)).toBe(false);
+    expect(mock.gl.liveTextures.size).toBe(0);
+    expect(mock.gl.liveFramebuffers.size).toBe(0);
+    expect(mock.gl.liveBuffers.size).toBe(0);
   });
 });

@@ -13,6 +13,8 @@ export type {
   FXEmitterBurstOptions,
   FXEmitterOptions,
   FXEmitterPlayOptions,
+  FXEmitterSort,
+  FXEmitterSortOptions,
   FXParticleEvent,
   FXParticleEventKind,
   FXParticleEventListener,

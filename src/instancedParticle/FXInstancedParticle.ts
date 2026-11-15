@@ -238,7 +238,7 @@ export class FXInstancedParticle extends Mesh {
    */
   public sortByDistance(cameraWorldPosition: Vector3): void {
     // Shrinks the drawn range below: never call this while a trail records this mesh (a slot past
-    // the new range would keep its recorded live points) - `FXEmitter` skips sorting then.
+    // the new range would keep its recorded live points) - an emitter with a trail never sorts.
     const instanceCount = this.highWaterMark;
     if (instanceCount < 2) {
       return;

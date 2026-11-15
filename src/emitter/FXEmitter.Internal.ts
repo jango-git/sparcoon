@@ -40,16 +40,35 @@ export interface FXEmitterOptions {
   receiveShadow: boolean;
   /** Casts a shape-aware shadow (a customDepthMaterial built from the render artifact). default false */
   castShadow: boolean;
-  /** Camera for back-to-front depth sorting; omit to disable sorting. */
-  sortCamera: Camera;
-  /** Fraction of frames sorting runs on (`1` = every frame, `0.1` = ~every 10th). default 0.1 */
-  sortFraction: number;
+  /**
+   * Draws the particles back to front from a camera. Whether an emitter sorts is fixed when it is
+   * built: its camera and fraction can change later (see {@link FXEmitterSort}), not that. Not
+   * with a `trail`, which records each slot's path - on the CPU a sort moves particles between
+   * slots.
+   */
+  sort: FXEmitterSortOptions;
   /**
    * The longest lifetime any particle can be born with, in seconds. Given it, the emitter settles
    * by itself - no simulation, nothing drawn - once that long has passed since its last birth,
    * nothing is scheduled and its trail shows nothing older. Without it only `reset` settles it.
    */
   maxLifetime: number;
+}
+
+/** How an emitter built with {@link FXEmitterOptions.sort} sorts; both fields can be changed. */
+export interface FXEmitterSort {
+  /** The camera the particles are drawn back to front from, by world-space distance. */
+  camera: Camera;
+  /** Fraction of frames sorting runs on (`1` = every frame, `0.1` = about every 10th), clamped to
+   *  [0, 1]. Between two sorts the particles keep the last one's order. */
+  fraction: number;
+}
+
+/** {@link FXEmitterOptions.sort}. */
+export interface FXEmitterSortOptions {
+  readonly camera: Camera;
+  /** default 0.1 */
+  readonly fraction?: number;
 }
 
 /**

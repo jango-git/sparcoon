@@ -23,6 +23,7 @@ import {
   type FXTrailLayout,
 } from "./FXArtifactMaterial.Internal.js";
 import type { FXExternalTextureBinding } from "./FXExternalTexture.Internal.js";
+import type { FXParticleTextures } from "./FXParticleTextures.Internal.js";
 
 /**
  * What one render artifact's materials take of the resources a GPU has the fewest of: vertex
@@ -402,6 +403,11 @@ function budgetSlots(render: FXRenderArtifact): FXMaterialSlots {
   return createMaterialSlots(render, external);
 }
 
+/** Stand-ins for a sorted GPU mesh's textures: only their declarations are counted. */
+function budgetParticleTextures(): FXParticleTextures {
+  return { slots: { value: new Texture() }, order: { value: new Texture() } };
+}
+
 /**
  * @internal What a built trail material takes, counted as {@link fxTrailRenderBudget} counts it -
  * so a trail's own check against the device and the editor's budget can never disagree.
@@ -414,6 +420,9 @@ export function trailMaterialBudget(material: ShaderMaterial, alphaHash: boolean
 export interface FXEmitterRenderBudgetOptions {
   /** Also count the shadow depth material (the larger of the two is the budget). */
   readonly castShadow?: boolean;
+  /** The mesh of a GPU emitter that sorts, whose materials read its slots from textures: no
+   *  attributes, two vertex texture units. */
+  readonly sorted?: boolean;
 }
 
 /**
@@ -429,7 +438,11 @@ export function fxEmitterRenderBudget(
   buffers: readonly FXBufferLayout[],
   options: FXEmitterRenderBudgetOptions = {},
 ): FXRenderBudget {
-  const layout = particleLayout(particleSlotLayout(buffers), render);
+  const layout = particleLayout(
+    particleSlotLayout(buffers),
+    render,
+    options.sorted === true ? budgetParticleTextures() : undefined,
+  );
   const materials = [buildArtifactMaterial(render, layout, budgetSlots(render))];
   if (options.castShadow === true) {
     materials.push(buildArtifactDepthMaterial(render, layout, budgetSlots(render)));

@@ -19,8 +19,9 @@ describe("FXEmitter depth sort order", () => {
    * first. Untransformed, A is the farther one (99^2 vs 10^2 + 95^2), so back-to-front puts A first.
    */
   function frontRow(pose: (emitter: FXEmitter) => void): [number, number] {
+    const camera = new PerspectiveCamera();
     const emitter = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
-      sortFraction: 1, // sort every frame
+      sort: { camera, fraction: 1 },
     });
     try {
       emitter.burst(2);
@@ -37,10 +38,8 @@ describe("FXEmitter depth sort order", () => {
       writeRow(1, 0, 1);
 
       pose(emitter);
-      const camera = new PerspectiveCamera();
       camera.position.set(0, 0, 100);
       camera.updateMatrixWorld();
-      emitter.sortCamera = camera;
 
       renderFrame(emitter, 0); // dt=0: no aging/integration, positions preserved
 
@@ -69,18 +68,16 @@ describe("FXEmitter depth sort order", () => {
 
 describe("FXEmitter depth sort cadence", () => {
   /** An emitter with live particles and a sort camera, and a spy on the sorts it runs. */
-  function sortingEmitter(sortFraction?: number): {
+  function sortingEmitter(fraction?: number): {
     emitter: FXEmitter;
     sorts: () => number;
   } {
-    const emitter = FXEmitter.fromArtifacts(
-      unlitArtifact(),
-      staticBehavior(),
-      sortFraction === undefined ? {} : { sortFraction },
-    );
+    const camera = new PerspectiveCamera();
+    const emitter = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
+      sort: fraction === undefined ? { camera } : { camera, fraction },
+    });
     emitter.burst(2);
     landBirths(emitter);
-    emitter.sortCamera = new PerspectiveCamera();
     const sort = vi.spyOn(particlesOf(emitter), "sortByDistance");
     return { emitter, sorts: () => sort.mock.calls.length };
   }
@@ -98,7 +95,7 @@ describe("FXEmitter depth sort cadence", () => {
     return frames;
   }
 
-  it("sorts on one frame in 1 / sortFraction", () => {
+  it("sorts on one frame in 1 / fraction", () => {
     const half = sortingEmitter(0.5);
     const quarter = sortingEmitter(0.25);
     try {
@@ -113,7 +110,7 @@ describe("FXEmitter depth sort cadence", () => {
   it("defaults to about one frame in ten", () => {
     const { emitter, sorts } = sortingEmitter();
     try {
-      expect(emitter.sortFraction).toBe(0.1);
+      expect(emitter.sort?.fraction).toBe(0.1);
       // 0.1 has no exact binary form: ten of them sum a hair short of 1, so the first sort lands
       // on frame 11, every tenth frame after it.
       expect(sortedFrames(emitter, sorts, 31)).toEqual([11, 21, 31]);
@@ -122,28 +119,64 @@ describe("FXEmitter depth sort cadence", () => {
     }
   });
 
-  it("clamps sortFraction above 1 to 1, as an option and as a direct assignment", () => {
+  it("clamps a fraction above 1 to 1, as an option and as a direct assignment", () => {
     const { emitter, sorts } = sortingEmitter(5);
+    const sort = emitter.sort!;
     try {
-      expect(emitter.sortFraction).toBe(1);
-      emitter.sortFraction = 5;
+      expect(sort.fraction).toBe(1);
+      sort.fraction = 5;
       expect(sortedFrames(emitter, sorts, 3)).toEqual([1, 2, 3]);
       // Nothing carried over from the oversized fraction: the next sort waits two frames.
-      emitter.sortFraction = 0.5;
+      sort.fraction = 0.5;
       expect(sortedFrames(emitter, sorts, 2)).toEqual([2]);
     } finally {
       emitter.destroy();
     }
   });
 
-  it("never sorts at a sortFraction of 0 or below", () => {
+  it("never sorts at a fraction of 0 or below", () => {
     const { emitter, sorts } = sortingEmitter(0);
     try {
       expect(sortedFrames(emitter, sorts, 20)).toEqual([]);
-      emitter.sortFraction = -1;
+      emitter.sort!.fraction = -1;
       expect(sortedFrames(emitter, sorts, 20)).toEqual([]);
     } finally {
       emitter.destroy();
     }
+  });
+});
+
+describe("FXEmitter sort setup", () => {
+  it("sorts only when built with sort, from the camera it holds now", () => {
+    const unsorted = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior());
+    const first = new PerspectiveCamera();
+    const sorted = FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
+      sort: { camera: first },
+    });
+    try {
+      expect(unsorted.sort).toBeUndefined();
+      expect(sorted.sort?.camera).toBe(first);
+      const second = new PerspectiveCamera();
+      second.position.set(0, 0, 7);
+      second.updateMatrixWorld();
+      sorted.sort!.camera = second;
+      sorted.sort!.fraction = 1;
+      sorted.burst(2);
+      landBirths(sorted);
+      const sort = vi.spyOn(particlesOf(sorted), "sortByDistance");
+      renderFrame(sorted, 0);
+      expect(sort.mock.calls[0][0].z).toBe(7);
+    } finally {
+      unsorted.destroy();
+      sorted.destroy();
+    }
+  });
+
+  it("rejects a negative fraction", () => {
+    expect(() =>
+      FXEmitter.fromArtifacts(unlitArtifact(), staticBehavior(), {
+        sort: { camera: new PerspectiveCamera(), fraction: -1 },
+      }),
+    ).toThrow(/sort\.fraction/);
   });
 });

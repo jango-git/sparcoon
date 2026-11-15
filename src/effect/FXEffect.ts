@@ -14,6 +14,7 @@ import type {
   FXRenderArtifactsByGLSLTier,
 } from "../artifact/FXArtifact.js";
 import { ownValue } from "../artifact/FXValueSlots.Internal.js";
+import type { FXEmitterSortOptions } from "../emitter/FXEmitter.Internal.js";
 import { asParticleEventKind } from "../emitter/FXEmitter.Internal.js";
 import { FXEmitter } from "../emitter/FXEmitter.js";
 import { assertValidInheritCopies } from "../emitter/FXInheritance.js";
@@ -39,6 +40,7 @@ import {
   timeOfFrame,
 } from "./FXEffectSampling.Internal.js";
 import type {
+  FXEffectEmitterSpec,
   FXEffectEventMap,
   FXEffectOptions,
   FXEffectPlayOptions,
@@ -301,6 +303,9 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     // Checked before anything is built: a throw past here would leave emitters registered in
     // the world with no effect to dispose them.
     const eventSources = reactionSources(specification);
+    const sorts = specification.emitters.map((emitterSpec) =>
+      sortOptionsOf(emitterSpec, options.camera),
+    );
 
     for (const [index, emitterSpec] of specification.emitters.entries()) {
       const textures = texturesForSlots(emitterSpec.externalSlots, assets);
@@ -314,6 +319,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
               sampleInterval: emitterSpec.trail.sampleInterval,
             };
       const renders = trail === undefined ? [render] : [render, trail.render];
+      const sort = sorts[index];
       const emitter = FXEmitter.fromArtifacts(
         render,
         emitterSpec.behavior,
@@ -333,20 +339,10 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           gpuKernel: isWebGL2 && !eventSources.has(index) ? emitterSpec.gpuBehavior : undefined,
           renderer: options.renderer,
           trail,
+          ...(sort === undefined ? {} : { sort }),
         },
         this.world,
       );
-      if (emitterSpec.sortInterval > 0 && trail !== undefined) {
-        // The editor never exports the two together (sorting would scramble the trail's per-slot
-        // history), so this is a hand-edited or mismatched spec: the trail wins.
-        warnInDevelopment(
-          `FXEffect: emitter "${emitterSpec.name}" has both a trail and a sortInterval - ` +
-            "depth sorting is skipped on an emitter with a trail.",
-        );
-      } else if (options.camera !== undefined && emitterSpec.sortInterval > 0) {
-        emitter.sortCamera = options.camera;
-        emitter.sortFraction = 1 / emitterSpec.sortInterval;
-      }
       applyTransform(emitter, emitterSpec.transform);
       this.add(emitter);
       this.emitterIndexByName.set(emitterSpec.name, this.emitters.length);
@@ -757,6 +753,35 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
       this.meshMaterials[index].applyUniformValues(uniforms);
     }
   }
+}
+
+/**
+ * How the emitter of `emitterSpec` sorts, from `camera`: not at all without a sort interval, nor
+ * with a trail, which wins - the editor never exports the two together (on the CPU a sort moves
+ * particles between the slots a trail records), so that is a hand-edited or mismatched spec.
+ * @throws When it sorts and there is no camera.
+ */
+function sortOptionsOf(
+  emitterSpec: FXEffectEmitterSpec,
+  camera: Camera | undefined,
+): FXEmitterSortOptions | undefined {
+  if (emitterSpec.sortInterval <= 0) {
+    return undefined;
+  }
+  if (emitterSpec.trail !== undefined) {
+    warnInDevelopment(
+      `FXEffect: emitter "${emitterSpec.name}" has both a trail and a sortInterval - ` +
+        "depth sorting is skipped on an emitter with a trail.",
+    );
+    return undefined;
+  }
+  if (camera === undefined) {
+    throw new Error(
+      `FXEffect: emitter "${emitterSpec.name}" draws its particles back to front from a camera - ` +
+        "pass options.camera",
+    );
+  }
+  return { camera, fraction: 1 / emitterSpec.sortInterval };
 }
 
 /**

@@ -132,6 +132,15 @@ describe("fxEmitterRenderBudget", () => {
     });
   });
 
+  it("counts a sorted GPU mesh: its views from textures, two vertex texture units", () => {
+    const unsorted = fxEmitterRenderBudget(unlitArtifact(), slot());
+    expect(fxEmitterRenderBudget(unlitArtifact(), slot(), { sorted: true })).toEqual({
+      ...unsorted,
+      attributes: 3,
+      vertexSamplers: unsorted.vertexSamplers + 2,
+    });
+  });
+
   it("charges a row for each surface builtin the fragment reads", () => {
     const reading = (code: string): number =>
       fxEmitterRenderBudget(unlitArtifact({ fragmentBody: [code] }), slot()).varyingVectors;

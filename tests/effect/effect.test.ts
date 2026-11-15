@@ -300,9 +300,18 @@ describe("FXEffect emitter construction", () => {
       }),
       { world, camera },
     );
-    expect(effect.getEmitter("sorted")!.sortCamera).toBe(camera);
-    expect(effect.getEmitter("sorted")!.sortFraction).toBe(0.25);
-    expect(effect.getEmitter("unsorted")!.sortCamera).toBeUndefined();
+    expect(effect.getEmitter("sorted")!.sort).toEqual({ camera, fraction: 0.25 });
+    expect(effect.getEmitter("unsorted")!.sort).toBeUndefined();
+  });
+
+  it("refuses an emitter with a sortInterval without a camera", () => {
+    const world = newWorld();
+    expect(
+      () =>
+        new TestEffect(effectSpec({ emitters: [emitterSpec("sorted", { sortInterval: 4 })] }), {
+          world,
+        }),
+    ).toThrow(/emitter "sorted" draws its particles back to front.*options\.camera/);
   });
 
   it("resolves an emitter's external texture and custom geometry from the effect's assets", () => {

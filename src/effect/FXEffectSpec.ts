@@ -210,7 +210,8 @@ export interface FXEffectEventMap extends Object3DEventMap {
 
 /** Options shared by every {@link FXEffect}. */
 export interface FXEffectOptions {
-  /** Camera enabling per-emitter depth sorting (only emitters authored with a sort interval sort). */
+  /** The camera emitters authored with a sort interval draw back to front from; required when the
+   *  effect has one. */
   readonly camera?: Camera;
   /**
    * The tick domain this effect joins. Omit to join the lazily created default world, which the

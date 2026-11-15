@@ -17,7 +17,9 @@ import type { GLTypeInfo } from "../instancedParticle/glTypeInfo.js";
 import type { FXParticleLayout } from "../render/FXArtifactMaterial.Internal.js";
 import { renderReadProperties } from "../render/FXArtifactMaterial.Internal.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
+import type { FXPackedAttribute } from "../render/FXAttributePacking.js";
 import { floatGLSLType, packConsecutive } from "../render/FXAttributePacking.js";
+import type { FXParticleTextures } from "../render/FXParticleTextures.Internal.js";
 import type { FXTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
@@ -89,9 +91,13 @@ export interface FXEmitterDriver {
    *  update for every slot, spawn for the range this tick gathered; JS has nothing left to do.
    *  Either way a particle born in this tick is seeded, not yet updated. */
   endTick(deltaTime: number, transform: FXEmitterTransform): void;
-  /** Back-to-front depth sort for `sortCamera`; a GPU-driven emitter cannot do this at all (no
-   *  CPU-visible positions) and warns once instead. */
-  sortByDistance(cameraWorldPosition: Vector3): void;
+  /**
+   * Readies a sorted emitter's particles for drawing, once after each tick: back to front from
+   * `cameraWorldPosition` when given (on the frames its sort fraction picks); the GPU also copies
+   * what its passes wrote since into the textures its material reads. Only an emitter built with
+   * `sort` calls it - a GPU driver built without it has no textures.
+   */
+  prepareDraw(cameraWorldPosition: Vector3 | undefined): void;
   applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void;
   /** Kills all live particles and rewinds the ring cursor. */
   reset(): void;
@@ -207,10 +213,17 @@ function particleViewName(index: number): string {
  * the trail's mechanism for a field its emitter does not hold (`trailHistoryLayout`), here for the
  * particle path. So is a core field the slot lacks.
  *
+ * With `textures` (a sorted GPU emitter) the material reads the views from them instead of from
+ * attributes.
+ *
  * @throws When the render reads a field at another width than the slot holds it, or reads one name
  *   at two widths - no layout could draw that.
  */
-export function particleLayout(slot: FXSlotLayout, render: FXRenderArtifact): FXParticleLayout {
+export function particleLayout(
+  slot: FXSlotLayout,
+  render: FXRenderArtifact,
+  textures?: FXParticleTextures,
+): FXParticleLayout {
   const held = slotFields(slot);
   const missing: Record<string, GLTypeInfo> = {};
   const core = varyingsFromComponents(new Map());
@@ -235,5 +248,14 @@ export function particleLayout(slot: FXSlotLayout, render: FXRenderArtifact): FX
   const packed = packConsecutive(slot.fields, particleViewName, {
     reads: (name) => name in core || reads.has(name),
   });
-  return { packed, missing };
+  const source =
+    textures === undefined
+      ? ({ kind: "attributes" } as const)
+      : ({ kind: "textures", stride: slot.stride, textures } as const);
+  return { packed, source, missing };
+}
+
+/** The views a mesh binds as attributes for `layout`: none when its material reads textures. */
+export function attributeViews(layout: FXParticleLayout): readonly FXPackedAttribute[] {
+  return layout.source.kind === "attributes" ? layout.packed : [];
 }
