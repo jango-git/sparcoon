@@ -1,6 +1,7 @@
 import {
   type BufferGeometry,
   type Camera,
+  type Data3DTexture,
   Group,
   type Material,
   Mesh,
@@ -16,7 +17,7 @@ import type {
 import { ownValue } from "../artifact/FXValueSlots.Internal.js";
 import type { FXEmitterSortOptions } from "../emitter/FXEmitter.Internal.js";
 import { asParticleEventKind } from "../emitter/FXEmitter.Internal.js";
-import { FXEmitter } from "../emitter/FXEmitter.js";
+import { cameraUseOf, FXEmitter } from "../emitter/FXEmitter.js";
 import { assertValidInheritCopies } from "../emitter/FXInheritance.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
@@ -92,9 +93,10 @@ function resolveRenderArtifact(
   return render[isWebGL2 ? "standard" : "baseline"];
 }
 
-/** One asset slot: an external texture (whole, or a region of one) OR (per
- *  {@link FXGeometrySource}) an external geometry, keyed by the same flat `assets` namespace. */
-type FXEffectAsset = FXExternalTexture | BufferGeometry;
+/** One asset slot, one of: an external texture (whole, or a region of one), an external geometry (per
+ *  {@link FXGeometrySource}, or a mesh surface) or a 3D texture a behavior samples, keyed by the
+ *  same flat `assets` namespace. */
+type FXEffectAsset = FXExternalTexture | BufferGeometry | Data3DTexture;
 
 // Duck-typed, not `instanceof`: the app's `three` and this package's peer-dep `three` can be two
 // separate module instances (e.g. hoisted differently across a workspace), which would make
@@ -104,6 +106,10 @@ function isBufferGeometry(asset: FXEffectAsset): asset is BufferGeometry {
   return (asset as { isBufferGeometry?: boolean }).isBufferGeometry === true;
 }
 
+function isData3DTexture(asset: FXEffectAsset): asset is Data3DTexture {
+  return (asset as { isData3DTexture?: boolean }).isData3DTexture === true;
+}
+
 function texturesForSlots(
   slots: readonly string[],
   assets: Record<string, FXEffectAsset>,
@@ -111,27 +117,32 @@ function texturesForSlots(
   const textures: Record<string, FXExternalTexture> = {};
   for (const name of slots) {
     const asset = assets[name];
-    // Anything but a geometry: a whole texture or a region of one.
-    if (!isBufferGeometry(asset)) {
+    // Anything but a geometry or a 3D texture - a whole texture or a region of one.
+    if (!isBufferGeometry(asset) && !isData3DTexture(asset)) {
       textures[PARAMETER_UNIFORM_PREFIX + name] = asset;
     }
   }
   return textures;
 }
 
-/** Every `BufferGeometry`-typed entry in `assets`, for {@link resolveGeometrySource}'s lookup - a
- *  custom geometry slot is a single name, not a per-shader-uniform slot list like textures. */
-function geometriesFromAssets(
-  assets: Record<string, FXEffectAsset>,
-): Record<string, BufferGeometry> {
+/** The geometries and the 3D textures of `assets`, each by its name - what a geometry source and a
+ *  behavior's resources look up - by a single name, not a per-shader-uniform slot list like
+ *  textures. */
+function namedAssets(assets: Record<string, FXEffectAsset>): {
+  readonly geometries: Record<string, BufferGeometry>;
+  readonly volumes: Record<string, Data3DTexture>;
+} {
   const geometries: Record<string, BufferGeometry> = {};
+  const volumes: Record<string, Data3DTexture> = {};
   for (const name in assets) {
     const asset = assets[name];
     if (isBufferGeometry(asset)) {
       geometries[name] = asset;
+    } else if (isData3DTexture(asset)) {
+      volumes[name] = asset;
     }
   }
-  return geometries;
+  return { geometries, volumes };
 }
 
 /**
@@ -297,7 +308,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     this.specification = specification;
     this.world = options.world ?? FXWorld.getDefault();
     applyTransform(this, specification.transform);
-    const geometries = geometriesFromAssets(assets);
+    const { geometries, volumes } = namedAssets(assets);
     if (options.renderer !== undefined) {
       requireWebGLRenderer(options.renderer);
     }
@@ -305,9 +316,29 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     // Checked before anything is built: a throw past here would leave emitters registered in
     // the world with no effect to dispose them.
     const eventSources = reactionSources(specification);
-    const sorts = specification.emitters.map((emitterSpec) =>
-      sortOptionsOf(emitterSpec, options.camera),
+    // Only offered on an actual WebGL2 negotiation - the same `isWebGL2` signal picking the
+    // "standard" render tier below. FXEmitter itself decides whether GPU setup then actually
+    // succeeds, falling back to `behavior` in place if not - this effect never needs to know which
+    // one ends up driving a given emitter.
+    const gpuKernels = specification.emitters.map((emitterSpec, index) =>
+      isWebGL2 && !eventSources.has(index) ? emitterSpec.gpuBehavior : undefined,
     );
+    const sorts = specification.emitters.map((emitterSpec, index) => {
+      const sort = sortOptionsOf(emitterSpec);
+      // Checked here, before anything is built: FXEmitter.fromArtifacts would throw only after
+      // earlier emitters joined the world.
+      const cameraUse = cameraUseOf({
+        sort,
+        gpuKernel: gpuKernels[index],
+        renderer: options.renderer,
+      });
+      if (cameraUse !== undefined && options.camera === undefined) {
+        throw new Error(
+          `FXEffect: emitter "${emitterSpec.name}" ${cameraUse} from a camera - pass options.camera`,
+        );
+      }
+      return sort;
+    });
 
     for (const [index, emitterSpec] of specification.emitters.entries()) {
       const textures = texturesForSlots(emitterSpec.externalSlots, assets);
@@ -326,18 +357,16 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           ...(render === undefined ? {} : { particles: render }),
           textures,
           geometries,
+          volumes,
           expectedCapacity: emitterSpec.expectedCapacity,
           ...(emitterSpec.maxLifetime === undefined
             ? {}
             : { maxLifetime: emitterSpec.maxLifetime }),
           castShadow: emitterSpec.castShadow ?? false,
           receiveShadow: emitterSpec.receiveShadow ?? false,
-          // Only offered on an actual WebGL2 negotiation - the same `isWebGL2` signal already
-          // picking `render`'s "standard" tier above. FXEmitter itself decides whether GPU setup
-          // then actually succeeds, falling back to `emitterSpec.behavior` in place if not - this
-          // effect never needs to know which one ends up driving a given emitter.
-          gpuKernel: isWebGL2 && !eventSources.has(index) ? emitterSpec.gpuBehavior : undefined,
+          gpuKernel: gpuKernels[index],
           renderer: options.renderer,
+          ...(options.camera === undefined ? {} : { camera: options.camera }),
           ...strips,
           ...(sort === undefined ? {} : { sort }),
         },
@@ -778,16 +807,12 @@ function resolveStrip<K extends FXStripKind>(
 }
 
 /**
- * How the emitter of `emitterSpec` sorts, from `camera`: not at all without a sort interval, nor
- * without drawn particles or with a trail or a ribbon, which win - the editor never exports them
- * together (on the CPU a sort moves particles between the slots a strip follows), so that is a
- * hand-edited or mismatched spec.
- * @throws When it sorts and there is no camera.
+ * How the emitter of `emitterSpec` sorts: not at all without a sort interval, nor without drawn
+ * particles or with a trail or a ribbon, which win - the editor never exports them together (on
+ * the CPU a sort moves particles between the slots a strip follows), so that is a hand-edited or
+ * mismatched spec.
  */
-function sortOptionsOf(
-  emitterSpec: FXEffectEmitterSpec,
-  camera: Camera | undefined,
-): FXEmitterSortOptions | undefined {
+function sortOptionsOf(emitterSpec: FXEffectEmitterSpec): FXEmitterSortOptions | undefined {
   if (emitterSpec.sortInterval <= 0) {
     return undefined;
   }
@@ -806,13 +831,7 @@ function sortOptionsOf(
     );
     return undefined;
   }
-  if (camera === undefined) {
-    throw new Error(
-      `FXEffect: emitter "${emitterSpec.name}" draws its particles back to front from a camera - ` +
-        "pass options.camera",
-    );
-  }
-  return { camera, fraction: 1 / emitterSpec.sortInterval };
+  return { fraction: 1 / emitterSpec.sortInterval };
 }
 
 /**

@@ -42,7 +42,8 @@ screen and press **Load**.
 - Effects made of particle emitters and meshes under a shared timeline.
 - Billboard and mesh particles, particle trails and ribbons.
 - Random points on the surface of a mesh, evenly by area.
-- Collisions with planes, boxes, spheres and cones.
+- Collisions with planes, boxes, spheres, cones, signed distance fields (SDF) baked from meshes and
+  the depth of the rendered scene.
 - Particle birth and death events for reactions between emitters and for listeners in your code,
   with attribute inheritance.
 - Soft particles, scene lighting and shadows.
@@ -99,7 +100,8 @@ function frame(deltaSeconds: number): void {
 ```
 
 `renderer` is needed to select the shader tier and for GPU simulation. Without it the effect runs on
-Baseline and the CPU. An effect with depth sorting requires `camera`.
+Baseline and the CPU. An effect with depth sorting or with collisions against the scene's depth
+requires `camera`.
 
 ## Lifecycle
 
@@ -231,14 +233,15 @@ shells?.onParticleEvent("birth", (birth) => playLaunch(birth.position));
 
 ```ts
 if (sparks?.sort !== undefined) {
-  sparks.sort.camera = closeUpCamera; // sorts by distance from another camera
+  sparks.camera = closeUpCamera; // sorts by distance from another camera
   sparks.sort.fraction = 0.25; // share of frames that re-sort
 }
 ```
 
 - An emitter sorts its particles back to front when the editor gives it a sort interval, on the CPU
   and on the GPU. Whether it sorts is fixed when the effect is built: an emitter without sorting
-  has no `sort`, and the camera and fraction of one with it can be changed.
+  has no `sort`, and the fraction of one with it can be changed. It sorts from the emitter's
+  `camera`, which can be changed too.
 - An emitter with a trail or a ribbon, or one that does not draw its particles, does not sort.
 - On the GPU a sort compares every slot with every other, so its cost grows with the square of the
   capacity. A sorted GPU emitter also copies its particles into a texture on every frame they
@@ -277,10 +280,11 @@ function frame(deltaSeconds: number): void {
   exported.
 - Which objects of an effect cast and receive shadows is set in the editor.
 
-### Soft particles
+### Scene depth
 
-Effects with a Depth Fade node fade out near the surfaces of the scene. For that the camera needs a
-depth texture of the opaque scene:
+Two nodes read the depth of the opaque scene a camera sees. Depth Fade fades particles out near
+its surfaces (soft particles), and Depth Sample lets GPU-simulated particles collide with them. For
+either the camera needs a depth texture of the opaque scene:
 
 ```ts
 import { DepthTexture, Group, WebGLRenderTarget } from "three";
@@ -306,11 +310,25 @@ renderer.render(scene, camera);
 
 - Any depth texture of the same viewport at any resolution works, for example from a separate pass,
   a copy of the depth buffer or post-processing. Keeping it current, resizes included, is up to you.
-- Without depth, effects draw with hard edges. They draw the same way into the target that owns the
-  camera's depth.
+- Without depth, Depth Fade draws hard edges and Depth Sample finds no surface. Depth Fade also
+  draws hard edges into the target that owns the camera's depth.
 - Do not give a camera the depth of a target another camera draws the effects into.
 - Depth Fade works only in blending mode (`blending`).
 - Logarithmic and reversed depth buffers are not supported.
+
+Collisions with the depth have rules of their own:
+
+- They run only in the GPU simulation, on WebGL2. On Baseline and in the CPU simulation Depth
+  Sample finds no surface.
+- A tick reads the depth of the frame rendered before it, so collisions lag one frame behind the
+  scene. Move the camera before `FXWorld.update`, not between it and `renderer.render`. The
+  simulation reads the depth with the camera as it stood after the tick before.
+- The camera's whole view has to fill the depth texture. A view drawn into a part of the target
+  (a viewport smaller than the target) is not supported.
+- Only what the depth holds collides: opaque surfaces in view. Particles off screen, behind the
+  camera or more than the node's thickness behind a surface find none.
+- An emitter collides with the depth of its `camera`, the effect's `options.camera` unless changed.
+  Other cameras drawing the effect do not change it.
 
 ### Atlases
 
@@ -330,6 +348,50 @@ const assets: MyEffectAssets = {
 
 - Texture wrapping repeats the sprite, not the atlas.
 - An atlas sprite costs a few shader operations and a shader of its own.
+
+### Signed distance fields
+
+An effect whose particles sample an SDF takes it among its assets as a `Data3DTexture` in R8:
+`RedFormat` and `UnsignedByteType`, texels in `image.data` with x varying fastest, then y, then z.
+The box the field fills and how a texel encodes a distance are part of the effect, so the texture
+carries only the texels. How you store and load them is up to you.
+
+The editor downloads a baked SDF as a grayscale PNG of its slices, with the size in the file name
+(`Box SDF 64x64x64.png`). Slice `z` is the tile at column `z % columns` and row
+`floor(z / columns)`, where `columns` is `ceil(sqrt(depth))`, and its rows run from the top. This
+builds the texture from it:
+
+```ts
+import { Data3DTexture, RedFormat, UnsignedByteType } from "three";
+
+function sdfFromSlices(image: HTMLImageElement, width: number, height: number, depth: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext("2d")!;
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, image.width, image.height).data;
+  const columns = Math.ceil(Math.sqrt(depth));
+  const texels = new Uint8Array(width * height * depth);
+  for (let z = 0; z < depth; z++) {
+    const left = (z % columns) * width;
+    const top = Math.floor(z / columns) * height;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        texels[(z * height + y) * width + x] = pixels[((top + y) * image.width + left + x) * 4];
+      }
+    }
+  }
+  const sdf = new Data3DTexture(texels, width, height, depth);
+  sdf.format = RedFormat;
+  sdf.type = UnsignedByteType;
+  return sdf;
+}
+```
+
+- Keep `image.data` after loading. The CPU simulation reads it, and the GPU simulation uploads its
+  own copy, filtered linearly.
+- Only the simulation reads the field. Materials do not.
 
 ## Checks
 

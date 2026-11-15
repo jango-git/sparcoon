@@ -1,4 +1,11 @@
-import { Group, PerspectiveCamera, type ShaderMaterial, Texture } from "three";
+import {
+  Data3DTexture,
+  Group,
+  PerspectiveCamera,
+  RedFormat,
+  type ShaderMaterial,
+  Texture,
+} from "three";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { FXRenderArtifact } from "../../src/artifact/FXArtifact";
@@ -20,6 +27,7 @@ import {
   particlesOf,
   registeredObjectCount,
 } from "../helpers/internals";
+import { mockRenderer } from "../helpers/mockWebGL";
 import { fieldBehavior } from "../helpers/slots";
 
 type EmitterOverrides = Partial<Omit<FXEffectEmitterSpec, "render">> & {
@@ -300,7 +308,8 @@ describe("FXEffect emitter construction", () => {
       }),
       { world, camera },
     );
-    expect(effect.getEmitter("sorted")!.sort).toEqual({ camera, fraction: 0.25 });
+    expect(effect.getEmitter("sorted")!.sort).toEqual({ fraction: 0.25 });
+    expect(effect.getEmitter("sorted")!.camera).toBe(camera);
     expect(effect.getEmitter("unsorted")!.sort).toBeUndefined();
   });
 
@@ -311,7 +320,30 @@ describe("FXEffect emitter construction", () => {
         new TestEffect(effectSpec({ emitters: [emitterSpec("sorted", { sortInterval: 4 })] }), {
           world,
         }),
-    ).toThrow(/emitter "sorted" draws its particles back to front.*options\.camera/);
+    ).toThrow(/emitter "sorted" sorts from a camera - pass options\.camera/);
+  });
+
+  it("refuses an emitter whose GPU kernel reads the scene depth without a camera, on WebGL2 only", () => {
+    const world = newWorld();
+    const spec = effectSpec({
+      emitters: [
+        emitterSpec("collides", {
+          gpuBehavior: {
+            vertexSource: "#version 300 es\nvoid main(){}",
+            fragmentSource: "#version 300 es\nvoid main(){}",
+            buffers: [{ name: "position", stride: 3 }],
+            transformFeedbackVaryings: ["out_position"],
+            bindings: {},
+            sceneDepth: true,
+          },
+        }),
+      ],
+    });
+    expect(() => new TestEffect(spec, { world, renderer: mockRenderer().renderer })).toThrow(
+      /emitter "collides" reads the scene depth.*options\.camera/,
+    );
+    // Without WebGL2 it simulates on the CPU, which reads no depth.
+    new TestEffect(spec, { world }).dispose();
   });
 
   it("resolves an emitter's external texture and custom geometry from the effect's assets", () => {
@@ -336,6 +368,26 @@ describe("FXEffect emitter construction", () => {
     expect((mesh.material as ShaderMaterial).uniforms["u_param_flame"].value).toBe(flame);
     // The instanced geometry takes the custom geometry's vertices.
     expect(mesh.geometry.getAttribute("position").count).toBe(rock.getAttribute("position").count);
+  });
+
+  it("resolves a volume an emitter's behavior samples from the effect's assets", () => {
+    const world = newWorld();
+    const field = new Data3DTexture(new Uint8Array([0, 255]), 2, 1, 1);
+    field.format = RedFormat;
+    const behavior = { ...behaviorArtifact({ lifetime: 100 }), volumes: { b_volume: "field" } };
+    expect(
+      () => new TestEffect(effectSpec({ emitters: [emitterSpec("e", { behavior })] }), { world }),
+    ).toThrow(/no 3D texture "field"/);
+    expect(
+      () =>
+        new TestEffect(
+          effectSpec({ emitters: [emitterSpec("e", { behavior })] }),
+          { world },
+          {
+            field,
+          },
+        ),
+    ).not.toThrow();
   });
 });
 

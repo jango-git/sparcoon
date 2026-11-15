@@ -1,4 +1,11 @@
-import { BufferAttribute, BufferGeometry, MeshBasicMaterial } from "three";
+import {
+  BufferAttribute,
+  BufferGeometry,
+  DepthTexture,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  WebGLRenderTarget,
+} from "three";
 import { describe, expect, it } from "vitest";
 
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
@@ -6,13 +13,17 @@ import {
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
   FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../../src/behaviorTransformFeedbackLayout";
+import { FXCameraView } from "../../src/emitter/FXCameraView.Internal";
 import type { FXSurfaceTable } from "../../src/emitter/FXSurfaceTable.Internal";
 import { FXTransformFeedbackSimulationHolder } from "../../src/emitter/FXTransformFeedbackSimulationHolder";
+import type { FXVolumeTable } from "../../src/emitter/FXVolumeTable.Internal";
 import { FXTransformFeedbackParticle } from "../../src/instancedParticle/FXTransformFeedbackParticle";
+import { fxSetCameraDepth } from "../../src/render/FXCameraDepth";
 import { flushStateResets } from "../../src/render/FXDeferredStateReset.Internal";
 import { IDENTITY_EMITTER_TRANSFORM, NOTHING_INHERITED } from "../helpers/artifacts";
 import { callsNamed, type MockRenderer, mockRenderer } from "../helpers/mockWebGL";
@@ -421,10 +432,10 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       const mock = mockRenderer();
       const { calls } = mock.gl;
       const first = new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
-        u_s: table,
+        u_s: { kind: "surface", table },
       });
       const second = new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
-        u_s: table,
+        u_s: { kind: "surface", table },
       });
       const mesh = meshFor(mock, first);
       try {
@@ -462,10 +473,216 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     it("refuses more surfaces than the vertex stage has texture units, claiming nothing", () => {
       const mock = mockRenderer({ maxVertexTextureUnits: 0 });
       expect(
-        () => new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), { u_s: table }),
+        () =>
+          new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
+            u_s: { kind: "surface", table },
+          }),
       ).toThrow(/texture units/);
       expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
       expect(mock.gl.liveTextures.size).toBe(0);
+    });
+  });
+  describe("volumes", () => {
+    const table: FXVolumeTable = {
+      data: new Float32Array(3 + 4 * 3 * 2),
+      bytes: new Uint8Array(4 * 3 * 2),
+      width: 4,
+      height: 3,
+      depth: 2,
+    };
+    const sampling = (): FXParticleKernelArtifact => ({
+      ...minimalArtifact(),
+      vertexSource:
+        "#version 300 es\nuniform highp sampler2D u_s;\nuniform highp sampler3D u_v;\nvoid main(){}",
+      meshSurfaces: { u_s: "rock" },
+      volumes: { u_v: "field" },
+    });
+    const surface: FXSurfaceTable = { data: new Float32Array(7 * 4), texels: 7 };
+
+    it("uploads a volume as a filtered R8 3D texture and binds it beside a surface", () => {
+      const mock = mockRenderer();
+      const { context } = mock.gl;
+      const holder = new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
+        u_s: { kind: "surface", table: surface },
+        u_v: { kind: "volume", table },
+      });
+      const mesh = meshFor(mock, holder);
+      try {
+        expect(callsNamed(mock.gl, "texStorage3D")[0]?.args).toEqual([
+          context.TEXTURE_3D,
+          1,
+          context.R8,
+          4,
+          3,
+          2,
+        ]);
+        expect(callsNamed(mock.gl, "texSubImage3D")[0]?.args.slice(5, 10)).toEqual([
+          4,
+          3,
+          2,
+          context.RED,
+          context.UNSIGNED_BYTE,
+        ]);
+        const filters = callsNamed(mock.gl, "texParameteri").filter(
+          (call) => call.args[0] === context.TEXTURE_3D && call.args[2] === context.LINEAR,
+        );
+        expect(filters).toHaveLength(2);
+
+        mock.gl.calls.length = 0;
+        holder.tick(
+          mesh,
+          1 / 60,
+          { start: 0, count: 0 },
+          IDENTITY_EMITTER_TRANSFORM,
+          NOTHING_INHERITED,
+        );
+        expect(callsNamed(mock.gl, "state.bindTexture").map((call) => call.args[0])).toEqual([
+          context.TEXTURE_2D,
+          context.TEXTURE_3D,
+        ]);
+        expect(mock.gl.uniforms.get("u_s")).toBe(0);
+        expect(mock.gl.uniforms.get("u_v")).toBe(1);
+      } finally {
+        mesh.destroy();
+        holder.destroy();
+      }
+      expect(mock.gl.liveTextures.size).toBe(0);
+    });
+
+    it("refuses a volume past the GPU's 3D texture size, claiming nothing", () => {
+      const mock = mockRenderer({ max3DTextureSize: 3 });
+      expect(
+        () =>
+          new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
+            u_s: { kind: "surface", table: surface },
+            u_v: { kind: "volume", table },
+          }),
+      ).toThrow(/3D texture size/);
+      expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
+      expect(mock.gl.liveTextures.size).toBe(0);
+    });
+  });
+  describe("scene depth", () => {
+    const reading = (): FXParticleKernelArtifact => ({
+      ...minimalArtifact(),
+      vertexSource: `#version 300 es\nuniform highp sampler2D u_s;\nuniform highp sampler2D ${FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_UNIFORM};\nvoid main(){}`,
+      meshSurfaces: { u_s: "rock" },
+      sceneDepth: true,
+    });
+    const surface: FXSurfaceTable = { data: new Float32Array(7 * 4), texels: 7 };
+
+    /** A camera with a 64 x 32 depth three already holds a WebGL texture for. */
+    function cameraWithDepth(mock: MockRenderer): {
+      camera: PerspectiveCamera;
+      target: WebGLRenderTarget;
+      texture: object;
+    } {
+      const camera = new PerspectiveCamera();
+      const target = new WebGLRenderTarget(64, 32, { depthTexture: new DepthTexture(64, 32) });
+      const texture = {};
+      mock.renderer.properties.get(target.depthTexture)["__webglTexture"] = texture;
+      fxSetCameraDepth(camera, target.depthTexture);
+      return { camera, target, texture };
+    }
+
+    function tick(
+      holder: FXTransformFeedbackSimulationHolder,
+      mesh: FXTransformFeedbackParticle,
+    ): void {
+      holder.tick(
+        mesh,
+        1 / 60,
+        { start: 0, count: 0 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
+    }
+
+    it("binds the camera's depth on the unit after the samplers, with the captured view", () => {
+      const mock = mockRenderer();
+      const { context } = mock.gl;
+      const { camera, texture } = cameraWithDepth(mock);
+      camera.position.set(1, 2, 3);
+      const view = new FXCameraView();
+      view.capture(camera);
+      const holder = new FXTransformFeedbackSimulationHolder(
+        mock.renderer,
+        reading(),
+        { u_s: { kind: "surface", table: surface } },
+        view,
+      );
+      const mesh = meshFor(mock, holder);
+      try {
+        mock.gl.calls.length = 0;
+        tick(holder, mesh);
+        expect(callsNamed(mock.gl, "state.bindTexture").map((call) => call.args)).toEqual([
+          [context.TEXTURE_2D, expect.anything()],
+          [context.TEXTURE_2D, texture],
+        ]);
+        expect(mock.gl.uniforms.get(FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_UNIFORM)).toBe(1);
+        expect(callsNamed(mock.gl, "uniform3f")[0]?.args.slice(1)).toEqual([1 / 64, 1 / 32, 1]);
+        const matrices = callsNamed(mock.gl, "uniformMatrix4fv").map((call) => call.args[2]);
+        expect(matrices).toContainEqual(view.viewProjection.elements);
+        expect(matrices).toContainEqual(view.inverseViewProjection.elements);
+      } finally {
+        mesh.destroy();
+        holder.destroy();
+      }
+    });
+
+    it("reads no depth before a capture, without one given, and while drawing into its target", () => {
+      const mock = mockRenderer();
+      const { camera, target } = cameraWithDepth(mock);
+      const view = new FXCameraView();
+      const holder = new FXTransformFeedbackSimulationHolder(
+        mock.renderer,
+        reading(),
+        {
+          u_s: { kind: "surface", table: surface },
+        },
+        view,
+      );
+      const mesh = meshFor(mock, holder);
+      const flags = (): number[] => {
+        mock.gl.calls.length = 0;
+        tick(holder, mesh);
+        return callsNamed(mock.gl, "uniform3f").map((call) => call.args[3] as number);
+      };
+      try {
+        expect(flags()).toEqual([0]);
+        view.capture(camera);
+        expect(flags()).toEqual([1]);
+        mock.renderTarget = target;
+        expect(flags()).toEqual([0]);
+        mock.renderTarget = null;
+        fxSetCameraDepth(camera, undefined);
+        expect(flags()).toEqual([0]);
+      } finally {
+        mesh.destroy();
+        holder.destroy();
+      }
+    });
+
+    it("counts the depth among the vertex stage's texture units", () => {
+      const mock = mockRenderer({ maxVertexTextureUnits: 1 });
+      expect(
+        () =>
+          new FXTransformFeedbackSimulationHolder(
+            mock.renderer,
+            reading(),
+            { u_s: { kind: "surface", table: surface } },
+            new FXCameraView(),
+          ),
+      ).toThrow(/samples 2 textures/);
+      expect(mock.gl.liveTextures.size).toBe(0);
+    });
+
+    it("refuses a kernel reading the scene depth without a view", () => {
+      const mock = mockRenderer();
+      expect(() => new FXTransformFeedbackSimulationHolder(mock.renderer, reading())).toThrow(
+        /reads the scene depth/,
+      );
+      expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
     });
   });
 });

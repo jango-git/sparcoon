@@ -43,10 +43,16 @@ export interface FXEmitterOptions {
   /** Casts a shape-aware shadow (a customDepthMaterial built from the render artifact). default false */
   castShadow: boolean;
   /**
-   * Draws the particles back to front from a camera. Whether an emitter sorts is fixed when it is
-   * built: its camera and fraction can change later (see {@link FXEmitterSort}), not that. Only
-   * with drawn particles, and not with a `trail` or a `ribbon`, which follow the particle slots -
-   * on the CPU a sort moves particles between slots.
+   * The camera the emitter's view-dependent work is done for: a sort draws the particles back to
+   * front from it, and a GPU kernel reading the scene depth reads this camera's (see
+   * `fxSetCameraDepth`). Required by either. It can be changed later ({@link FXEmitter.camera}).
+   */
+  camera: Camera;
+  /**
+   * Draws the particles back to front from {@link camera}. Whether an emitter sorts is fixed when
+   * it is built: its fraction can change later (see {@link FXEmitterSort}), not that. Only with
+   * drawn particles, and not with a `trail` or a `ribbon`, which follow the particle slots - on
+   * the CPU a sort moves particles between slots.
    */
   sort: FXEmitterSortOptions;
   /**
@@ -57,10 +63,9 @@ export interface FXEmitterOptions {
   maxLifetime: number;
 }
 
-/** How an emitter built with {@link FXEmitterOptions.sort} sorts; both fields can be changed. */
+/** How an emitter built with {@link FXEmitterOptions.sort} sorts, back to front from its camera
+ *  by world-space distance; the fraction can be changed. */
 export interface FXEmitterSort {
-  /** The camera the particles are drawn back to front from, by world-space distance. */
-  camera: Camera;
   /** Fraction of frames sorting runs on (`1` = every frame, `0.1` = about every 10th), clamped to
    *  [0, 1]. Between two sorts the particles keep the last one's order. */
   fraction: number;
@@ -68,7 +73,6 @@ export interface FXEmitterSort {
 
 /** {@link FXEmitterOptions.sort}. */
 export interface FXEmitterSortOptions {
-  readonly camera: Camera;
   /** default 0.1 */
   readonly fraction?: number;
 }

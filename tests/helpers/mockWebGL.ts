@@ -1,4 +1,4 @@
-import type { WebGLRenderer } from "three";
+import type { WebGLRenderer, WebGLRenderTarget } from "three";
 
 /**
  * A stand-in WebGL2 context for the transform-feedback paths, which headless vitest has no real
@@ -25,6 +25,8 @@ export interface MockGLOptions {
   readonly maxTextureSize?: number;
   /** MAX_VERTEX_TEXTURE_IMAGE_UNITS; the WebGL2 minimum, 16, by default. */
   readonly maxVertexTextureUnits?: number;
+  /** MAX_3D_TEXTURE_SIZE. The WebGL2 minimum, 256, by default. */
+  readonly max3DTextureSize?: number;
   /** Every framebuffer reports itself incomplete. */
   readonly incompleteFramebuffer?: boolean;
 }
@@ -48,6 +50,8 @@ export interface MockGL {
 export interface MockRenderer {
   readonly renderer: WebGLRenderer;
   readonly gl: MockGL;
+  /** What `renderer.getRenderTarget()` returns: the target being drawn into, `null` for none. */
+  renderTarget: WebGLRenderTarget | null;
 }
 
 // The real WebGL2 enum values, so a recorded argument reads like the real call.
@@ -76,22 +80,29 @@ const CONSTANTS = {
   FLOAT_MAT3: 0x8b5b,
   FLOAT_MAT4: 0x8b5c,
   SAMPLER_2D: 0x8b5e,
+  SAMPLER_3D: 0x8b5f,
   TEXTURE_2D: 0x0de1,
+  TEXTURE_3D: 0x806f,
   TEXTURE0: 0x84c0,
   RGBA: 0x1908,
   RGBA32F: 0x8814,
   NEAREST: 0x2600,
+  LINEAR: 0x2601,
   CLAMP_TO_EDGE: 0x812f,
   TEXTURE_MIN_FILTER: 0x2801,
   TEXTURE_MAG_FILTER: 0x2800,
   TEXTURE_WRAP_S: 0x2802,
   TEXTURE_WRAP_T: 0x2803,
+  TEXTURE_WRAP_R: 0x8072,
   UNPACK_ALIGNMENT: 0x0cf5,
   UNPACK_FLIP_Y_WEBGL: 0x9240,
   UNPACK_PREMULTIPLY_ALPHA_WEBGL: 0x9241,
   MAX_TEXTURE_SIZE: 0x0d33,
+  MAX_3D_TEXTURE_SIZE: 0x8073,
   MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c,
   RED: 0x1903,
+  R8: 0x8229,
+  UNSIGNED_BYTE: 0x1401,
   RED_INTEGER: 0x8d94,
   R32F: 0x822e,
   R32UI: 0x8236,
@@ -100,6 +111,8 @@ const CONSTANTS = {
   UNPACK_ROW_LENGTH: 0x0cf2,
   UNPACK_SKIP_PIXELS: 0x0cf4,
   UNPACK_SKIP_ROWS: 0x0cf3,
+  UNPACK_IMAGE_HEIGHT: 0x806e,
+  UNPACK_SKIP_IMAGES: 0x806d,
   FRAMEBUFFER: 0x8d40,
   COLOR_ATTACHMENT0: 0x8ce0,
   FRAMEBUFFER_COMPLETE: 0x8cd5,
@@ -121,6 +134,7 @@ const UNIFORM_TYPES: Readonly<Record<string, number>> = {
   mat3: CONSTANTS.FLOAT_MAT3,
   mat4: CONSTANTS.FLOAT_MAT4,
   sampler2D: CONSTANTS.SAMPLER_2D,
+  sampler3D: CONSTANTS.SAMPLER_3D,
 };
 
 // Calls with nothing to answer: recorded, and return nothing.
@@ -158,6 +172,8 @@ const RECORDED_ONLY = [
   "texImage2D",
   "texStorage2D",
   "texSubImage2D",
+  "texStorage3D",
+  "texSubImage3D",
   "bindTexture",
   "activeTexture",
   "bindFramebuffer",
@@ -180,8 +196,17 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
   const declaredUniforms: { readonly name: string; readonly type: number }[] = [];
   let nextId = 1;
 
+  // A uniform's values are copied at the call, as WebGL reads them then: the caller may refill
+  // the array after.
   const record = (name: string, args: readonly unknown[]): void => {
-    calls.push({ name, args });
+    calls.push({
+      name,
+      args: name.startsWith("uniform")
+        ? args.map((arg) =>
+            Array.isArray(arg) || arg instanceof Float32Array ? Array.from(arg) : arg,
+          )
+        : args,
+    });
   };
   const handle = (): { id: number } => ({ id: nextId++ });
   const setUniform = (location: unknown, value: number): void => {
@@ -204,6 +229,9 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
       }
       if (name === CONSTANTS.MAX_VERTEX_TEXTURE_IMAGE_UNITS) {
         return options.maxVertexTextureUnits ?? 16;
+      }
+      if (name === CONSTANTS.MAX_3D_TEXTURE_SIZE) {
+        return options.max3DTextureSize ?? 256;
       }
       return name === CONSTANTS.MAX_VERTEX_ATTRIBS ? (options.maxVertexAttribs ?? 16) : undefined;
     },
@@ -338,8 +366,14 @@ export function mockRenderer(options: MockGLOptions = {}): MockRenderer {
       gl.calls.push({ name: "resetState", args: [] });
     },
     properties: { get: (object: object) => properties(object) },
+    getRenderTarget: () => mock.renderTarget,
   };
-  return { renderer: renderer as unknown as WebGLRenderer, gl };
+  const mock: MockRenderer = {
+    renderer: renderer as unknown as WebGLRenderer,
+    gl,
+    renderTarget: null,
+  };
+  return mock;
 }
 
 /** The recorded calls named `name`, in order. */

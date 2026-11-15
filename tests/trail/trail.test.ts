@@ -477,17 +477,17 @@ describe("trail history - JS backend", () => {
 
   it("refuses to sort an emitter with a trail, built with one or given one later", () => {
     const world = new FXWorld();
-    const sort = { camera: new PerspectiveCamera() };
+    const sorting = { camera: new PerspectiveCamera(), sort: {} };
     expect(() =>
       FXEmitter.fromArtifacts(
         movingBehavior(),
-        { particles: unlitArtifact(), expectedCapacity: 4, trail: trailOptions(), sort },
+        { particles: unlitArtifact(), expectedCapacity: 4, trail: trailOptions(), ...sorting },
         world,
       ),
     ).toThrow(/trail cannot sort/);
     const sorted = FXEmitter.fromArtifacts(
       movingBehavior(),
-      { particles: unlitArtifact(), expectedCapacity: 4, sort },
+      { particles: unlitArtifact(), expectedCapacity: 4, ...sorting },
       world,
     );
     try {

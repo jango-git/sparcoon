@@ -10,6 +10,7 @@ import { stripLayout } from "../strip/FXStripLayout.Internal.js";
 import { FXGPUTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXAgedBirths, FXBirthAges } from "./FXBirthAges.Internal.js";
 import { FXGPUBirthProbe } from "./FXBirthProbe.Internal.js";
+import type { FXCameraView } from "./FXCameraView.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
 import type {
   FXEmitterDriver,
@@ -19,7 +20,7 @@ import type {
 } from "./FXEmitterDriver.Internal.js";
 import { attributeViews, particleMeshParts } from "./FXEmitterDriver.Internal.js";
 import { FXGPUParticleOrder } from "./FXGPUParticleOrder.Internal.js";
-import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
+import type { FXKernelResources } from "./FXKernelResources.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 
 /**
@@ -61,12 +62,12 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   private readonly order: FXGPUParticleOrder | undefined;
 
   constructor(options: FXGPUEmitterDriverOptions) {
-    const { kernel, renderer, draw, capacity, surfaces, sorted } = options;
+    const { kernel, renderer, draw, capacity, resources, view, sorted } = options;
     // The holder first: it checks the kernel fits this GPU before any particle buffer exists. A
     // throw from here on (a render the slot cannot draw among them) goes to the caller
     // (FXEmitter.fromArtifacts), which falls back to FXJSEmitterDriver - so what is already
     // allocated is released first, or it would leak for the GL context's lifetime.
-    const simulation = new FXTransformFeedbackSimulationHolder(renderer, kernel, surfaces);
+    const simulation = new FXTransformFeedbackSimulationHolder(renderer, kernel, resources, view);
     let order: FXGPUParticleOrder | undefined;
     try {
       order = sorted ? new FXGPUParticleOrder(renderer, simulation.slot, capacity) : undefined;
@@ -270,8 +271,10 @@ export interface FXGPUEmitterDriverOptions {
   /** What it draws its particles with; `undefined` when it does not draw them. */
   readonly draw: FXParticleDraw | undefined;
   readonly capacity: number;
-  /** The tables of the kernel's `meshSurfaces`, by uniform. */
-  readonly surfaces: Readonly<Record<string, FXSurfaceTable>>;
+  /** The tables of the kernel's mesh surfaces and volumes, by sampler uniform. */
+  readonly resources: FXKernelResources;
+  /** The camera view whose depth the kernel samples, when it reads the scene depth. */
+  readonly view: FXCameraView | undefined;
   /** Draws back to front, in the order {@link FXEmitterDriver.prepareDraw} keeps. */
   readonly sorted: boolean;
 }

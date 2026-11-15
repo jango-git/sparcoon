@@ -29,13 +29,17 @@ export {
   FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM,
   FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_INVERSE_VIEW_PROJECTION_UNIFORM,
   FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM,
   FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_FRAME_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_VIEW_PROJECTION_UNIFORM,
 } from "./behaviorTransformFeedbackLayout.js";
 export {
   FX_AGE,
@@ -71,6 +75,7 @@ export {
   FX_SURFACE_VERTEX_B,
   FX_SURFACE_VERTEX_C,
 } from "./surfaceTableLayout.js";
+export { FX_VOLUME_HEADER_FLOATS } from "./volumeTableLayout.js";
 
 // Whole-project playback: the generic runtime behind every editor-emitted project module (base
 // class + scene specification). An emitted module supplies only its `FXEffectSpec` data and a thin subclass.
@@ -106,7 +111,14 @@ export type { FXEmitter } from "./emitter/FXEmitter.js";
 
 // The tick domain: an effect joins one on construction; a single FXWorld.update per frame drives
 // every effect's timeline and the shared particle pool.
-export { fxFract, fxMix, fxMod, fxSampleLut, fxSmoothstep } from "./miscellaneous/fxMath.js";
+export {
+  fxFract,
+  fxMix,
+  fxMod,
+  fxSampleLut,
+  fxSmoothstep,
+  fxVolumeFetch,
+} from "./miscellaneous/fxMath.js";
 export { fxCurl2, fxCurl3 } from "./miscellaneous/noise/fxCurlNoise.js";
 export {
   fxFbm,

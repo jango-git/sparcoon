@@ -1,9 +1,10 @@
-import type { Mesh, WebGLRenderer } from "three";
+import type { Camera, Mesh, WebGLRenderer } from "three";
 import { Object3D, Vector3 } from "three";
 
 import type {
   FXBehaviorArtifact,
   FXEmitterTransform,
+  FXParticleKernelArtifact,
   FXRenderArtifact,
 } from "../artifact/FXArtifact.js";
 import type { FXSlotLayout } from "../instancedParticle/FXParticleSlot.js";
@@ -26,6 +27,7 @@ import { FXWorld } from "../world/FXWorld.js";
 import type { FXApplyRenderArtifactOptions } from "./FXApplyRenderArtifactOptions.js";
 import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 import { playBirthAges, spreadBirthAges } from "./FXBirthAges.Internal.js";
+import { FXCameraView } from "./FXCameraView.Internal.js";
 import type {
   FXApplyValues,
   FXEmissionBasis,
@@ -55,10 +57,10 @@ import type { FXFromArtifactsOptions } from "./FXFromArtifactsOptions.js";
 import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
 import { assertValidInherited, inheritDefaultsOf } from "./FXInheritance.js";
 import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
+import { kernelResourcesOf } from "./FXKernelResources.Internal.js";
 import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
 import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
 import { FXParticleEventChannel } from "./FXParticleEventChannel.Internal.js";
-import { surfaceTablesOf } from "./FXSurfaceTable.Internal.js";
 
 /**
  * Particle emitter - one instanced billboard/mesh draw call, per-particle state driven by a
@@ -77,12 +79,18 @@ import { surfaceTablesOf } from "./FXSurfaceTable.Internal.js";
  * particle state.
  */
 export class FXEmitter extends Object3D {
+  /** The camera this emitter sorts from and reads the scene depth of (see
+   *  {@link FXEmitterOptions.camera}). Without one it keeps its last order and reads no depth. */
+  public camera: Camera | undefined;
   /** How this emitter sorts its particles back to front; `undefined` when it was built without
    *  `sort` (see {@link FXEmitterOptions.sort}). */
   public readonly sort: FXEmitterSort | undefined;
 
   private readonly world: FXWorld;
   private readonly driver: FXEmitterDriver;
+  // The view of `camera` its GPU kernel reads the scene depth through; `undefined` when it reads
+  // none.
+  private readonly cameraView: FXCameraView | undefined;
   // Not readonly: applyRenderArtifact replaces it wholesale on a successful render-only swap.
   // Never name this `material`: `private` exists only in TypeScript, and three treats any object
   // in the scene with a truthy `.material` as drawable - `renderer.compile()` would try to build a
@@ -173,9 +181,11 @@ export class FXEmitter extends Object3D {
     world: FXWorld,
     limits: FXRenderBudget | undefined,
     defaultInherited: Float32Array,
+    cameraView: FXCameraView | undefined,
   ) {
     super();
     this.world = world;
+    this.cameraView = cameraView;
     this.defaultInherited = defaultInherited;
     this.stripBirth = { transform: this.emitterTransform, inherited: defaultInherited };
     const channel = (kind: FXParticleEventKind): FXParticleEventChannel =>
@@ -197,6 +207,7 @@ export class FXEmitter extends Object3D {
       );
     }
     this.maxLifetime = options.maxLifetime;
+    this.camera = options.camera;
     this.sort = options.sort === undefined ? undefined : sortOf(options.sort);
 
     this.applyShadows(options);
@@ -294,14 +305,20 @@ export class FXEmitter extends Object3D {
     if (options.sort !== undefined) {
       assertValidSort(options.sort, options);
     }
+    const cameraUse = cameraUseOf(options);
+    if (cameraUse !== undefined && options.camera === undefined) {
+      throw new Error(
+        `FXEmitter.fromArtifacts.options: an emitter that ${cameraUse} needs a camera`,
+      );
+    }
+    const cameraView = readsSceneDepth(options) ? new FXCameraView() : undefined;
 
-    // Before anything owns a GPU resource: a missing geometry throws on either backend.
+    // Before anything owns a GPU resource - a missing or unreadable asset throws on either backend.
     const geometries = options.geometries ?? {};
-    const surfaces = surfaceTablesOf(behavior.meshSurfaces, geometries);
-    const gpuSurfaces =
-      options.gpuKernel === undefined
-        ? {}
-        : surfaceTablesOf(options.gpuKernel.meshSurfaces, geometries);
+    const assets = { geometries, volumes: options.volumes ?? {} };
+    const resources = kernelResourcesOf(behavior, assets);
+    const gpuResources =
+      options.gpuKernel === undefined ? {} : kernelResourcesOf(options.gpuKernel, assets);
 
     const draw = particleDrawOf(options.particles, options.textures, geometries);
 
@@ -318,7 +335,8 @@ export class FXEmitter extends Object3D {
           renderer: options.renderer,
           draw,
           capacity,
-          surfaces: gpuSurfaces,
+          resources: gpuResources,
+          view: cameraView,
           sorted: options.sort !== undefined,
         });
       } catch (error) {
@@ -329,7 +347,7 @@ export class FXEmitter extends Object3D {
         );
       }
     }
-    driver ??= new FXJSEmitterDriver(behavior, draw, capacity, surfaces);
+    driver ??= new FXJSEmitterDriver(behavior, draw, capacity, resources);
 
     // Everything built so far owns GPU resources: a throw from here on releases them.
     let emitter: FXEmitter;
@@ -341,6 +359,7 @@ export class FXEmitter extends Object3D {
         world,
         deviceLimits(options.renderer),
         defaultInherited,
+        cameraView,
       );
     } catch (error) {
       driver.destroy();
@@ -610,7 +629,7 @@ export class FXEmitter extends Object3D {
         this.tick(deltaTime);
         remaining -= deltaTime;
       }
-      this.prepareDraw();
+      this.afterTick();
     } finally {
       // Outside the world's tick, so its reset is this call's to make.
       flushStateResets();
@@ -1109,12 +1128,16 @@ export class FXEmitter extends Object3D {
 
   private readonly onRendering = (deltaTime: number): void => {
     this.tick(deltaTime);
-    this.prepareDraw();
+    this.afterTick();
   };
 
-  // After a tick: a sorted emitter readies its particles for the draw, sorting on the frames its
-  // fraction picks.
-  private prepareDraw(): void {
+  // After a tick, with the camera where the frame about to render sees it from: the depth the
+  // next tick reads is that frame's, so its view is captured now. A sorted emitter then readies its
+  // particles for the draw, sorting on the frames its fraction picks.
+  private afterTick(): void {
+    if (this.cameraView !== undefined && this.camera !== undefined) {
+      this.cameraView.capture(this.camera);
+    }
     if (this.sort === undefined || this.isSettled) {
       return;
     }
@@ -1123,7 +1146,7 @@ export class FXEmitter extends Object3D {
     let cameraWorldPosition: Vector3 | undefined;
     if (this.sortingAccumulator >= 1) {
       this.sortingAccumulator -= 1;
-      cameraWorldPosition = this.sort.camera.getWorldPosition(this.sortingCameraWorldPosition);
+      cameraWorldPosition = this.camera?.getWorldPosition(this.sortingCameraWorldPosition);
     }
     this.driver.prepareDraw(cameraWorldPosition);
   }
@@ -1224,9 +1247,33 @@ function assertValidSort(sort: FXEmitterSortOptions, options: FXFromArtifactsOpt
   }
 }
 
+/** The options of an emitter that decide whether it needs a camera. */
+interface FXCameraUseOptions {
+  readonly sort?: FXEmitterSortOptions | undefined;
+  readonly gpuKernel?: FXParticleKernelArtifact | undefined;
+  readonly renderer?: WebGLRenderer | undefined;
+}
+
+/** Whether an emitter built with `options` reads the scene depth: only a GPU kernel does - the JS
+ *  one finds no surface there. */
+function readsSceneDepth(options: FXCameraUseOptions): boolean {
+  return options.gpuKernel?.sceneDepth === true && options.renderer !== undefined;
+}
+
+/**
+ * @internal What an emitter built with `options` needs its camera for, as a phrase ("sorts"), or
+ * `undefined` when it needs none: a sort draws back to front from the camera, and a GPU kernel
+ * reading the scene depth reads the camera's.
+ */
+export function cameraUseOf(options: FXCameraUseOptions): string | undefined {
+  if (options.sort !== undefined) {
+    return "sorts";
+  }
+  return readsSceneDepth(options) ? "reads the scene depth" : undefined;
+}
+
 function sortOf(options: FXEmitterSortOptions): FXEmitterSort {
   return {
-    camera: options.camera,
     fraction: Math.min(options.fraction ?? EMITTER_DEFAULT_SORT_FRACTION, 1),
   };
 }

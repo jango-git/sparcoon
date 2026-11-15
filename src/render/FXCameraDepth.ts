@@ -6,8 +6,9 @@ const cameraDepths = new WeakMap<Camera, Texture>();
 
 /**
  * Gives `camera` the depth of the opaque scene it sees, which a graph's Depth Fade (soft particles,
- * an intersection glow) fades against; `undefined` takes it away. A camera without one draws those
- * graphs hard - the fade is 1 - so leave it unset where depth is unsupported or not wanted.
+ * an intersection glow) fades against and a GPU-simulated Depth Sample collides with; `undefined`
+ * takes it away. A camera without one draws those graphs hard - the fade is 1 - and its
+ * simulations find no surface, so leave it unset where depth is unsupported or not wanted.
  *
  * `depth` holds the window depth in its red channel - a `DepthTexture`, or a resolved copy of one -
  * laid out like the frame the camera draws into: rendered through the same viewport, at any
@@ -15,6 +16,10 @@ const cameraDepths = new WeakMap<Camera, Texture>();
  * pass) and keeps it current, e.g. across a resize; effects never need rebinding. A camera drawing
  * into the target that owns `depth` - its own pre-pass - draws those graphs hard too, since
  * sampling the depth being written is a feedback loop.
+ *
+ * A simulation reads the depth of the frame drawn before its tick, with the camera as it stood
+ * after the tick before - so move the camera before `FXWorld.update`, not between it and the
+ * render - and maps the camera's whole view onto the whole texture.
  *
  * Not supported: a logarithmic or reversed depth buffer, and one camera drawing two different views
  * in a frame (give each view its own camera).

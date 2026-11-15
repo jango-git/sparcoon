@@ -1,4 +1,10 @@
-import { PerspectiveCamera, type ShaderMaterial, type Texture } from "three";
+import {
+  DepthTexture,
+  PerspectiveCamera,
+  type ShaderMaterial,
+  type Texture,
+  WebGLRenderTarget,
+} from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -8,11 +14,14 @@ import type {
 } from "../../src/artifact/FXArtifact";
 import {
   FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM,
+  FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM,
   FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM,
 } from "../../src/behaviorTransformFeedbackLayout";
+import { FXCameraView } from "../../src/emitter/FXCameraView.Internal";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
+import { fxSetCameraDepth } from "../../src/render/FXCameraDepth";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
 import { effectSpec, emitterSpec, TestEffect } from "../helpers/effectSpecs";
@@ -590,7 +599,8 @@ describe("FXEmitter GPU driver depth sort", () => {
         gpuKernel: kernel(),
         renderer: mock.renderer,
         expectedCapacity: capacity,
-        sort: { camera: new PerspectiveCamera(), fraction: 0.5 },
+        camera: new PerspectiveCamera(),
+        sort: { fraction: 0.5 },
       },
       world,
     );
@@ -681,5 +691,70 @@ describe("FXEmitter GPU driver depth sort", () => {
     expect(mock.gl.liveTextures.size).toBe(0);
     expect(mock.gl.liveFramebuffers.size).toBe(0);
     expect(mock.gl.liveBuffers.size).toBe(0);
+  });
+});
+
+describe("FXEmitter GPU driver scene depth", () => {
+  function depthKernel(): FXParticleKernelArtifact {
+    const base = kernel();
+    return {
+      ...base,
+      vertexSource: `#version 300 es\nuniform highp sampler2D ${FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_UNIFORM};\nvoid main(){}`,
+      sceneDepth: true,
+    };
+  }
+
+  it("reads the depth with the camera as it stood after the tick before", () => {
+    const mock = mockRenderer();
+    const world = newWorld();
+    const camera = new PerspectiveCamera();
+    const target = new WebGLRenderTarget(8, 8, { depthTexture: new DepthTexture(8, 8) });
+    mock.renderer.properties.get(target.depthTexture)["__webglTexture"] = {};
+    fxSetCameraDepth(camera, target.depthTexture);
+    const emitter = FXEmitter.fromArtifacts(
+      behaviorArtifact({ lifetime: 5 }),
+      { gpuKernel: depthKernel(), renderer: mock.renderer, camera },
+      world,
+    );
+    expect(isGPUDriven(emitter)).toBe(true);
+    const viewAt = (x: number): FXCameraView => {
+      camera.position.set(x, 0, 0);
+      const view = new FXCameraView();
+      view.capture(camera);
+      return view;
+    };
+    const first = viewAt(1);
+    const second = viewAt(2);
+    const passMatrices = (): unknown[] => {
+      mock.gl.calls.length = 0;
+      world.update(1 / 60);
+      return callsNamed(mock.gl, "uniformMatrix4fv").map((call) => call.args[2]);
+    };
+    emitter.play(10);
+    camera.position.set(1, 0, 0);
+    passMatrices();
+    camera.position.set(2, 0, 0);
+    const matrices = passMatrices();
+    expect(matrices).toContainEqual(first.viewProjection.elements);
+    expect(matrices).not.toContainEqual(second.viewProjection.elements);
+  });
+
+  it("needs a camera for a GPU kernel reading the scene depth, not for its JS twin", () => {
+    const mock = mockRenderer();
+    const world = newWorld();
+    expect(() =>
+      FXEmitter.fromArtifacts(
+        behaviorArtifact({ lifetime: 5 }),
+        { gpuKernel: depthKernel(), renderer: mock.renderer },
+        world,
+      ),
+    ).toThrow(/an emitter that reads the scene depth needs a camera/);
+    const cpu = FXEmitter.fromArtifacts(
+      behaviorArtifact({ lifetime: 5 }),
+      { gpuKernel: depthKernel() },
+      world,
+    );
+    expect(isGPUDriven(cpu)).toBe(false);
+    cpu.destroy();
   });
 });

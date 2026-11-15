@@ -261,6 +261,12 @@ export interface FXBehaviorArtifact {
    * when none.
    */
   readonly meshSurfaces?: Readonly<Record<string, string>>;
+  /**
+   * The volumes its kernels sample, by binding - the runtime adds each binding, valued with the table
+   * of the 3D texture named here (`FXFromArtifactsOptions.volumes`), laid out as
+   * `volumeTableLayout.ts` says. None of {@link bindings}. Absent when none.
+   */
+  readonly volumes?: Readonly<Record<string, string>>;
   /** What its newborns take from a dying particle; absent when nothing (`stride` 0). The emitter's
    *  GPU kernel, when it has one, reads the same layout. */
   readonly inherit?: FXInheritLayout;
@@ -324,7 +330,8 @@ export interface FXParticleKernelArtifact {
    * uniforms {@link compute} fills (declared and seeded, at zero, like any other). The fixed
    * contract uniforms in `behaviorTransformFeedbackLayout.ts` are the runtime's own to set every
    * pass, not part of this map. Each uploads by the type the program declares it as.
-   * A sampler is no binding: the program's mesh surfaces are listed in {@link meshSurfaces}.
+   * A sampler is no binding - the program's resources are listed in {@link meshSurfaces} and
+   * {@link volumes}.
    */
   readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
   /**
@@ -333,6 +340,18 @@ export interface FXParticleKernelArtifact {
    * `surfaceTableLayout.ts` says. Absent when none.
    */
   readonly meshSurfaces?: Readonly<Record<string, string>>;
+  /**
+   * The volumes the program samples, by `sampler3D` uniform - each binds the R8 3D texture of the one
+   * named here (`FXFromArtifactsOptions.volumes`). Absent when none.
+   */
+  readonly volumes?: Readonly<Record<string, string>>;
+  /**
+   * Whether the program reads the scene depth through the scene-depth uniforms of
+   * `behaviorTransformFeedbackLayout.ts` - the depth of the emitter's camera (see
+   * `fxSetCameraDepth`) with the view-projection it was drawn with. The emitter then needs a
+   * camera. Absent when it does not.
+   */
+  readonly sceneDepth?: boolean;
   /**
    * The draw stage, as {@link FXRenderArtifact.compute} is for a render: computes, once per pass
    * on the CPU, the values one for the whole pass from `inputs` and the emitter's own bindings,

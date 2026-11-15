@@ -341,12 +341,14 @@ describe("ribbon - JS backend", () => {
       FXEmitter.fromArtifacts(movingBehavior(), {
         particles: unlitArtifact(),
         ribbon: ribbonOptions(),
-        sort: { camera },
+        camera,
+        sort: {},
       }),
     ).toThrow(/with a ribbon cannot sort/);
     const sorted = FXEmitter.fromArtifacts(movingBehavior(), {
       particles: unlitArtifact(),
-      sort: { camera },
+      camera,
+      sort: {},
     });
     try {
       expect(() => {
@@ -532,12 +534,13 @@ describe("an emitter that draws no particles", () => {
 
   it("cannot sort", () => {
     const camera = new PerspectiveCamera();
-    expect(() => FXEmitter.fromArtifacts(movingBehavior(), { sort: { camera } })).toThrow(
+    expect(() => FXEmitter.fromArtifacts(movingBehavior(), { camera, sort: {} })).toThrow(
       /draws no particles cannot sort/,
     );
     const sorted = FXEmitter.fromArtifacts(movingBehavior(), {
       particles: unlitArtifact(),
-      sort: { camera },
+      camera,
+      sort: {},
     });
     try {
       expect(() => {

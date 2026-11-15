@@ -27,10 +27,13 @@ import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXPa
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
 import type { FXAgedBirths } from "./FXBirthAges.Internal.js";
+import type { FXCameraView } from "./FXCameraView.Internal.js";
 import type { FXContextLease } from "./FXContextLeases.Internal.js";
 import { acquireKernelProgram } from "./FXKernelProgramCache.Internal.js";
-import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
+import type { FXKernelResource, FXKernelResources } from "./FXKernelResources.Internal.js";
+import { FXSceneDepthBinding } from "./FXSceneDepthBinding.Internal.js";
 import { acquireSurfaceTexture } from "./FXSurfaceTexture.Internal.js";
+import { acquireVolumeTexture } from "./FXVolumeTexture.Internal.js";
 
 /**
  * @internal A pass's births under the ring's cursor/overwrite scheme: `count` slots from `start`, the
@@ -72,8 +75,11 @@ export class FXTransformFeedbackSimulationHolder {
   private readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
   // Each binding the program uses, resolved once: a pass only walks this.
   private readonly uploads: readonly FXBindingUpload[];
-  // The mesh-surface textures the program samples, texture unit `i` for entry `i`.
-  private readonly surfaces: readonly FXSurfaceBinding[];
+  // The textures of the resources the program samples, texture unit `i` for entry `i`.
+  private readonly samplers: readonly FXSamplerBinding[];
+  // The scene depth the program reads, on the unit after the samplers'; `undefined` when it reads
+  // none.
+  private readonly sceneDepth: FXSceneDepthBinding | undefined;
   // Filled in place each pass (see setUniforms).
   private readonly drawFrame: { -readonly [K in keyof FXKernelDrawInputs]: FXKernelDrawInputs[K] } =
     { deltaTime: 0, worldMatrix: [], velocity: [], angularVelocity: [] };
@@ -94,11 +100,16 @@ export class FXTransformFeedbackSimulationHolder {
   // just handed out, same reasoning as randSeedCounter above.
   private spawnIdBase = 0;
 
-  /** `surfaces` are the tables of the artifact's `meshSurfaces`, by uniform. */
+  /**
+   * `resources` are the tables of the artifact's mesh surfaces and volumes, by sampler uniform.
+   * `view` is the camera view whose depth a program reading the scene depth samples.
+   * @throws When the program reads the scene depth and there is no `view`.
+   */
   constructor(
     private readonly renderer: WebGLRenderer,
     artifact: FXParticleKernelArtifact,
-    surfaces: Readonly<Record<string, FXSurfaceTable>> = {},
+    resources: FXKernelResources = {},
+    view?: FXCameraView,
   ) {
     // Every emitter driven by this class already required the live render tier to be "standard"
     // (a real WebGL2 context) before this class is ever constructed (FXEmitter.fromArtifacts's
@@ -120,7 +131,18 @@ export class FXTransformFeedbackSimulationHolder {
     this.uploads = bindingUploads(gl, program, this.bindings);
     this.compute = artifact.compute;
     try {
-      this.surfaces = surfaceBindings(renderer, program, surfaces);
+      if (artifact.sceneDepth === true && view === undefined) {
+        throw new Error(
+          "FXTransformFeedbackSimulationHolder: the kernel reads the scene depth - give it a view",
+        );
+      }
+      this.sceneDepth = view === undefined ? undefined : FXSceneDepthBinding.of(gl, program, view);
+      this.samplers = samplerBindings(
+        renderer,
+        program,
+        resources,
+        this.sceneDepth === undefined ? 0 : 1,
+      );
     } catch (error) {
       // The caller falls back to the JS kernel: the program is no longer this holder's.
       this.programLease.release();
@@ -262,8 +284,8 @@ export class FXTransformFeedbackSimulationHolder {
   }
 
   public destroy(): void {
-    for (const surface of this.surfaces) {
-      surface.lease.release();
+    for (const sampler of this.samplers) {
+      sampler.lease.release();
     }
     this.programLease.release();
     this.gl.deleteVertexArray(this.vao);
@@ -405,12 +427,13 @@ export class FXTransformFeedbackSimulationHolder {
     for (const entry of this.uploads) {
       entry.upload(gl, entry.location, entry.slot.value);
     }
-    this.surfaces.forEach((surface, unit) => {
+    this.samplers.forEach((sampler, unit) => {
       // Through three's state, so its texture cache stays true to the context.
       this.renderer.state.activeTexture(gl.TEXTURE0 + unit);
-      this.renderer.state.bindTexture(gl.TEXTURE_2D, surface.lease.resource);
-      gl.uniform1i(surface.location, unit);
+      this.renderer.state.bindTexture(sampler.target, sampler.lease.resource);
+      gl.uniform1i(sampler.location, unit);
     });
+    this.sceneDepth?.bind(this.renderer, this.samplers.length);
   }
 }
 
@@ -505,7 +528,7 @@ const UPLOAD_MAT4: FXUniformUpload = (gl, location, value) => {
 /**
  * The upload of each binding of `bindings` that `program` uses, by the type the program declares
  * it as - a binding it does not use (compiled away) uploads nothing. A float takes a number; a
- * vector or matrix an array (column-major). A sampler is a mesh surface (see `surfaceBindings`).
+ * vector or matrix an array (column-major). A sampler is a resource (see `samplerBindings`).
  */
 function bindingUploads(
   gl: WebGL2RenderingContext,
@@ -541,40 +564,43 @@ function bindingUploads(
   return uploads;
 }
 
-/** A mesh surface the program samples: where its sampler is, and the texture it binds. */
-interface FXSurfaceBinding {
+/** A resource the program samples - where its sampler is, and the texture it binds there. */
+interface FXSamplerBinding {
   readonly location: WebGLUniformLocation;
+  readonly target: number;
   readonly lease: FXContextLease<WebGLTexture>;
 }
 
 /**
- * The texture of each of `surfaces` that `program` samples - one compiled away takes none.
- * @throws When they take more texture units than this GPU's vertex stage has.
+ * The texture of each of `resources` that `program` samples - one compiled away takes none.
+ * @throws When they and `reserved` more units take more texture units than this GPU's vertex
+ * stage has.
  */
-function surfaceBindings(
+function samplerBindings(
   renderer: WebGLRenderer,
   program: WebGLProgram,
-  surfaces: Readonly<Record<string, FXSurfaceTable>>,
-): FXSurfaceBinding[] {
+  resources: FXKernelResources,
+  reserved: number,
+): FXSamplerBinding[] {
   const gl = renderer.getContext() as WebGL2RenderingContext;
-  const used: { location: WebGLUniformLocation; table: FXSurfaceTable }[] = [];
-  for (const name in surfaces) {
+  const used: { location: WebGLUniformLocation; resource: FXKernelResource }[] = [];
+  for (const name in resources) {
     const location = gl.getUniformLocation(program, name);
     if (location !== null) {
-      used.push({ location, table: surfaces[name] });
+      used.push({ location, resource: resources[name] });
     }
   }
   const maxUnits = gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) as number;
-  if (used.length > maxUnits) {
+  if (used.length + reserved > maxUnits) {
     throw new Error(
-      `FXTransformFeedbackSimulationHolder: the kernel samples ${String(used.length)} mesh ` +
-        `surfaces; this GPU's vertex stage has ${String(maxUnits)} texture units`,
+      `FXTransformFeedbackSimulationHolder: the kernel samples ${String(used.length + reserved)} ` +
+        `textures; this GPU's vertex stage has ${String(maxUnits)} texture units`,
     );
   }
-  const bindings: FXSurfaceBinding[] = [];
+  const bindings: FXSamplerBinding[] = [];
   try {
-    for (const { location, table } of used) {
-      bindings.push({ location, lease: acquireSurfaceTexture(renderer, table) });
+    for (const { location, resource } of used) {
+      bindings.push({ location, ...resourceTexture(renderer, gl, resource) });
     }
   } catch (error) {
     for (const binding of bindings) {
@@ -583,4 +609,18 @@ function surfaceBindings(
     throw error;
   }
   return bindings;
+}
+
+/** The texture `resource` is sampled from, and the target it binds to. */
+function resourceTexture(
+  renderer: WebGLRenderer,
+  gl: WebGL2RenderingContext,
+  resource: FXKernelResource,
+): Pick<FXSamplerBinding, "target" | "lease"> {
+  switch (resource.kind) {
+    case "surface":
+      return { target: gl.TEXTURE_2D, lease: acquireSurfaceTexture(renderer, resource.table) };
+    case "volume":
+      return { target: gl.TEXTURE_3D, lease: acquireVolumeTexture(renderer, resource.table) };
+  }
 }

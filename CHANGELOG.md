@@ -5,11 +5,11 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
-## Unreleased
+## 0.22.0 - 2026-11-15
 
 ### Added
 
-- Ribbons: an emitter can draw a band through its particles in the order they were born, on both
+- An emitter can draw a ribbon, a band through its particles in the order they were born, on both
   backends. Each particle joins the one born right after it, so a ribbon follows one stream of
   births. Along the ribbon `p_uv.x` is each point's age over its lifetime, or repeats every given
   number of particles. With `head`, while a play emits from the emitter's pose, the ribbon reaches
@@ -18,9 +18,16 @@ on the minor it was built for - after such an update, re-export every effect.
 - An emitter can simulate its particles without drawing them, for an emitter shown only by its trail
   or ribbon.
 - GPU-simulated emitters sort their particles back to front. The simulation keeps the particles in
-  place: on every frame they change they are copied into a texture the material reads, in an order
-  a sort keeps on the GPU. A sort compares every slot with every other in one draw, so its cost
-  grows with the square of the capacity.
+  place, and on every frame they change they are copied into a texture the material reads, in an
+  order a sort keeps on the GPU. A sort compares every slot with every other in one draw, so its
+  cost grows with the square of the capacity.
+- A behavior can sample a 3D texture, such as an SDF, on both backends. An effect takes it among
+  its assets and `FXEmitter.fromArtifacts` in `volumes`, as an R8 `Data3DTexture` whose texels
+  stay in `image.data`. The GPU simulation uploads its own copy of each, filtered linearly.
+- GPU-simulated particles can collide with the depth of the rendered scene, the same depth
+  `fxSetCameraDepth` gives Depth Fade. A tick reads the depth of the frame before it, with the
+  camera as it stood after the tick before, so the camera has to move before `FXWorld.update`. An
+  effect with such an emitter requires `options.camera` on WebGL2.
 
 ### Changed
 
@@ -31,14 +38,14 @@ on the minor it was built for - after such an update, re-export every effect.
   `hasTrail` are replaced by `applyStripArtifact(kind, options)` and `hasStrip(kind)`, which take
   `"trail"` or `"ribbon"`. `applyValues` takes `ribbonMaterial`. In `sparcoon/editor`,
   `fxTrailRenderBudget` is replaced by `fxStripRenderBudget(kind, ...)`.
-- Particle ids count births modulo `FX_PARTICLE_ID_RANGE` (2^24) and start over from 0. Before, past
-  that many births two consecutive ids read as one.
 - **Breaking:** whether an emitter sorts is set when it is built. Replace `sortCamera` and
-  `sortFraction` with the option `sort: { camera, fraction }` of `FXEmitter.fromArtifacts`. The
-  emitter's `sort` holds the camera and the fraction, both of which can still be changed, and is
-  `undefined` on an emitter built without it.
+  `sortFraction` with the options `camera` and `sort: { fraction }` of `FXEmitter.fromArtifacts`.
+  The emitter's `camera` and `sort.fraction` can still be changed, and `sort` is `undefined` on an
+  emitter built without it.
 - **Breaking:** an `FXEffect` with a sorted emitter throws without `options.camera`. Before, the
   emitter did not sort.
+- Particle ids count births modulo `FX_PARTICLE_ID_RANGE` (2^24) and start over from 0. Before, past
+  that many births two consecutive ids read as one.
 - `FXEmitter.fromArtifacts` throws for an emitter with `sort` and a trail, a ribbon or no drawn
   particles, and `applyStripArtifact` throws on an emitter that sorts. Before, sorting was skipped
   with a warning.

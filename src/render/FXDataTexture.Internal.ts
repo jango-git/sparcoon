@@ -102,3 +102,14 @@ export function threeTextureOf(renderer: WebGLRenderer, texture: WebGLTexture): 
   (renderer.properties.get(wrapper) as Record<string, unknown>)["__webglTexture"] = texture;
   return wrapper;
 }
+
+/** The WebGL texture three holds for `texture` - {@link threeTextureOf} the other way round -
+ *  `undefined` until three first uploaded or rendered into it. */
+export function webglTextureOf(
+  renderer: WebGLRenderer,
+  texture: Texture,
+): WebGLTexture | undefined {
+  return (renderer.properties.get(texture) as Record<string, WebGLTexture | undefined>)[
+    "__webglTexture"
+  ];
+}

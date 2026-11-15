@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { fxFract, fxMix, fxMod, fxSampleLut, fxSmoothstep } from "../../src/miscellaneous/fxMath";
+import {
+  fxFract,
+  fxMix,
+  fxMod,
+  fxSampleLut,
+  fxSmoothstep,
+  fxVolumeFetch,
+} from "../../src/miscellaneous/fxMath";
 
 // These are the CPU twins of the compiler's GLSL builtins and a frozen ABI: the editor's
 // compiler prints calls to them by name. The golden values below pin the current arithmetic so
@@ -100,5 +107,25 @@ describe("fxSampleLut", () => {
 
   it("accepts a Float32Array LUT (the shape a curve binding carries)", () => {
     expect(fxSampleLut(new Float32Array([0, 4]), 0.5)).toBeCloseTo(2, 6);
+  });
+});
+
+describe("fxVolumeFetch", () => {
+  // Two texels along x, 0 and 1 - their centres at u = 0.25 and 0.75.
+  const line = Float32Array.from([2, 1, 1, 0, 1]);
+
+  it("blends linearly between texel centres and clamps to the edge texels", () => {
+    expect(fxVolumeFetch(line, 0.5, 0.5, 0.5)).toBeCloseTo(0.5, 6);
+    expect(fxVolumeFetch(line, 0.625, 0, 1)).toBeCloseTo(0.75, 6);
+    expect(fxVolumeFetch(line, 0.1, 0.5, 0.5)).toBe(0);
+    expect(fxVolumeFetch(line, 2, 0.5, 0.5)).toBe(1);
+  });
+
+  it("blends all eight texels around a point", () => {
+    // A 2x2x2 volume - at its centre, the mean of the eight.
+    const cube = Float32Array.from([2, 2, 2, 0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(fxVolumeFetch(cube, 0.5, 0.5, 0.5)).toBeCloseTo(3.5, 6);
+    // Texel (1, 0, 1) at its own centre.
+    expect(fxVolumeFetch(cube, 0.75, 0.25, 0.75)).toBeCloseTo(5, 6);
   });
 });

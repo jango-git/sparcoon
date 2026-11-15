@@ -31,3 +31,10 @@ export const FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM = "u_fxBirthAges";
 // (`FXInheritLayout`), as `vec4[max(1, ceil(stride / 4))]`: float `k` of the layout is component
 // `k % 4` of element `k / 4`.
 export const FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM = "u_fxInherited";
+// The scene depth a Depth Sample reads (see `fxSetCameraDepth`): the camera's depth texture, the
+// view-projection it was drawn with and its inverse (mat4), and `vec3(1 / width, 1 / height, 1)`
+// for the texture's texels - its last component 0 while there is no depth to read.
+export const FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_UNIFORM = "u_fxSceneDepth";
+export const FX_TRANSFORM_FEEDBACK_VIEW_PROJECTION_UNIFORM = "u_fxViewProjection";
+export const FX_TRANSFORM_FEEDBACK_INVERSE_VIEW_PROJECTION_UNIFORM = "u_fxInverseViewProjection";
+export const FX_TRANSFORM_FEEDBACK_SCENE_DEPTH_FRAME_UNIFORM = "u_fxSceneDepthFrame";

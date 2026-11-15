@@ -30,8 +30,8 @@ import type {
   FXRibbonPointOptions,
 } from "./FXEmitterDriver.Internal.js";
 import { attributeViews, particleMeshParts } from "./FXEmitterDriver.Internal.js";
+import type { FXKernelResources } from "./FXKernelResources.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
-import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 
 /**
  * @internal The CPU (JS) particle-simulation backend: a fixed-capacity ring `FXInstancedParticle`
@@ -78,9 +78,9 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     behavior: FXBehaviorArtifact,
     draw: FXParticleDraw | undefined,
     capacity: number,
-    surfaces: Readonly<Record<string, FXSurfaceTable>>,
+    resources: FXKernelResources,
   ) {
-    this.simulation = new FXSimulationHolder(behavior, surfaces);
+    this.simulation = new FXSimulationHolder(behavior, resources);
     const parts = particleMeshParts(this.simulation.slot, draw);
     this.currentLayout = parts.layout;
     this.mesh = new FXInstancedParticle(

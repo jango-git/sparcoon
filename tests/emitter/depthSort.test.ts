@@ -22,7 +22,8 @@ describe("FXEmitter depth sort order", () => {
     const camera = new PerspectiveCamera();
     const emitter = FXEmitter.fromArtifacts(staticBehavior(), {
       particles: unlitArtifact(),
-      sort: { camera, fraction: 1 },
+      camera,
+      sort: { fraction: 1 },
     });
     try {
       emitter.burst(2);
@@ -76,7 +77,8 @@ describe("FXEmitter depth sort cadence", () => {
     const camera = new PerspectiveCamera();
     const emitter = FXEmitter.fromArtifacts(staticBehavior(), {
       particles: unlitArtifact(),
-      sort: fraction === undefined ? { camera } : { camera, fraction },
+      camera,
+      sort: fraction === undefined ? {} : { fraction },
     });
     emitter.burst(2);
     landBirths(emitter);
@@ -154,15 +156,16 @@ describe("FXEmitter sort setup", () => {
     const first = new PerspectiveCamera();
     const sorted = FXEmitter.fromArtifacts(staticBehavior(), {
       particles: unlitArtifact(),
-      sort: { camera: first },
+      camera: first,
+      sort: {},
     });
     try {
       expect(unsorted.sort).toBeUndefined();
-      expect(sorted.sort?.camera).toBe(first);
+      expect(sorted.camera).toBe(first);
       const second = new PerspectiveCamera();
       second.position.set(0, 0, 7);
       second.updateMatrixWorld();
-      sorted.sort!.camera = second;
+      sorted.camera = second;
       sorted.sort!.fraction = 1;
       sorted.burst(2);
       landBirths(sorted);
@@ -179,8 +182,15 @@ describe("FXEmitter sort setup", () => {
     expect(() =>
       FXEmitter.fromArtifacts(staticBehavior(), {
         particles: unlitArtifact(),
-        sort: { camera: new PerspectiveCamera(), fraction: -1 },
+        camera: new PerspectiveCamera(),
+        sort: { fraction: -1 },
       }),
     ).toThrow(/sort\.fraction/);
+  });
+
+  it("needs a camera to sort from", () => {
+    expect(() =>
+      FXEmitter.fromArtifacts(staticBehavior(), { particles: unlitArtifact(), sort: {} }),
+    ).toThrow(/an emitter that sorts needs a camera/);
   });
 });

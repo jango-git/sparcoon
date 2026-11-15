@@ -70,6 +70,17 @@ export function assertCameraDepthMode(render: FXRenderArtifact, renderMode: FXRe
 
 const targetSize = new Vector2();
 
+/**
+ * The depth `camera` was given, unless the renderer draws into the target that owns it - that
+ * depth's own pre-pass, where reading it is a feedback loop.
+ */
+export function readableCameraDepth(renderer: WebGLRenderer, camera: Camera): Texture | undefined {
+  const depth = cameraDepthOf(camera);
+  return depth === undefined || renderer.getRenderTarget()?.depthTexture === depth
+    ? undefined
+    : depth;
+}
+
 // Three calls `Material.onBeforeRender` before every draw (three r157 included); `@types/three`
 // 0.157 just leaves it out.
 type FXMaterialDrawHook = (renderer: WebGLRenderer, scene: Scene, camera: Camera) => void;
@@ -88,13 +99,13 @@ export function bindCameraDepth(material: ShaderMaterial): void {
   material.uniforms[UNIFORMS.projection] = projection;
   material.uniforms[UNIFORMS.frame] = frame;
   const hook: FXMaterialDrawHook = (renderer, scene, camera) => {
-    const depth = cameraDepthOf(camera);
-    const target = renderer.getRenderTarget();
-    if (depth === undefined || target?.depthTexture === depth) {
+    const depth = readableCameraDepth(renderer, camera);
+    if (depth === undefined) {
       texture.value = null;
       frame.value.z = 0;
       return;
     }
+    const target = renderer.getRenderTarget();
     const size =
       target === null
         ? renderer.getDrawingBufferSize(targetSize)
