@@ -8,15 +8,15 @@ import { argumentsChanged, createKey } from "./fxNoiseMemo.js";
  */
 
 /** One 32-bit cell hash split into jitter: 2D 16 + 16 bits, 3D 10 + 11 + 11. */
-const UNIT_16 = 1 / 65536;
-const UNIT_11 = 1 / 2048;
-const UNIT_10 = 1 / 1024;
+export const UNIT_16 = 1 / 65536;
+export const UNIT_11 = 1 / 2048;
+export const UNIT_10 = 1 / 1024;
 /** Odd multiplier remixing the winning cell's hash into its id. */
-const ID_MIX = 2654435769;
+export const ID_MIX = 2654435769;
 
 /**
  * Writes `(F1, F2, cellId)` to `out`; 2D passes `z = 0` and never reads it. Mirrors the
- * compiler's standard GLSL op for op: `r = o + c + jitter * h` with `c = 0.5 - 0.5 * jitter - f`.
+ * standard-tier GLSL Voronoi op for op: `r = o + c + jitter * h` with `c = 0.5 - 0.5 * jitter - f`.
  */
 function search(
   out: Float64Array,

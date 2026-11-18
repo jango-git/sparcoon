@@ -5,12 +5,24 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
-## Unreleased
+## 0.23.0 - 2026-11-18
 
 ### Added
 
 - In `sparcoon/editor`, `fxEmitterStripMesh(emitter, kind)` returns the mesh an emitter draws its
   trail or ribbon with.
+- The `sparcoon/helpers` entry: the GLSL helpers an exported effect's shaders link, as constants
+  each effect module imports by name. A bundle carries each helper once, however many effects use
+  it.
+
+### Changed
+
+- The CPU math and noise functions an exported effect calls (`fxMix`, `fxNoise1`, `fxSeedHash1`
+  and the rest) moved from `sparcoon` to `sparcoon/helpers`. Re-export every effect.
+
+### Removed
+
+- `fxFbm` and `fxFbm3`. An effect exported for this version does not call them.
 
 ## 0.22.0 - 2026-11-15
 

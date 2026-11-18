@@ -1,9 +1,9 @@
 import { LATTICE_P0, LATTICE_P1, LATTICE_P2, pcg, unit } from "./fxNoiseHash.js";
 
 /**
- * Value noise in [-1, 1]: hashed cell corners blended with smoothstep weights. Op order matches
- * the editor's JS helpers, so the preview and an exported effect agree. Unrolled per dimension:
- * this is the CPU simulation's hot path.
+ * Value noise in [-1, 1]: hashed cell corners blended with smoothstep weights, op for op as the
+ * standard-tier GLSL `noise` (`FX_GLSL_STANDARD_NOISE`). Unrolled per dimension: this is the CPU
+ * simulation's hot path.
  */
 
 /** Scratch outputs of {@link fxNoised2} / {@link fxNoised3}: value, then d/dx, d/dy, d/dz. */

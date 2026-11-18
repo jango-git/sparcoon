@@ -9,8 +9,8 @@ import { fxNoised2, fxNoised3, noisedOut } from "./fxValueNoise.js";
  * `component` selects the output axis.
  */
 
-const PSI_2 = [31.416, 12.703, 5.906] as const;
-const PSI_3 = [-43.28, 27.13, -19.87] as const;
+export const PSI_2 = [31.416, 12.703, 5.906] as const;
+export const PSI_3 = [-43.28, 27.13, -19.87] as const;
 
 const key2 = createKey();
 const result2 = new Float64Array(2);

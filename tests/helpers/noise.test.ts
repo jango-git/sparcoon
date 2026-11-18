@@ -1,21 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { fxCurl2, fxCurl3 } from "../../src/miscellaneous/noise/fxCurlNoise";
-import {
-  fxFbm,
-  fxFbm3,
-  fxFractal1,
-  fxFractal2,
-  fxFractal3,
-} from "../../src/miscellaneous/noise/fxFractalNoise";
+import { fxCurl2, fxCurl3 } from "../../src/helpers/noise/fxCurlNoise";
+import { fxFractal1, fxFractal2, fxFractal3 } from "../../src/helpers/noise/fxFractalNoise";
 import {
   fxSeedHash1,
   fxSeedHash2,
   fxSeedHash3,
   fxSeedHash4,
-} from "../../src/miscellaneous/noise/fxSeedHash";
-import { fxNoise1, fxNoise2, fxNoise3 } from "../../src/miscellaneous/noise/fxValueNoise";
-import { fxVoronoi2, fxVoronoi3 } from "../../src/miscellaneous/noise/fxVoronoiNoise";
+} from "../../src/helpers/noise/fxSeedHash";
+import { fxNoise1, fxNoise2, fxNoise3 } from "../../src/helpers/noise/fxValueNoise";
+import { fxVoronoi2, fxVoronoi3 } from "../../src/helpers/noise/fxVoronoiNoise";
 
 // Golden values pin the arithmetic: compiled kernels call these by name, so a silent formula
 // change would desync the runtime from the editor preview.
@@ -85,57 +79,18 @@ describe("fxNoise2 / fxNoise3", () => {
   });
 });
 
-describe("fxFbm", () => {
-  it("is zero with no octaves and with a negative octave count (clamped to 0)", () => {
-    expect(fxFbm(1.3, 0)).toBe(0);
-    expect(fxFbm(1.3, -5)).toBe(0);
-  });
-
-  it("equals a single noise octave at octaves = 1", () => {
-    expect(fxFbm(2.7, 1)).toBe(fxNoise1(2.7));
-  });
-
-  it("floors a fractional octave count", () => {
-    expect(fxFbm(2.7, 2.9)).toBe(fxFbm(2.7, 2));
-  });
-
-  it("clamps to the 8-octave maximum", () => {
-    expect(fxFbm(2.7, 100)).toBe(fxFbm(2.7, 8));
-  });
-});
-
-describe("fxFbm3", () => {
-  it("is zero with no octaves and with a negative octave count (clamped to 0)", () => {
-    expect(fxFbm3(1.3, -0.4, 2.2, 0)).toBe(0);
-    expect(fxFbm3(1.3, -0.4, 2.2, -5)).toBe(0);
-  });
-
-  it("equals a single noise3 octave at octaves = 1", () => {
-    expect(fxFbm3(2.7, -1.1, 0.4, 1)).toBe(fxNoise3(2.7, -1.1, 0.4));
-  });
-
-  it("floors a fractional octave count", () => {
-    expect(fxFbm3(2.7, -1.1, 0.4, 2.9)).toBe(fxFbm3(2.7, -1.1, 0.4, 2));
-  });
-
-  it("clamps to the 8-octave maximum", () => {
-    expect(fxFbm3(2.7, -1.1, 0.4, 100)).toBe(fxFbm3(2.7, -1.1, 0.4, 8));
-  });
-
-  it("varies with every axis, not just the first", () => {
-    const base = fxFbm3(1.0, 1.0, 1.0, 4);
-    expect(fxFbm3(1.7, 1.0, 1.0, 4)).not.toBeCloseTo(base, 6);
-    expect(fxFbm3(1.0, 1.7, 1.0, 4)).not.toBeCloseTo(base, 6);
-    expect(fxFbm3(1.0, 1.0, 1.7, 4)).not.toBeCloseTo(base, 6);
-  });
-});
-
 describe("fxFractal1/2/3", () => {
   it("is a single noise octave at octaves = 1, 0 at none", () => {
     expect(fxFractal1(2.7, 1, 2, 0.5)).toBe(fxNoise1(2.7));
     expect(fxFractal2(2.7, -1.1, 1, 2, 0.5)).toBe(fxNoise2(2.7, -1.1));
     expect(fxFractal3(2.7, -1.1, 0.4, 1, 2, 0.5)).toBe(fxNoise3(2.7, -1.1, 0.4));
     expect(fxFractal3(2.7, -1.1, 0.4, 0, 2, 0.5)).toBe(0);
+  });
+
+  it("floors the octave count and clamps it to [0, 8]", () => {
+    expect(fxFractal1(2.7, 2.9, 2, 0.5)).toBe(fxFractal1(2.7, 2, 2, 0.5));
+    expect(fxFractal1(2.7, -5, 2, 0.5)).toBe(0);
+    expect(fxFractal1(2.7, 100, 2, 0.5)).toBe(fxFractal1(2.7, 8, 2, 0.5));
   });
 
   it("stays normalized to [-1, 1]", () => {

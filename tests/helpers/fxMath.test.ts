@@ -7,7 +7,7 @@ import {
   fxSampleLut,
   fxSmoothstep,
   fxVolumeFetch,
-} from "../../src/miscellaneous/fxMath";
+} from "../../src/helpers/fxMath";
 
 // These are the CPU twins of the compiler's GLSL builtins and a frozen ABI: the editor's
 // compiler prints calls to them by name. The golden values below pin the current arithmetic so

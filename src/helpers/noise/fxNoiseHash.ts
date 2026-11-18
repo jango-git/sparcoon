@@ -1,6 +1,7 @@
 /**
- * PCG hashes (Jarzynski & Olano 2020), bit-identical to the compiler's standard-tier GLSL:
- * `Math.imul` and `|0`/`>>>0` reproduce uint32 wraparound. Internal to the noise samplers.
+ * PCG hashes (Jarzynski & Olano 2020), bit-identical to `FX_GLSL_STANDARD_HASH`: `Math.imul` and
+ * `|0`/`>>>0` reproduce uint32 wraparound. Internal to the noise samplers; `scripts/glsl` prints
+ * the GLSL from the same constants.
  */
 
 /** Per-axis lattice multipliers (Teschner et al.); a cell's hash input is `x*P0 ^ y*P1 ^ z*P2`. */
@@ -14,9 +15,12 @@ export function pcg(v: number): number {
   return ((w >>> 22) ^ w) >>> 0;
 }
 
+/** 2^-24: the top 24 bits of a hash map exactly onto a float's mantissa. */
+export const UNIT_24 = 5.9604644775390625e-8;
+
 /** The top 24 bits as [0, 1) - exact in float32, so GLSL and JS agree. */
 export function unit(h: number): number {
-  return (h >>> 8) * 5.9604644775390625e-8;
+  return (h >>> 8) * UNIT_24;
 }
 
 const floatBitsF32 = new Float32Array(1);

@@ -413,7 +413,7 @@ describe("ribbon - GPU backend", () => {
       expect(gl.uniforms.get("u_fxSpawnRangeCount")).toBe(1);
       expect(gl.uniforms.get("u_fxSpawnIdBase")).toBe(1);
       const copies = callsNamed(gl, "copyBufferSubData").map((call) => call.args.slice(2));
-      expect(copies.at(-1)).toEqual([0, 5 * slotBytes, slotBytes]);
+      expect(copies[copies.length - 1]).toEqual([0, 5 * slotBytes, slotBytes]);
       tickEmitter(emitter, 0.1);
       // One more birth: the head did not take an id.
       expect(gl.uniforms.get("u_fxSpawnIdBase")).toBe(2);

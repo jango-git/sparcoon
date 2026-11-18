@@ -1,12 +1,12 @@
 import { fxNoise1, fxNoise2, fxNoise3 } from "./fxValueNoise.js";
 
-/** Must match the editor compiler's loop bound: a value parameter can rebind to any number. */
-export const FBM_MAX_OCTAVES = 8;
+/** The bound of the octave loop, the GLSL one's too: a value parameter can rebind to any number. */
+export const FX_FBM_MAX_OCTAVES = 8;
 /** Domain shift between octaves. */
 export const OCTAVE_SHIFT = 7.31;
 
 export function octaveCount(octaves: number): number {
-  return Math.min(Math.max(Math.floor(octaves), 0), FBM_MAX_OCTAVES);
+  return Math.min(Math.max(Math.floor(octaves), 0), FX_FBM_MAX_OCTAVES);
 }
 
 /**
@@ -69,19 +69,4 @@ export function fxFractal3(
     z = z * lacunarity + OCTAVE_SHIFT;
   }
   return total > 0 ? sum / total : 0;
-}
-
-/** Total amplitude of `n` octaves at gain 0.5: 2 * (1 - 0.5^n). */
-function halfGainTotal(octaves: number): number {
-  return 2 * (1 - Math.pow(0.5, octaveCount(octaves)));
-}
-
-/** Unnormalized fBm (gain 0.5, lacunarity 2). Kept for kernels compiled before `fxFractal1`. */
-export function fxFbm(x: number, octaves: number): number {
-  return fxFractal1(x, octaves, 2, 0.5) * halfGainTotal(octaves);
-}
-
-/** 3D {@link fxFbm}. Kept for kernels compiled before `fxFractal3`. */
-export function fxFbm3(x: number, y: number, z: number, octaves: number): number {
-  return fxFractal3(x, y, z, octaves, 2, 0.5) * halfGainTotal(octaves);
 }

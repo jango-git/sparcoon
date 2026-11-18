@@ -108,35 +108,10 @@ export type {
   FXSpawnOrigin,
 } from "./emitter/FXEmitter.Internal.js";
 export type { FXEmitter } from "./emitter/FXEmitter.js";
-
-// The tick domain: an effect joins one on construction; a single FXWorld.update per frame drives
-// every effect's timeline and the shared particle pool.
-export {
-  fxFract,
-  fxMix,
-  fxMod,
-  fxSampleLut,
-  fxSmoothstep,
-  fxVolumeFetch,
-} from "./miscellaneous/fxMath.js";
-export { fxCurl2, fxCurl3 } from "./miscellaneous/noise/fxCurlNoise.js";
-export {
-  fxFbm,
-  fxFbm3,
-  fxFractal1,
-  fxFractal2,
-  fxFractal3,
-} from "./miscellaneous/noise/fxFractalNoise.js";
-export {
-  fxSeedHash1,
-  fxSeedHash2,
-  fxSeedHash3,
-  fxSeedHash4,
-} from "./miscellaneous/noise/fxSeedHash.js";
-export { fxNoise1, fxNoise2, fxNoise3 } from "./miscellaneous/noise/fxValueNoise.js";
-export { fxVoronoi2, fxVoronoi3 } from "./miscellaneous/noise/fxVoronoiNoise.js";
 export type { FXDataTextureOptions } from "./miscellaneous/texture/fxDataTexture.js";
 export { fxDataTexture } from "./miscellaneous/texture/fxDataTexture.js";
+// The tick domain: an effect joins one on construction; a single FXWorld.update per frame drives
+// every effect's timeline and the shared particle pool.
 export { FXWorld } from "./world/FXWorld.js";
 
 // External textures: a slot binds a whole Texture or a region (a window) of one; fxAtlasRegion builds

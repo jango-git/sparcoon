@@ -1,9 +1,8 @@
 /**
  * CPU-side twins of the compiler's math builtins (`fxMix`, `fxSmoothstep`, ...; noise lives in
- * `noise/`). A behavior kernel's authored `spawn`/`update` body calls these by name - the editor's
- * compiler prints those exact calls - so every exported name here is a frozen contract with
- * already-compiled kernels, like the `a_`/`p_` buffer prefixes. Never rename one without updating
- * the compiler side in lockstep.
+ * `noise/`). A behavior kernel's `spawn`/`update` body and a draw stage call these by name, in an
+ * exported effect and in the editor's preview alike, so every exported name here is a contract
+ * with the compiler, like the `a_`/`p_` buffer prefixes.
  */
 
 import { FX_VOLUME_HEADER_FLOATS } from "../volumeTableLayout.js";

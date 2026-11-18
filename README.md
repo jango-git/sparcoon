@@ -407,6 +407,15 @@ function sdfFromSlices(image: HTMLImageElement, width: number, height: number, d
 An unstable API for tools that build emitters and meshes from artifacts directly. The editor's
 preview uses it, and it is not needed for playing effects.
 
+## The `sparcoon/helpers` entry point
+
+The functions and GLSL sources compiled code calls by name: the CPU simulation's math and noise,
+and the helpers its shaders link. Exported effects import it themselves, and a bundle keeps one copy
+of each helper for all of them. A game does not call it.
+
+The GLSL helpers in `src/helpers/glsl.ts` are generated from `scripts/glsl`. After changing them,
+run `npm run generate`.
+
 ## Development
 
 ```sh

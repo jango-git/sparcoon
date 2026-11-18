@@ -1,6 +1,6 @@
 {
   "name": "sparcoon",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "Three.js runtime for visual effects authored in the Sparcoon Editor - precompiled artifacts, one draw call per emitter, no eval.",
   "keywords": [
     "three",
@@ -45,6 +45,10 @@
       "types": "./dist/editor/index.d.ts",
       "import": "./dist/editor/index.js"
     },
+    "./helpers": {
+      "types": "./dist/helpers/index.d.ts",
+      "import": "./dist/helpers/index.js"
+    },
     "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
@@ -58,11 +62,12 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc -p tsconfig.json",
-    "lint": "eslint src tests",
+    "lint": "eslint src tests scripts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "format": "prettier --write . && eslint src tests --fix",
+    "format": "prettier --write . && eslint src tests scripts --fix",
+    "generate": "vitest run tests/helpers/glsl.test.ts --update",
     "prepublishOnly": "npm run build && npm test"
   },
   "peerDependencies": {
