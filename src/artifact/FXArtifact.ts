@@ -285,11 +285,12 @@ export interface FXBehaviorArtifact {
     inherited: Float32Array,
   ): void;
   /**
-   * Advances every slot `[0, count)` - dead ones too (`age >= lifetime`, including never-born
-   * slots with lifetime 0), exactly as the GPU kernel's pass covers every slot. What it computes for
-   * a dead slot (even a NaN from `age / lifetime`) is never shown - the render and trail hide dead
-   * slots - and is discarded when a birth claims the slot, which zero-fills it before seeding.
-   * Skipped altogether on a tick when no particle is alive.
+   * Gets every slot `[0, count)`, dead ones too (`age >= lifetime`, including never-born slots
+   * with lifetime 0), as the GPU kernel's pass covers every slot. The editor's kernels skip a dead
+   * slot, as the GPU pass leaves it untouched. Whatever a kernel computes for one (even a NaN from
+   * `age / lifetime`) is never shown - the render and trail hide dead slots - and is discarded when
+   * a birth claims the slot, which zero-fills it before seeding. Skipped altogether on a tick when
+   * no particle is alive.
    *
    * Writes `age` only to kill: `age = max(age, lifetime)`. `lifetime` stays birth-only.
    */

@@ -5,6 +5,13 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## Unreleased
+
+### Added
+
+- In `sparcoon/editor`, `fxEmitterStripMesh(emitter, kind)` returns the mesh an emitter draws its
+  trail or ribbon with.
+
 ## 0.22.0 - 2026-11-15
 
 ### Added

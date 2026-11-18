@@ -1,5 +1,6 @@
-import type { Object3D } from "three";
+import type { Mesh, Object3D } from "three";
 
+import type { FXEmitter } from "../emitter/FXEmitter.js";
 import type { FXEmitterDriver } from "../emitter/FXEmitterDriver.Internal.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import type { FXExternalTexture } from "../render/FXExternalTexture.js";
@@ -52,6 +53,17 @@ const STRIP_KINDS: {
   },
 };
 
+/** Each emitter's strips, for {@link fxEmitterStripMesh}; weak, so it never keeps an emitter alive. */
+const STRIPS_BY_OWNER = new WeakMap<Object3D, FXEmitterStrips>();
+
+/**
+ * Editor tooling: the mesh `emitter` draws its strip of `kind` with, if it draws one. Not part of
+ * the game's API, where an emitter's meshes are the runtime's own.
+ */
+export function fxEmitterStripMesh(emitter: FXEmitter, kind: FXStripKind): Mesh | undefined {
+  return STRIPS_BY_OWNER.get(emitter)?.mesh(kind);
+}
+
 /**
  * @internal The strips an emitter draws through its particles - at most one of each kind - and
  * what building one takes: its driver, and the GPU's limits a strip's material is checked against
@@ -66,7 +78,9 @@ export class FXEmitterStrips {
     private readonly owner: Object3D,
     private readonly driver: FXEmitterDriver,
     private readonly limits: FXRenderBudget | undefined,
-  ) {}
+  ) {
+    STRIPS_BY_OWNER.set(owner, this);
+  }
 
   /** Every strip that draws, in draw order. */
   public get all(): readonly FXParticleStrip[] {
@@ -76,6 +90,11 @@ export class FXEmitterStrips {
   /** Whether a strip of `kind` draws: given and not skipped past the GPU's limits. */
   public has(kind: FXStripKind): boolean {
     return this.strips[kind] !== undefined;
+  }
+
+  /** The mesh of the strip of `kind`, if one draws. */
+  public mesh(kind: FXStripKind): Mesh | undefined {
+    return this.strips[kind]?.mesh;
   }
 
   /** The material of the strip of `kind`, if one draws. */

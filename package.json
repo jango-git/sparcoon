@@ -55,31 +55,28 @@
     "LICENSE"
   ],
   "sideEffects": false,
-  "engines": {
-    "node": ">=18.18.0"
-  },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc -p tsconfig.json",
-    "lint": "eslint src",
+    "lint": "eslint src tests",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "format": "prettier --write . && eslint src --fix",
-    "prepublishOnly": "npm run build"
+    "format": "prettier --write . && eslint src tests --fix",
+    "prepublishOnly": "npm run build && npm test"
   },
   "peerDependencies": {
     "three": ">=0.157.0 <0.188.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^25.0.2",
     "@types/three": "^0.157.0",
     "@typescript-eslint/eslint-plugin": "^8.72.1",
     "@typescript-eslint/parser": "^8.72.1",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.14.0",
     "eslint-plugin-simple-import-sort": "^12.1.1",
-    "prettier": "^3.9.5",
+    "prettier": "^3.9.10",
     "three": "^0.157.0",
     "typescript": "^5.8.3",
     "vitest": "^4.1.9"

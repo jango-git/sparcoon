@@ -111,8 +111,10 @@ export {
 export type { FXTrailOptions } from "../trail/FXTrail.js";
 export { FX_TRAIL_MAX_FRAMES } from "../trail/FXTrail.js";
 
-// Particle ribbons: the options an emitter's ribbon is built from; and every strip's, by kind.
+// Particle ribbons: the options an emitter's ribbon is built from; and every strip's, by kind, and
+// the mesh an emitter draws one with.
 export type { FXRibbonOptions, FXRibbonUV } from "../ribbon/FXRibbon.js";
+export { fxEmitterStripMesh } from "../strip/FXEmitterStrips.Internal.js";
 export type { FXStripKind, FXStripOptions } from "../strip/FXStripOptions.js";
 export { FX_STRIP_KINDS } from "../strip/FXStripOptions.js";
 

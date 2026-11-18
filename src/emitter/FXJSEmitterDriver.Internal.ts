@@ -208,7 +208,7 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     }
     // Motion integration lives in the graph (an `integrate-motion` node writes
     // `position += velocity * dt`), not in this host loop. Every drawn slot is passed, dead ones
-    // too, exactly as the GPU pass covers every slot - a dead slot's state is never shown.
+    // too, as the GPU pass covers every slot; the kernel skips the dead ones.
     this.simulation.update(slots, slotCount, deltaTime, transform);
     this.mesh.markWritten(0, slotCount);
 
