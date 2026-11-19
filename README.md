@@ -167,13 +167,33 @@ await effect.compile(renderer, camera, scene);
 scene.add(effect);
 ```
 
+An emitter simulated on the GPU also runs programs that sparcoon builds itself, not three. Creating
+the effect sends them off to build without waiting for them, and the first simulation step waits
+only for one that has not finished. `compile()` waits for them too. `simulationReady()` waits for
+them alone, for a game that compiles three's programs itself:
+
+```ts
+await renderer.compileAsync(scene, camera);
+await effect.simulationReady();
+```
+
+- On three r157 `compile()` compiles the whole `scene` synchronously and stalls until three's
+  programs are built, so add the effect to the scene before the call. From r158 it waits without
+  stalling.
+- Without `KHR_parallel_shader_compile` a build cannot be waited for without stalling. `compile()`
+  then stalls once for each program sparcoon builds, and each of three's programs stalls on its
+  first draw.
+- Turn `renderer.debug.checkShaderErrors` off in production. With it on, three reads the logs of
+  every program it builds: on r157 while compiling, from r158 on its first draw.
+- A program the driver rejects does not reject `compile()` or `simulationReady()`. The failure is
+  logged and `getEmitter(name)?.simulationFailure` holds the driver's log. Without its simulation program the
+  emitter spawns no particles, and without its sort program it draws them unsorted.
 - If the effect draws into a post-processing buffer, set that render target on the renderer before
   `compile()`.
-- On three r157 `compile()` compiles the whole `scene` synchronously, so add the effect to the scene
-  before the call.
 - Shadow pass shaders are not compiled ahead.
-- Three deletes a shader together with the last material using it, so an effect built after every
-  earlier one was disposed compiles again.
+- Three deletes a shader together with the last material using it, and sparcoon deletes a
+  simulation program together with the last effect using it. An effect built after every earlier
+  one was disposed compiles again.
 
 ## Driving it from code
 

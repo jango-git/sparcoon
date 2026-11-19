@@ -23,6 +23,13 @@ export type {
 export { FXEmitter } from "../emitter/FXEmitter.js";
 export type { FXFromArtifactsOptions } from "../emitter/FXFromArtifactsOptions.js";
 
+// A GPU kernel's program built ahead of the emitter that runs it, so a rebuilt preview emitter
+// starts without waiting for it.
+export {
+  type FXKernelPreparation,
+  fxPrepareKernel,
+} from "../emitter/FXKernelProgramCache.Internal.js";
+
 // What makes an emitter spawn - the timeline's events and the reactions to particle births and
 // deaths - fired the same way by the runtime's FXEffect and the editor's preview.
 export type {

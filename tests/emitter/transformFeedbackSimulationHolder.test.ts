@@ -6,7 +6,7 @@ import {
   PerspectiveCamera,
   WebGLRenderTarget,
 } from "three";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
 import {
@@ -94,18 +94,58 @@ describe("FXTransformFeedbackSimulationHolder", () => {
     }
   });
 
+  it("reads no status, log or uniform of the program until its first pass", () => {
+    const mock = mockRenderer();
+    const holder = new FXTransformFeedbackSimulationHolder(mock.renderer, minimalArtifact());
+    const mesh = meshFor(mock, holder);
+    try {
+      for (const name of ["getShaderParameter", "getProgramParameter", "getUniformLocation"]) {
+        expect(callsNamed(mock.gl, name)).toEqual([]);
+      }
+      holder.tick(
+        mesh,
+        1 / 60,
+        { start: 0, count: 0 },
+        IDENTITY_EMITTER_TRANSFORM,
+        NOTHING_INHERITED,
+      );
+      expect(callsNamed(mock.gl, "getProgramParameter").length).toBeGreaterThan(0);
+      expect(callsNamed(mock.gl, "getUniformLocation").length).toBeGreaterThan(0);
+      expect(callsNamed(mock.gl, "drawArrays")).toHaveLength(1);
+    } finally {
+      holder.destroy();
+      flushStateResets();
+    }
+  });
+
   it.each([
-    ["the vertex shader", true, 1],
-    ["the fragment shader", "fragment", 2],
+    ["the vertex shader", true],
+    ["the fragment shader", "fragment"],
   ] as const)(
-    "throws when %s fails to compile, deleting every shader it made and linking nothing",
-    (_shader, failCompile, shadersMade) => {
+    "runs no pass when %s fails to compile, logging the failure once",
+    (_shader, failCompile) => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
       const mock = mockRenderer({ failCompile });
-      expect(
-        () => new FXTransformFeedbackSimulationHolder(mock.renderer, minimalArtifact()),
-      ).toThrow(/shader failed to compile: mock compile failure/);
-      expect(callsNamed(mock.gl, "deleteShader")).toHaveLength(shadersMade);
-      expect(callsNamed(mock.gl, "linkProgram")).toEqual([]);
+      const holder = new FXTransformFeedbackSimulationHolder(mock.renderer, minimalArtifact());
+      const mesh = meshFor(mock, holder);
+      try {
+        expect(holder.program.failure).toBeUndefined();
+        holder.tick(
+          mesh,
+          1 / 60,
+          { start: 0, count: 1 },
+          IDENTITY_EMITTER_TRANSFORM,
+          NOTHING_INHERITED,
+        );
+        expect(holder.program.failure).toBe("mock compile failure");
+        holder.spawn(mesh, { start: 0, count: 1 }, IDENTITY_EMITTER_TRANSFORM, NOTHING_INHERITED);
+        expect(callsNamed(mock.gl, "drawArrays")).toEqual([]);
+        expect(callsNamed(mock.gl, "deleteShader")).toHaveLength(2);
+        expect(error).toHaveBeenCalledTimes(1);
+      } finally {
+        holder.destroy();
+        error.mockRestore();
+      }
     },
   );
 
@@ -478,7 +518,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
             u_s: { kind: "surface", table },
           }),
       ).toThrow(/texture units/);
-      expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
+      expect(callsNamed(mock.gl, "linkProgram")).toEqual([]);
       expect(mock.gl.liveTextures.size).toBe(0);
     });
   });
@@ -558,7 +598,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
             u_v: { kind: "volume", table },
           }),
       ).toThrow(/3D texture size/);
-      expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
+      expect(callsNamed(mock.gl, "linkProgram")).toEqual([]);
       expect(mock.gl.liveTextures.size).toBe(0);
     });
   });
@@ -682,7 +722,7 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       expect(() => new FXTransformFeedbackSimulationHolder(mock.renderer, reading())).toThrow(
         /reads the scene depth/,
       );
-      expect(callsNamed(mock.gl, "deleteProgram")).toHaveLength(1);
+      expect(callsNamed(mock.gl, "linkProgram")).toEqual([]);
     });
   });
 });

@@ -27,8 +27,11 @@ export interface MockGLOptions {
   readonly maxVertexTextureUnits?: number;
   /** MAX_3D_TEXTURE_SIZE. The WebGL2 minimum, 256, by default. */
   readonly max3DTextureSize?: number;
-  /** Every framebuffer reports itself incomplete. */
-  readonly incompleteFramebuffer?: boolean;
+  /**
+   * The context has `KHR_parallel_shader_compile`. Its programs then report their build as ended
+   * only after {@link MockGL.finishBuilds}.
+   */
+  readonly parallelShaderCompile?: boolean;
 }
 
 export interface MockGL {
@@ -44,6 +47,8 @@ export interface MockGL {
   readonly liveTextures: Set<unknown>;
   /** Framebuffers created and not deleted yet. */
   readonly liveFramebuffers: Set<unknown>;
+  /** Ends the build of every program linked so far (see {@link MockGLOptions.parallelShaderCompile}). */
+  finishBuilds(): void;
 }
 
 /** The renderer surface the transform-feedback code reads, around a {@link MockGL}. */
@@ -115,8 +120,6 @@ const CONSTANTS = {
   UNPACK_SKIP_IMAGES: 0x806d,
   FRAMEBUFFER: 0x8d40,
   COLOR_ATTACHMENT0: 0x8ce0,
-  FRAMEBUFFER_COMPLETE: 0x8cd5,
-  FRAMEBUFFER_INCOMPLETE_ATTACHMENT: 0x8cd6,
   BLEND: 0x0be2,
   DEPTH_TEST: 0x0b71,
   STENCIL_TEST: 0x0b90,
@@ -137,13 +140,15 @@ const UNIFORM_TYPES: Readonly<Record<string, number>> = {
   sampler3D: CONSTANTS.SAMPLER_3D,
 };
 
+/** `KHR_parallel_shader_compile`'s query. */
+const COMPLETION_STATUS_KHR = 0x91b1;
+
 // Calls with nothing to answer: recorded, and return nothing.
 const RECORDED_ONLY = [
   "compileShader",
   "deleteShader",
   "attachShader",
   "transformFeedbackVaryings",
-  "linkProgram",
   "deleteProgram",
   "deleteVertexArray",
   "bindVertexArray",
@@ -195,6 +200,9 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
   // Every uniform any shader source declares: the program's active uniforms (none compiled away).
   const declaredUniforms: { readonly name: string; readonly type: number }[] = [];
   let nextId = 1;
+  let contextLost = false;
+  const linkedPrograms = new Set<unknown>();
+  const builtPrograms = new Set<unknown>();
 
   // A uniform's values are copied at the call, as WebGL reads them then: the caller may refill
   // the array after.
@@ -219,7 +227,20 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
   const context: Record<string, unknown> = {
     ...CONSTANTS,
     // Dispatch "webglcontextlost" on it to simulate a loss.
-    canvas: new EventTarget(),
+    canvas: (() => {
+      const canvas = new EventTarget();
+      canvas.addEventListener("webglcontextlost", () => {
+        contextLost = true;
+      });
+      return canvas;
+    })(),
+    isContextLost: () => contextLost,
+    getExtension: (name: string) =>
+      name === "KHR_parallel_shader_compile" && options.parallelShaderCompile === true ? {} : null,
+    linkProgram: (...args: unknown[]) => {
+      record("linkProgram", args);
+      linkedPrograms.add(args[0]);
+    },
     getParameter: (name: number) => {
       if (name === CONSTANTS.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS) {
         return options.maxFeedbackComponents ?? 64;
@@ -253,10 +274,6 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
       record("deleteFramebuffer", args);
       liveFramebuffers.delete(args[0]);
     },
-    checkFramebufferStatus: () =>
-      options.incompleteFramebuffer === true
-        ? CONSTANTS.FRAMEBUFFER_INCOMPLETE_ATTACHMENT
-        : CONSTANTS.FRAMEBUFFER_COMPLETE,
     createBuffer: () => {
       const buffer = handle();
       liveBuffers.add(buffer);
@@ -273,12 +290,15 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
     },
     createProgram: handle,
     createVertexArray: handle,
-    getShaderParameter: (shader: unknown) =>
-      !(
+    getShaderParameter: (...args: unknown[]) => {
+      record("getShaderParameter", args);
+      const shader = args[0];
+      return !(
         options.failCompile === true ||
         (options.failCompile === "fragment" &&
           shaderTypes.get(shader) === CONSTANTS.FRAGMENT_SHADER)
-      ),
+      );
+    },
     getShaderInfoLog: () => "mock compile failure",
     shaderSource: (...args: unknown[]) => {
       record("shaderSource", args);
@@ -291,14 +311,23 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
         }
       }
     },
-    getProgramParameter: (_program: unknown, name: number) =>
-      name === CONSTANTS.ACTIVE_UNIFORMS ? declaredUniforms.length : !(options.failLink ?? false),
+    getProgramParameter: (...args: unknown[]) => {
+      record("getProgramParameter", args);
+      const [program, name] = args;
+      if (name === COMPLETION_STATUS_KHR) {
+        return options.parallelShaderCompile !== true || builtPrograms.has(program);
+      }
+      return name === CONSTANTS.ACTIVE_UNIFORMS
+        ? declaredUniforms.length
+        : !(options.failLink ?? false);
+    },
     getActiveUniform: (_program: unknown, index: number) => {
       const uniform = declaredUniforms[index];
       return uniform === undefined ? null : { name: uniform.name, type: uniform.type, size: 1 };
     },
     getProgramInfoLog: () => "mock link failure",
     getUniformLocation: (_program: unknown, name: string) => {
+      record("getUniformLocation", [_program, name]);
       const location = handle();
       uniformNames.set(location, name);
       return location;
@@ -325,6 +354,11 @@ export function mockWebGL(options: MockGLOptions = {}): MockGL {
     liveBuffers,
     liveTextures,
     liveFramebuffers,
+    finishBuilds: () => {
+      for (const program of linkedPrograms) {
+        builtPrograms.add(program);
+      }
+    },
   };
 }
 

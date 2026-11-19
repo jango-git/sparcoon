@@ -1,6 +1,8 @@
 import type { WebGLRenderer } from "three";
 import { Texture } from "three";
 
+import { gpuLimit } from "./FXGPULimits.Internal.js";
+
 /**
  * @internal Textures of raw values a shader reads by index with `texelFetch`, never filtered: one
  * value per texel, in rows of up to `MAX_TEXTURE_SIZE` texels, so value `i` is texel
@@ -24,7 +26,7 @@ export function dataTextureSize(
   texels: number,
   subject: string,
 ): FXDataTextureSize {
-  const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+  const maxSize = gpuLimit(gl, gl.MAX_TEXTURE_SIZE);
   const width = Math.min(texels, maxSize);
   const height = Math.ceil(texels / width);
   if (height > maxSize) {

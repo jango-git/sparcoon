@@ -1,6 +1,7 @@
 import type { WebGLRenderer } from "three";
 
 import { prepareDataUpload } from "../render/FXDataTexture.Internal.js";
+import { gpuLimit } from "../render/FXGPULimits.Internal.js";
 import { type FXContextLease, FXContextLeases } from "./FXContextLeases.Internal.js";
 import type { FXVolumeTable } from "./FXVolumeTable.Internal.js";
 
@@ -25,7 +26,7 @@ function uploadVolumeTexture(
   gl: WebGL2RenderingContext,
   table: FXVolumeTable,
 ): WebGLTexture {
-  const maxSize = gl.getParameter(gl.MAX_3D_TEXTURE_SIZE) as number;
+  const maxSize = gpuLimit(gl, gl.MAX_3D_TEXTURE_SIZE);
   if (Math.max(table.width, table.height, table.depth) > maxSize) {
     throw new Error(
       `FXVolumeTexture: a ${String(table.width)}x${String(table.height)}x${String(table.depth)} ` +

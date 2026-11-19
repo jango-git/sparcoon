@@ -19,6 +19,7 @@ import type { FXEmitterSortOptions } from "../emitter/FXEmitter.Internal.js";
 import { asParticleEventKind } from "../emitter/FXEmitter.Internal.js";
 import { cameraUseOf, FXEmitter } from "../emitter/FXEmitter.js";
 import { assertValidInheritCopies } from "../emitter/FXInheritance.js";
+import { whenProgramsSettle } from "../emitter/FXLinkedProgram.Internal.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
 import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import { resolveGeometrySource } from "../instancedParticle/primitiveGeometry.js";
@@ -573,8 +574,9 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
 
   /**
    * Compiles this effect's shader programs ahead of its first frame, lit by `scene`'s lights and
-   * fog. Resolves once they are ready. See the README's "Compiling shaders ahead" for what it does
-   * not cover and how to keep the programs compiled.
+   * fog, and waits for its GPU simulation ({@link simulationReady}). Resolves once both are ready.
+   * See the README's "Compiling ahead" for what it does not cover and how to keep the programs
+   * compiled.
    */
   public compile(renderer: WebGLRenderer, camera: Camera, scene?: Object3D): Promise<void> {
     try {
@@ -585,7 +587,21 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     if (this.disposed) {
       return Promise.resolve();
     }
-    return compilePrograms(renderer, this, camera, scene);
+    const drawPrograms = compilePrograms(renderer, this, camera, scene);
+    return Promise.all([drawPrograms, this.simulationReady()]).then(() => undefined);
+  }
+
+  /**
+   * Resolves once the programs of its GPU simulation have built: the ones sparcoon builds itself,
+   * sent off when the effect was created. The draw programs three builds are not among them -
+   * {@link compile} covers both. A program that failed to build resolves it as well, and the
+   * failure is logged (see {@link FXEmitter.simulationFailure}).
+   */
+  public simulationReady(): Promise<void> {
+    if (this.disposed) {
+      return Promise.resolve();
+    }
+    return whenProgramsSettle(this.emitters.flatMap((emitter) => emitter.simulationPrograms));
   }
 
   /**

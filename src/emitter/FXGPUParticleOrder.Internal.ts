@@ -21,7 +21,7 @@ import {
   type FXParticleTextures,
 } from "../render/FXParticleTextures.Internal.js";
 import { type FXContextLease, FXContextLeases } from "./FXContextLeases.Internal.js";
-import { linkProgram } from "./FXProgramLink.Internal.js";
+import { FXLinkedProgram, FXProgramBinding } from "./FXLinkedProgram.Internal.js";
 
 const ERROR_PREFIX = "FXGPUParticleOrder";
 
@@ -92,9 +92,9 @@ const RANK_FRAGMENT_SOURCE = [
   "}",
 ].join("\n");
 
-// One program for every order on a context: what differs between emitters is uniforms.
-const rankPrograms = new FXContextLeases<"rank", WebGLProgram>((gl, program) => {
-  gl.deleteProgram(program);
+/** One program for every order on a context: what differs between emitters is uniforms. */
+const rankPrograms = new FXContextLeases<"rank", FXLinkedProgram>((gl, program) => {
+  program.delete();
 });
 
 /**
@@ -110,8 +110,9 @@ export class FXGPUParticleOrder {
   public readonly textures: FXParticleTextures;
 
   private readonly gl: WebGL2RenderingContext;
-  private readonly programLease: FXContextLease<WebGLProgram>;
-  private readonly locations: Record<FXRankUniform, WebGLUniformLocation | null>;
+  private readonly programLease: FXContextLease<FXLinkedProgram>;
+  /** Where the program reads its uniforms, found on the first sort; without it the order stays. */
+  private readonly locations: FXProgramBinding<Record<FXRankUniform, WebGLUniformLocation | null>>;
   // Bound for the rank draw, which reads no attribute, instead of a VAO three manages.
   private readonly vao: WebGLVertexArrayObject;
   private readonly slotsTexture: WebGLTexture;
@@ -127,8 +128,7 @@ export class FXGPUParticleOrder {
 
   /**
    * The order of an emitter of `capacity` slots laid out as `slot`.
-   * @throws When the program fails to link, the textures do not fit this GPU or the slot lacks a
-   *   core field.
+   * @throws When the textures do not fit this GPU or the slot lacks a core field.
    */
   constructor(
     private readonly renderer: WebGLRenderer,
@@ -143,31 +143,35 @@ export class FXGPUParticleOrder {
     this.slotsSize = dataTextureSize(gl, this.floats, `${ERROR_PREFIX}: the slots texture`);
     this.orderSize = dataTextureSize(gl, capacity, `${ERROR_PREFIX}: the order texture`);
 
-    this.programLease = rankPrograms.acquire(gl, "rank", () =>
-      linkProgram(gl, RANK_VERTEX_SOURCE, RANK_FRAGMENT_SOURCE, [], ERROR_PREFIX),
-    );
-    const program = this.programLease.resource;
-    this.locations = Object.fromEntries(
-      RANK_UNIFORMS.map((name) => [name, gl.getUniformLocation(program, name)]),
-    ) as Record<FXRankUniform, WebGLUniformLocation | null>;
     this.vao = gl.createVertexArray();
     this.slotsTexture = createDataTexture(gl, gl.R32F, this.slotsSize);
     this.orderTexture = createDataTexture(gl, gl.R32UI, this.orderSize);
     this.framebuffer = gl.createFramebuffer();
-    try {
-      this.writeSlotsInTurn();
-      this.attachOrder();
-    } catch (error) {
-      this.destroy();
-      throw error;
-    } finally {
-      // Built outside the world's tick, possibly right before a draw.
-      renderer.resetState();
-    }
+    this.writeSlotsInTurn();
+    this.attachOrder();
+    /* Built outside the world's tick, possibly right before a draw. */
+    renderer.resetState();
+    this.programLease = rankPrograms.acquire(
+      gl,
+      "rank",
+      () => new FXLinkedProgram(gl, RANK_VERTEX_SOURCE, RANK_FRAGMENT_SOURCE, [], ERROR_PREFIX),
+    );
+    this.locations = new FXProgramBinding(
+      this.programLease.resource,
+      (program) =>
+        Object.fromEntries(
+          RANK_UNIFORMS.map((name) => [name, gl.getUniformLocation(program, name)]),
+        ) as Record<FXRankUniform, WebGLUniformLocation | null>,
+    );
     this.textures = {
       slots: { value: threeTextureOf(renderer, this.slotsTexture) },
       order: { value: threeTextureOf(renderer, this.orderTexture) },
     };
+  }
+
+  /** The program the sorts run, building or built. */
+  public get program(): FXLinkedProgram {
+    return this.programLease.resource;
   }
 
   /** Call after every pass that wrote the slots. */
@@ -223,8 +227,11 @@ export class FXGPUParticleOrder {
 
   private rank(camera: Vector3): void {
     const gl = this.gl;
-    const locations = this.locations;
-    this.renderer.state.useProgram(this.programLease.resource);
+    const locations = this.locations.get();
+    if (locations === null) {
+      return;
+    }
+    this.renderer.state.useProgram(this.programLease.resource.program);
     gl.bindVertexArray(this.vao);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
     gl.viewport(0, 0, this.orderSize.width, this.orderSize.height);
@@ -271,6 +278,7 @@ export class FXGPUParticleOrder {
     }
   }
 
+  /** Not checked for completeness: `R32UI` is color-renderable in every WebGL2 context. */
   private attachOrder(): void {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
@@ -281,12 +289,6 @@ export class FXGPUParticleOrder {
       this.orderTexture,
       0,
     );
-    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    if (status !== gl.FRAMEBUFFER_COMPLETE) {
-      throw new Error(
-        `${ERROR_PREFIX}: the order texture cannot be drawn into (${String(status)})`,
-      );
-    }
   }
 }

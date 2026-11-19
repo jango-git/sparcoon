@@ -25,6 +25,7 @@ import type { FXRibbonPoints } from "../ribbon/FXRibbonPoints.Internal.js";
 import type { FXTrailHistory } from "../trail/FXTrailHistory.Internal.js";
 import type { FXBirthAges } from "./FXBirthAges.Internal.js";
 import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
+import type { FXLinkedProgram } from "./FXLinkedProgram.Internal.js";
 
 /**
  * @internal The backend-independent half of an {@link FXEmitter}: everything that differs between
@@ -55,6 +56,8 @@ export interface FXEmitterDriver {
   /** Whether this driver can report its particles' births and deaths ({@link watch}) - only a CPU
    *  simulation sees them; the GPU one would need a readback. */
   readonly reportsEvents: boolean;
+  /** The raw WebGL programs it runs itself, building or built: none for a CPU simulation. */
+  readonly programs: readonly FXLinkedProgram[];
 
   /** Claims `count` newborn slots and seeds them from `transform`, `inherited` (the behavior's
    *  inherit layout, shared by every newborn of the call) and the current binding values.

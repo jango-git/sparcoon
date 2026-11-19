@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
-import { acquireKernelProgram } from "../../src/emitter/FXKernelProgramCache.Internal";
-import { callsNamed, mockWebGL } from "../helpers/mockWebGL";
+import {
+  acquireKernelProgram,
+  fxPrepareKernel,
+} from "../../src/emitter/FXKernelProgramCache.Internal";
+import { callsNamed, mockRenderer, mockWebGL } from "../helpers/mockWebGL";
 
 function kernel(body = ""): FXParticleKernelArtifact {
   return {
@@ -26,7 +29,9 @@ describe("acquireKernelProgram", () => {
     first.release();
     expect(callsNamed(gl, "deleteProgram")).toEqual([]);
     second.release();
-    expect(callsNamed(gl, "deleteProgram").map((call) => call.args[0])).toEqual([first.resource]);
+    expect(callsNamed(gl, "deleteProgram").map((call) => call.args[0])).toEqual([
+      first.resource.program,
+    ]);
   });
 
   it("links anew once the last user is gone", () => {
@@ -44,11 +49,32 @@ describe("acquireKernelProgram", () => {
     expect(acquireKernelProgram(other.context, kernel()).resource).not.toBe(program);
   });
 
-  it("caches nothing for a kernel that failed to link", () => {
+  it("keeps a kernel that failed to link failed for every user, linking it once", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const gl = mockWebGL({ failLink: true });
-    expect(() => acquireKernelProgram(gl.context, kernel())).toThrow(/failed to link/);
-    expect(() => acquireKernelProgram(gl.context, kernel())).toThrow(/failed to link/);
-    expect(callsNamed(gl, "linkProgram")).toHaveLength(2);
+    const first = acquireKernelProgram(gl.context, kernel());
+    const second = acquireKernelProgram(gl.context, kernel());
+    expect(first.resource.resolve()).toEqual({
+      step: "program failed to link",
+      log: "mock link failure",
+    });
+    expect(second.resource.resolve()).toBe(first.resource.resolve());
+    expect(String(error.mock.calls[0]?.[0])).toBe(
+      "FXKernelProgramCache: program failed to link: mock link failure",
+    );
+    expect(callsNamed(gl, "linkProgram")).toHaveLength(1);
+    expect(error).toHaveBeenCalledTimes(1);
+    first.release();
+    second.release();
+    error.mockRestore();
+  });
+
+  it("sends the program off without reading its outcome", () => {
+    const gl = mockWebGL();
+    const lease = acquireKernelProgram(gl.context, kernel());
+    expect(callsNamed(gl, "getShaderParameter")).toEqual([]);
+    expect(callsNamed(gl, "getProgramParameter")).toEqual([]);
+    lease.release();
   });
 
   it("links anew after a context loss, and a stale release deletes nothing", () => {
@@ -61,5 +87,28 @@ describe("acquireKernelProgram", () => {
     stale.release();
     expect(callsNamed(gl, "deleteProgram")).toEqual([]);
     expect(acquireKernelProgram(gl.context, kernel()).resource).toBe(fresh.resource);
+  });
+});
+
+describe("fxPrepareKernel", () => {
+  it("builds the program a later claim of the same kernel shares, building until the build ends", () => {
+    const mock = mockRenderer({ parallelShaderCompile: true });
+    const preparation = fxPrepareKernel(mock.renderer, kernel());
+    expect(preparation.building).toBe(true);
+    mock.gl.finishBuilds();
+    expect(preparation.building).toBe(false);
+    const claim = acquireKernelProgram(mock.gl.context, kernel());
+    preparation.release();
+    preparation.release();
+    expect(callsNamed(mock.gl, "linkProgram")).toHaveLength(1);
+    expect(callsNamed(mock.gl, "deleteProgram")).toEqual([]);
+    claim.release();
+  });
+
+  it("is never building where the build cannot be told apart from waiting for it", () => {
+    const mock = mockRenderer();
+    const preparation = fxPrepareKernel(mock.renderer, kernel());
+    expect(preparation.building).toBe(false);
+    preparation.release();
   });
 });

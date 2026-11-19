@@ -21,6 +21,7 @@ import type {
 import { attributeViews, particleMeshParts } from "./FXEmitterDriver.Internal.js";
 import { FXGPUParticleOrder } from "./FXGPUParticleOrder.Internal.js";
 import type { FXKernelResources } from "./FXKernelResources.Internal.js";
+import type { FXLinkedProgram } from "./FXLinkedProgram.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 
 /**
@@ -123,6 +124,12 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
   // Births and deaths live in transform-feedback buffers only; seeing them would take a readback.
   public get reportsEvents(): boolean {
     return false;
+  }
+
+  public get programs(): readonly FXLinkedProgram[] {
+    return this.order === undefined
+      ? [this.simulation.program]
+      : [this.simulation.program, this.order.program];
   }
 
   public watch(kind: FXParticleEventKind, sink: FXParticleEventSink | undefined): void {

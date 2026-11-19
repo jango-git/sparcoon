@@ -26,11 +26,13 @@ import { FX_PARTICLE_ID_RANGE } from "../coreLayout.js";
 import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
+import { gpuLimit } from "../render/FXGPULimits.Internal.js";
 import type { FXAgedBirths } from "./FXBirthAges.Internal.js";
 import type { FXCameraView } from "./FXCameraView.Internal.js";
 import type { FXContextLease } from "./FXContextLeases.Internal.js";
 import { acquireKernelProgram } from "./FXKernelProgramCache.Internal.js";
 import type { FXKernelResource, FXKernelResources } from "./FXKernelResources.Internal.js";
+import { type FXLinkedProgram, FXProgramBinding } from "./FXLinkedProgram.Internal.js";
 import { FXSceneDepthBinding } from "./FXSceneDepthBinding.Internal.js";
 import { acquireSurfaceTexture } from "./FXSurfaceTexture.Internal.js";
 import { acquireVolumeTexture } from "./FXVolumeTexture.Internal.js";
@@ -68,18 +70,14 @@ export class FXTransformFeedbackSimulationHolder {
   public readonly slot: FXSlotLayout;
 
   private readonly gl: WebGL2RenderingContext;
-  private readonly programLease: FXContextLease<WebGLProgram>;
+  private readonly programLease: FXContextLease<FXLinkedProgram>;
   private readonly vao: WebGLVertexArrayObject;
-  private readonly uniformLocations: Record<string, WebGLUniformLocation | null> = {};
   // This emitter's own bindings - its parameters and draw uniforms - never the shared artifact's.
   private readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
-  // Each binding the program uses, resolved once: a pass only walks this.
-  private readonly uploads: readonly FXBindingUpload[];
-  // The textures of the resources the program samples, texture unit `i` for entry `i`.
-  private readonly samplers: readonly FXSamplerBinding[];
-  // The scene depth the program reads, on the unit after the samplers'; `undefined` when it reads
-  // none.
-  private readonly sceneDepth: FXSceneDepthBinding | undefined;
+  /** The texture of every resource the kernel declares, uploaded before its program is built. */
+  private readonly resourceTextures: readonly FXResourceTexture[];
+  /** Where the program reads its inputs, found on its first pass; no pass runs without it. */
+  private readonly binding: FXProgramBinding<FXKernelProgramBinding>;
   // Filled in place each pass (see setUniforms).
   private readonly drawFrame: { -readonly [K in keyof FXKernelDrawInputs]: FXKernelDrawInputs[K] } =
     { deltaTime: 0, worldMatrix: [], velocity: [], angularVelocity: [] };
@@ -101,9 +99,12 @@ export class FXTransformFeedbackSimulationHolder {
   private spawnIdBase = 0;
 
   /**
-   * `resources` are the tables of the artifact's mesh surfaces and volumes, by sampler uniform.
-   * `view` is the camera view whose depth a program reading the scene depth samples.
-   * @throws When the program reads the scene depth and there is no `view`.
+   * Sends the program off to build and uploads the textures it samples; nothing waits for the
+   * build until the first pass. `resources` are the tables of the artifact's mesh surfaces and
+   * volumes, by sampler uniform. `view` is the camera view whose depth a program reading the scene
+   * depth samples.
+   * @throws When the slot or the textures do not fit this GPU, or the program reads the scene
+   *   depth and there is no `view`.
    */
   constructor(
     private readonly renderer: WebGLRenderer,
@@ -119,41 +120,41 @@ export class FXTransformFeedbackSimulationHolder {
     this.gl = gl;
     this.slot = particleSlotLayout(artifact.buffers);
     assertFitsTransformFeedback(gl, this.slot);
-
-    // Shared by every holder of this kernel: safe, as every pass sets all of its uniforms.
-    this.programLease = acquireKernelProgram(gl, artifact);
-    const program = this.programLease.resource;
-
-    for (const name of FIXED_UNIFORM_NAMES) {
-      this.uniformLocations[name] = gl.getUniformLocation(program, name);
-    }
-    this.bindings = ownSlots(artifact.bindings);
-    this.uploads = bindingUploads(gl, program, this.bindings);
-    this.compute = artifact.compute;
-    try {
-      if (artifact.sceneDepth === true && view === undefined) {
-        throw new Error(
-          "FXTransformFeedbackSimulationHolder: the kernel reads the scene depth - give it a view",
-        );
-      }
-      this.sceneDepth = view === undefined ? undefined : FXSceneDepthBinding.of(gl, program, view);
-      this.samplers = samplerBindings(
-        renderer,
-        program,
-        resources,
-        this.sceneDepth === undefined ? 0 : 1,
+    if (artifact.sceneDepth === true && view === undefined) {
+      throw new Error(
+        "FXTransformFeedbackSimulationHolder: the kernel reads the scene depth - give it a view",
       );
+    }
+    assertFitsTextureUnits(
+      gl,
+      Object.keys(resources).length + (artifact.sceneDepth === true ? 1 : 0),
+    );
+    this.resourceTextures = resourceTextures(renderer, gl, resources);
+    this.bindings = ownSlots(artifact.bindings);
+    this.compute = artifact.compute;
+
+    // Shared by every holder of this kernel: safe, as every pass sets all of its uniforms. Last,
+    // so the checks above never wait for its build.
+    try {
+      this.programLease = acquireKernelProgram(gl, artifact);
     } catch (error) {
-      // The caller falls back to the JS kernel: the program is no longer this holder's.
-      this.programLease.release();
+      releaseTextures(this.resourceTextures);
       throw error;
     }
+    this.binding = new FXProgramBinding(this.programLease.resource, (program) =>
+      bindProgram(gl, program, this.bindings, this.resourceTextures, view),
+    );
 
     // A dedicated VAO for this simulation pass only - never one three.js's own WebGLBindingStates
     // manages, so raw attribute setup here can never corrupt a mesh's cached vertex state. This
     // is exactly the raw gl.bindVertexArray() call whose effect on three's VAO cache the deferred
     // state reset that ends every pass exists to correct (see `tick()`).
     this.vao = gl.createVertexArray();
+  }
+
+  /** The program the passes run, building or built. */
+  public get program(): FXLinkedProgram {
+    return this.programLease.resource;
   }
 
   /**
@@ -170,7 +171,9 @@ export class FXTransformFeedbackSimulationHolder {
     inherited: Float32Array,
   ): void {
     const gl = this.gl;
-    this.preparePass(mesh, deltaTime, spawnRange, emitter, inherited);
+    if (!this.preparePass(mesh, deltaTime, spawnRange, emitter, inherited)) {
+      return;
+    }
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, mesh.writeBuffer());
     this.capture(0, mesh.capacity);
 
@@ -225,7 +228,9 @@ export class FXTransformFeedbackSimulationHolder {
         : [[spawnRange.start, spawnRange.count]];
 
     // dt 0: the spawn branch has no use for it, and nothing else runs in this pass.
-    this.preparePass(mesh, 0, spawnRange, emitter, inherited);
+    if (!this.preparePass(mesh, 0, spawnRange, emitter, inherited)) {
+      return;
+    }
 
     const slotBytes = this.slot.stride * Float32Array.BYTES_PER_ELEMENT;
     for (const [first, count] of segments) {
@@ -275,7 +280,9 @@ export class FXTransformFeedbackSimulationHolder {
     inherited: Float32Array,
   ): void {
     const gl = this.gl;
-    this.preparePass(mesh, 0, PROBE_RANGE, emitter, inherited);
+    if (!this.preparePass(mesh, 0, PROBE_RANGE, emitter, inherited)) {
+      return;
+    }
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, target);
     this.capture(0, 1);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
@@ -284,9 +291,7 @@ export class FXTransformFeedbackSimulationHolder {
   }
 
   public destroy(): void {
-    for (const sampler of this.samplers) {
-      sampler.lease.release();
-    }
+    releaseTextures(this.resourceTextures);
     this.programLease.release();
     this.gl.deleteVertexArray(this.vao);
   }
@@ -304,7 +309,8 @@ export class FXTransformFeedbackSimulationHolder {
 
   /**
    * Readies a pass of the program over `mesh`'s current half: a fresh random seed, the program and
-   * its inputs bound, and every uniform set for `spawnRange`.
+   * its inputs bound, and every uniform set for `spawnRange`. Returns `false`, readying nothing,
+   * when the program failed to build.
    */
   private preparePass(
     mesh: FXTransformFeedbackParticle,
@@ -312,10 +318,15 @@ export class FXTransformFeedbackSimulationHolder {
     spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
     inherited: Float32Array,
-  ): void {
+  ): boolean {
+    const binding = this.binding.get();
+    if (binding === null) {
+      return false;
+    }
     this.randSeedCounter += 1;
     this.bindProgramAndInputs(mesh);
-    this.setUniforms(deltaTime, spawnRange, emitter, inherited, mesh.capacity);
+    this.setUniforms(binding, deltaTime, spawnRange, emitter, inherited, mesh.capacity);
+    return true;
   }
 
   /** Runs the bound program over vertices `[first, first + count)` into the bound feedback buffer. */
@@ -336,7 +347,7 @@ export class FXTransformFeedbackSimulationHolder {
     // the mismatch and re-binds, with no reset needed for this half of the state-hygiene problem.
     // The other half (the VAO-identity cache) has no such setter - see the raw
     // gl.bindVertexArray() call below and the deferred state reset that ends every pass.
-    this.renderer.state.useProgram(this.programLease.resource);
+    this.renderer.state.useProgram(this.programLease.resource.program);
     gl.bindVertexArray(this.vao);
 
     const slotBytes = this.slot.stride * Float32Array.BYTES_PER_ELEMENT;
@@ -356,6 +367,7 @@ export class FXTransformFeedbackSimulationHolder {
   }
 
   private setUniforms(
+    binding: FXKernelProgramBinding,
     deltaTime: number,
     spawnRange: FXKernelSpawnRange,
     emitter: FXEmitterTransform,
@@ -371,49 +383,49 @@ export class FXTransformFeedbackSimulationHolder {
     }
     this.inheritedVectors.set(inherited);
     gl.uniform4fv(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM],
       this.inheritedVectors,
     );
     gl.uniform1i(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_RAND_SEED_UNIFORM],
       this.randSeedCounter,
     );
     gl.uniform1i(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_START_UNIFORM],
       spawnRange.start,
     );
     gl.uniform1i(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_SPAWN_RANGE_COUNT_UNIFORM],
       spawnRange.count,
     );
     gl.uniform1i(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_SPAWN_ID_BASE_UNIFORM],
       this.spawnIdBase,
     );
     gl.uniform1i(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_BIRTH_AGE_COUNT_UNIFORM],
       spawnRange.aged?.count ?? 0,
     );
     const ages = spawnRange.aged?.ages;
     gl.uniform2f(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_BIRTH_AGES_UNIFORM],
       ages?.first ?? 0,
       ages?.step ?? 0,
     );
-    gl.uniform1i(this.uniformLocations[FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM], capacity);
-    gl.uniform1f(this.uniformLocations[FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM], deltaTime);
+    gl.uniform1i(binding.uniformLocations[FX_TRANSFORM_FEEDBACK_CAPACITY_UNIFORM], capacity);
+    gl.uniform1f(binding.uniformLocations[FX_TRANSFORM_FEEDBACK_DELTA_TIME_UNIFORM], deltaTime);
     // WebGL reads a plain array as it is: nothing to copy.
     gl.uniformMatrix4fv(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_MODEL_MATRIX_UNIFORM],
       false,
       emitter.worldMatrix as number[],
     );
     gl.uniform3fv(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_VELOCITY_UNIFORM],
       emitter.velocity as number[],
     );
     gl.uniform3fv(
-      this.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM],
+      binding.uniformLocations[FX_TRANSFORM_FEEDBACK_OBJECT_ANGULAR_VELOCITY_UNIFORM],
       emitter.angularVelocity as number[],
     );
     if (this.compute !== undefined) {
@@ -424,16 +436,16 @@ export class FXTransformFeedbackSimulationHolder {
       frame.angularVelocity = emitter.angularVelocity;
       this.compute(frame, this.bindings);
     }
-    for (const entry of this.uploads) {
+    for (const entry of binding.uploads) {
       entry.upload(gl, entry.location, entry.slot.value);
     }
-    this.samplers.forEach((sampler, unit) => {
+    binding.samplers.forEach((sampler, unit) => {
       // Through three's state, so its texture cache stays true to the context.
       this.renderer.state.activeTexture(gl.TEXTURE0 + unit);
-      this.renderer.state.bindTexture(sampler.target, sampler.lease.resource);
+      this.renderer.state.bindTexture(sampler.texture.target, sampler.texture.lease.resource);
       gl.uniform1i(sampler.location, unit);
     });
-    this.sceneDepth?.bind(this.renderer, this.samplers.length);
+    binding.sceneDepth?.bind(this.renderer, binding.samplers.length);
   }
 }
 
@@ -467,7 +479,7 @@ function assertFitsTransformFeedback(gl: WebGL2RenderingContext, layout: FXSlotL
   const fail = (reason: string): never => {
     throw new Error(`FXTransformFeedbackSimulationHolder: ${reason}`);
   };
-  const maxComponents = gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS) as number;
+  const maxComponents = gpuLimit(gl, gl.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS);
   if (layout.stride > maxComponents) {
     fail(
       `the kernel writes ${String(layout.stride)} components per particle; this GPU's ` +
@@ -481,7 +493,7 @@ function assertFitsTransformFeedback(gl: WebGL2RenderingContext, layout: FXSlotL
         String(MAX_VERTEX_STRIDE_BYTES),
     );
   }
-  const maxInputs = gl.getParameter(gl.MAX_VERTEX_ATTRIBS) as number;
+  const maxInputs = gpuLimit(gl, gl.MAX_VERTEX_ATTRIBS);
   if (layout.fields.length > maxInputs) {
     fail(
       `the kernel reads ${String(layout.fields.length)} buffers; this GPU has ` +
@@ -564,51 +576,98 @@ function bindingUploads(
   return uploads;
 }
 
-/** A resource the program samples - where its sampler is, and the texture it binds there. */
-interface FXSamplerBinding {
-  readonly location: WebGLUniformLocation;
+/** The texture of one resource the kernel declares, by its sampler uniform. */
+interface FXResourceTexture {
+  readonly name: string;
   readonly target: number;
   readonly lease: FXContextLease<WebGLTexture>;
 }
 
+/** A resource the program samples: where its sampler is, and the texture it binds there. */
+interface FXSamplerBinding {
+  readonly location: WebGLUniformLocation;
+  readonly texture: FXResourceTexture;
+}
+
+/** Where a built program reads its inputs. */
+interface FXKernelProgramBinding {
+  readonly uniformLocations: Readonly<Record<string, WebGLUniformLocation | null>>;
+  /** Each binding the program uses, resolved once: a pass only walks this. */
+  readonly uploads: readonly FXBindingUpload[];
+  /** The textures the program samples, texture unit `i` for entry `i`. */
+  readonly samplers: readonly FXSamplerBinding[];
+  /** The scene depth the program reads, on the unit after the samplers'; `undefined` for none. */
+  readonly sceneDepth: FXSceneDepthBinding | undefined;
+}
+
 /**
- * The texture of each of `resources` that `program` samples - one compiled away takes none.
- * @throws When they and `reserved` more units take more texture units than this GPU's vertex
- * stage has.
+ * Throws when `units` textures - every resource the kernel declares, and its scene depth - take
+ * more texture units than this GPU's vertex stage has. Counted from the artifact, before the
+ * program is built: a sampler the driver compiles away would take none, but which ones it drops
+ * is known only once the build has ended.
  */
-function samplerBindings(
-  renderer: WebGLRenderer,
-  program: WebGLProgram,
-  resources: FXKernelResources,
-  reserved: number,
-): FXSamplerBinding[] {
-  const gl = renderer.getContext() as WebGL2RenderingContext;
-  const used: { location: WebGLUniformLocation; resource: FXKernelResource }[] = [];
-  for (const name in resources) {
-    const location = gl.getUniformLocation(program, name);
-    if (location !== null) {
-      used.push({ location, resource: resources[name] });
-    }
-  }
-  const maxUnits = gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) as number;
-  if (used.length + reserved > maxUnits) {
+function assertFitsTextureUnits(gl: WebGL2RenderingContext, units: number): void {
+  const maxUnits = gpuLimit(gl, gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS);
+  if (units > maxUnits) {
     throw new Error(
-      `FXTransformFeedbackSimulationHolder: the kernel samples ${String(used.length + reserved)} ` +
-        `textures; this GPU's vertex stage has ${String(maxUnits)} texture units`,
+      `FXTransformFeedbackSimulationHolder: the kernel samples ${String(units)} textures; this ` +
+        `GPU's vertex stage has ${String(maxUnits)} texture units`,
     );
   }
-  const bindings: FXSamplerBinding[] = [];
+}
+
+/** The texture of each of `resources`, uploaded now. */
+function resourceTextures(
+  renderer: WebGLRenderer,
+  gl: WebGL2RenderingContext,
+  resources: FXKernelResources,
+): FXResourceTexture[] {
+  const textures: FXResourceTexture[] = [];
   try {
-    for (const { location, resource } of used) {
-      bindings.push({ location, ...resourceTexture(renderer, gl, resource) });
+    for (const name in resources) {
+      textures.push({ name, ...resourceTexture(renderer, gl, resources[name]) });
     }
   } catch (error) {
-    for (const binding of bindings) {
-      binding.lease.release();
-    }
+    releaseTextures(textures);
     throw error;
   }
-  return bindings;
+  return textures;
+}
+
+function releaseTextures(textures: readonly FXResourceTexture[]): void {
+  for (const texture of textures) {
+    texture.lease.release();
+  }
+}
+
+/**
+ * Where the built `program` reads its inputs. A binding, resource or scene depth it does not use
+ * (compiled away) is left out.
+ */
+function bindProgram(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  bindings: Readonly<Record<string, FXValueSlot<FXKernelUniformValue>>>,
+  textures: readonly FXResourceTexture[],
+  view: FXCameraView | undefined,
+): FXKernelProgramBinding {
+  const uniformLocations: Record<string, WebGLUniformLocation | null> = {};
+  for (const name of FIXED_UNIFORM_NAMES) {
+    uniformLocations[name] = gl.getUniformLocation(program, name);
+  }
+  const samplers: FXSamplerBinding[] = [];
+  for (const texture of textures) {
+    const location = gl.getUniformLocation(program, texture.name);
+    if (location !== null) {
+      samplers.push({ location, texture });
+    }
+  }
+  return {
+    uniformLocations,
+    uploads: bindingUploads(gl, program, bindings),
+    samplers,
+    sceneDepth: view === undefined ? undefined : FXSceneDepthBinding.of(gl, program, view),
+  };
 }
 
 /** The texture `resource` is sampled from, and the target it binds to. */
@@ -616,7 +675,7 @@ function resourceTexture(
   renderer: WebGLRenderer,
   gl: WebGL2RenderingContext,
   resource: FXKernelResource,
-): Pick<FXSamplerBinding, "target" | "lease"> {
+): Pick<FXResourceTexture, "target" | "lease"> {
   switch (resource.kind) {
     case "surface":
       return { target: gl.TEXTURE_2D, lease: acquireSurfaceTexture(renderer, resource.table) };

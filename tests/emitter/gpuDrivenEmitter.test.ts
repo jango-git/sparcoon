@@ -21,6 +21,7 @@ import {
 } from "../../src/behaviorTransformFeedbackLayout";
 import { FXCameraView } from "../../src/emitter/FXCameraView.Internal";
 import { FXEmitter } from "../../src/emitter/FXEmitter";
+import { whenProgramsSettle } from "../../src/emitter/FXLinkedProgram.Internal";
 import { fxSetCameraDepth } from "../../src/render/FXCameraDepth";
 import { FXWorld } from "../../src/world/FXWorld";
 import { behaviorArtifact, unlitArtifact } from "../helpers/artifacts";
@@ -144,27 +145,82 @@ describe("FXEmitter GPU (transform-feedback) driver selection", () => {
     }
   });
 
-  it.each<{ failure: string; options: MockGLOptions; reason: RegExp }>([
-    { failure: "link", options: { failLink: true }, reason: /failed to link: mock link failure/ },
+  it.each<{ failure: string; options: MockGLOptions; reason: RegExp; log: string }>([
+    {
+      failure: "link",
+      options: { failLink: true },
+      reason: /failed to link: mock link failure/,
+      log: "mock link failure",
+    },
     {
       failure: "compile",
       options: { failCompile: true },
       reason: /failed to compile: mock compile failure/,
+      log: "mock compile failure",
     },
   ])(
-    "falls back to the JS driver in place, leaking no GPU buffer, when the program fails to $failure",
-    ({ options, reason }) => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    "keeps the GPU driver and spawns nothing when the program fails to $failure",
+    async ({ options, reason, log }) => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
       const mock = mockRenderer(options);
-      const { emitter } = emitterOn(mock, { capacity: 8 });
-      expect(isGPUDriven(emitter)).toBe(false);
-      // The JS mesh starts empty (nothing spawned yet), unlike a GPU mesh's always-full ring.
-      expect(emitter.particleCount).toBe(0);
-      expect(mock.gl.liveBuffers.size).toBe(0);
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0]?.[1])).toMatch(reason);
+      const { emitter, world } = emitterOn(mock, { capacity: 8 });
+      expect(isGPUDriven(emitter)).toBe(true);
+      expect(emitter.simulationFailure).toBeUndefined();
+      await whenProgramsSettle(emitter.simulationPrograms);
+      expect(emitter.simulationFailure).toBe(log);
+      emitter.burst(4);
+      world.update(1 / 60);
+      expect(callsNamed(mock.gl, "drawArrays")).toEqual([]);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(String(error.mock.calls[0]?.[0])).toMatch(reason);
     },
   );
+
+  it("waits for the program's build on its first pass when nothing waited for it before", () => {
+    const mock = mockRenderer({ parallelShaderCompile: true });
+    const { emitter, world } = emitterOn(mock, { capacity: 8 });
+    expect(callsNamed(mock.gl, "getUniformLocation")).toEqual([]);
+    emitter.burst(1);
+    world.update(1 / 60);
+    expect(callsNamed(mock.gl, "drawArrays").length).toBeGreaterThan(0);
+  });
+
+  it("settles once the build ends, polling without waiting", async () => {
+    vi.useFakeTimers();
+    try {
+      const mock = mockRenderer({ parallelShaderCompile: true });
+      const { emitter } = emitterOn(mock, { capacity: 8 });
+      let ready = false;
+      void whenProgramsSettle(emitter.simulationPrograms).then(() => {
+        ready = true;
+      });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(ready).toBe(false);
+      expect(callsNamed(mock.gl, "getUniformLocation")).toEqual([]);
+      mock.gl.finishBuilds();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(ready).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends a wait for a program whose emitter is destroyed mid-build", async () => {
+    vi.useFakeTimers();
+    try {
+      const mock = mockRenderer({ parallelShaderCompile: true });
+      const { emitter } = emitterOn(mock, { capacity: 8 });
+      let ready = false;
+      void whenProgramsSettle(emitter.simulationPrograms).then(() => {
+        ready = true;
+      });
+      emitter.destroy();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(ready).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("falls back to the JS driver when the kernel writes more than the GPU's transform feedback captures", () => {
     // Past the limit WebGL fails nothing visible - the program links without its outputs and every
@@ -684,9 +740,9 @@ describe("FXEmitter GPU driver depth sort", () => {
     ]);
   });
 
-  it("falls back to the JS driver, leaking no texture, when the order cannot be drawn into", () => {
+  it("falls back to the JS driver, leaking nothing, when the order does not fit the GPU", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { emitter, mock } = sortedEmitter({ incompleteFramebuffer: true });
+    const { emitter, mock } = sortedEmitter({ maxTextureSize: 1 });
     expect(isGPUDriven(emitter)).toBe(false);
     expect(mock.gl.liveTextures.size).toBe(0);
     expect(mock.gl.liveFramebuffers.size).toBe(0);

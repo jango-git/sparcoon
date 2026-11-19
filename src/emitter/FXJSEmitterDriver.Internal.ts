@@ -31,6 +31,7 @@ import type {
 } from "./FXEmitterDriver.Internal.js";
 import { attributeViews, particleMeshParts } from "./FXEmitterDriver.Internal.js";
 import type { FXKernelResources } from "./FXKernelResources.Internal.js";
+import type { FXLinkedProgram } from "./FXLinkedProgram.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
 
 /**
@@ -119,6 +120,10 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
 
   public get reportsEvents(): boolean {
     return true;
+  }
+
+  public get programs(): readonly FXLinkedProgram[] {
+    return [];
   }
 
   public watch(kind: FXParticleEventKind, sink: FXParticleEventSink | undefined): void {

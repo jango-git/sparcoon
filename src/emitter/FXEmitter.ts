@@ -58,6 +58,7 @@ import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
 import { assertValidInherited, inheritDefaultsOf } from "./FXInheritance.js";
 import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
 import { kernelResourcesOf } from "./FXKernelResources.Internal.js";
+import type { FXLinkedProgram } from "./FXLinkedProgram.Internal.js";
 import { FXObjectMotionTracker } from "./FXObjectMotion.Internal.js";
 import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
 import { FXParticleEventChannel } from "./FXParticleEventChannel.Internal.js";
@@ -271,6 +272,26 @@ export class FXEmitter extends Object3D {
     return this.artifactMaterial !== undefined;
   }
 
+  /**
+   * What the driver logged for a program of its GPU simulation it rejected, or `undefined` while
+   * none is rejected or they are still building. Never waits for a build. Without its kernel the
+   * emitter spawns and draws no particles; without its sort it draws them unsorted.
+   */
+  public get simulationFailure(): string | undefined {
+    for (const program of this.driver.programs) {
+      const failure = program.failure;
+      if (failure !== undefined) {
+        return failure;
+      }
+    }
+    return undefined;
+  }
+
+  /** @internal The raw WebGL programs its simulation runs, building or built. */
+  public get simulationPrograms(): readonly FXLinkedProgram[] {
+    return this.driver.programs;
+  }
+
   // The active driver's own mesh - a thin passthrough, not a second source of truth (this.driver.mesh
   // is authoritative; nothing caches or duplicates it here).
   private get mesh(): Mesh {
@@ -322,11 +343,10 @@ export class FXEmitter extends Object3D {
 
     const draw = particleDrawOf(options.particles, options.textures, geometries);
 
-    // The one place this emitter's backend is chosen, ever (never switched mid-playback). A real
-    // driver-level failure (program link, buffer/VAO setup) despite "Try GPU simulation" having
-    // compiled and the live render tier already being "standard" falls back to the mandatory JS
-    // artifact in place, no reload loop, matching the editor's sceneCoordinator.ts own forced-
-    // WebGL1-creation-failure fallback shape on the render side.
+    // The one place this emitter's backend is chosen, ever (never switched mid-playback). A GPU
+    // that cannot hold the kernel (its slot, texture units or resources) falls back to the
+    // mandatory JS artifact in place. A program the driver rejects is known only once it has
+    // built, after this choice: that simulation then runs no pass (see simulationFailure).
     let driver: FXEmitterDriver | undefined;
     if (options.gpuKernel !== undefined && options.renderer !== undefined) {
       try {

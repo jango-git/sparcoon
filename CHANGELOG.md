@@ -5,6 +5,32 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## 0.24.0 - 2026-11-19
+
+### Added
+
+- `FXEffect.simulationReady()` waits for the programs of the effect's GPU simulation, leaving three's
+  draw programs to the game's own compiling. `FXEmitter.simulationFailure` holds the driver's log
+  for one it rejected.
+- In `sparcoon/editor`, `fxPrepareKernel(renderer, kernel)` sends a GPU kernel's program off to
+  build before an emitter is built from it, and tells when the build has ended.
+
+### Changed
+
+- Re-export every effect. An effect exported for 0.23 plays as before, but warns in development
+  that it was built for another version.
+- `FXEffect.compile()` also waits for the programs of the GPU simulation.
+- A GPU simulation program the driver fails to compile or link no longer sends the emitter to the
+  CPU simulation. The failure is logged on the emitter's first simulation step or while
+  `compile()` or `simulationReady()` waits, and the emitter spawns no particles. A rejected sort program leaves the particles unsorted. An
+  emitter still simulates on the CPU when the GPU cannot hold its kernel.
+
+### Performance
+
+- Creating an effect no longer waits for the programs of its GPU simulation and sort to compile and
+  link. They build in the background, and the first simulation step waits only for one that has not
+  finished. With `KHR_parallel_shader_compile`, `compile()` waits for them without stalling.
+
 ## 0.23.0 - 2026-11-18
 
 ### Added

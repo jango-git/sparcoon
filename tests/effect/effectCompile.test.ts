@@ -1,8 +1,10 @@
 import { PerspectiveCamera, Scene, type WebGLRenderer } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { FXParticleKernelArtifact } from "../../src/artifact/FXArtifact";
 import { FXWorld } from "../../src/world/FXWorld";
 import { effectSpec, emitterSpec, TestEffect } from "../helpers/effectSpecs";
+import { callsNamed, type MockRenderer, mockRenderer } from "../helpers/mockWebGL";
 
 const camera = new PerspectiveCamera();
 
@@ -21,7 +23,78 @@ function effect(): TestEffect {
   return new TestEffect(effectSpec({ emitters: [emitterSpec("sparks")] }), { world });
 }
 
+const KERNEL: FXParticleKernelArtifact = {
+  vertexSource: "#version 300 es\nvoid main(){}",
+  fragmentSource: "#version 300 es\nvoid main(){}",
+  buffers: [
+    { name: "position", stride: 3 },
+    { name: "lifecycle", stride: 3 },
+  ],
+  transformFeedbackVaryings: ["out_position", "out_lifecycle"],
+  bindings: {},
+};
+
+/** An effect simulating one emitter on the GPU of `mock`. */
+function gpuEffect(mock: MockRenderer): TestEffect {
+  const world = new FXWorld();
+  worlds.push(world);
+  const target = new TestEffect(
+    effectSpec({ emitters: [emitterSpec("sparks", { gpuBehavior: KERNEL })] }),
+    { world, renderer: mock.renderer },
+  );
+  expect(target.getEmitter("sparks")?.simulationPrograms).toHaveLength(1);
+  return target;
+}
+
 describe("FXEffect.compile", () => {
+  it("waits for the GPU simulation's build as well as for three's programs", async () => {
+    vi.useFakeTimers();
+    try {
+      const mock = mockRenderer({ parallelShaderCompile: true });
+      const target = gpuEffect(mock);
+      let done = false;
+      void target
+        .compile(
+          {
+            isWebGLRenderer: true,
+            compileAsync: () => Promise.resolve(),
+          } as unknown as WebGLRenderer,
+          camera,
+        )
+        .then(() => {
+          done = true;
+        });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(done).toBe(false);
+      mock.gl.finishBuilds();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(done).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sends the GPU simulation off to build when the effect is created, without waiting for it", () => {
+    const mock = mockRenderer({ parallelShaderCompile: true });
+    gpuEffect(mock);
+    expect(callsNamed(mock.gl, "linkProgram")).toHaveLength(1);
+    expect(callsNamed(mock.gl, "getProgramParameter")).toEqual([]);
+    expect(callsNamed(mock.gl, "getUniformLocation")).toEqual([]);
+  });
+
+  it("without KHR_parallel_shader_compile, simulationReady waits for the build in a timer, not in the call", async () => {
+    const mock = mockRenderer();
+    const target = gpuEffect(mock);
+    const ready = target.simulationReady();
+    expect(callsNamed(mock.gl, "getProgramParameter")).toEqual([]);
+    await ready;
+    expect(callsNamed(mock.gl, "getProgramParameter").length).toBeGreaterThan(0);
+  });
+
+  it("resolves simulationReady at once for an effect simulated on the CPU", async () => {
+    await effect().simulationReady();
+  });
+
   it("awaits compileAsync for the effect alone, lit by the given scene", async () => {
     let finish = (): void => undefined;
     const compileAsync = vi.fn(
