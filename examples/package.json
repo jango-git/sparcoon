@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "sparcoon": "0.24.0",
+    "sparcoon": "0.25.1",
     "three": "^0.157.0"
   },
   "devDependencies": {
