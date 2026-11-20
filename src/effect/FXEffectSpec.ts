@@ -13,15 +13,12 @@ import type { FXWorld } from "../world/FXWorld.js";
 import type { FXSpawnAction } from "./FXSpawnAction.js";
 
 /**
- * Data shapes for {@link FXEffect}: a whole exported project (every emitter + VFX mesh, its
- * timeline and transforms) as plain, JSON-serializable data. The editor emits an `FXEffectSpec`
- * literal into every project module; this file plus {@link FXEffect} is the runtime that plays it
- * back, so the editor no longer needs to emit this scaffolding itself.
+ * Plain JSON-serializable data for {@link FXEffect}: a whole exported project (emitters, VFX
+ * meshes, timeline, transforms). The editor emits an `FXEffectSpec` literal into every project
+ * module.
  *
- * Everything here is `readonly` so it structurally matches the editor's own `Transform` /
- * `TransformTrack` / `AnimationTrack` model types - the editor's richer `Keyframe` (which also
- * carries a UI-only `id`) is a valid `FXKeyframe` too, so the sampling functions in
- * {@link FXEffectSampling.Internal.ts} serve both.
+ * Everything is `readonly` so the editor's own track and transform types match structurally, and
+ * the sampling functions in {@link FXEffectSampling.Internal.ts} serve both.
  */
 
 export type FXVec3 = readonly [number, number, number];
@@ -87,14 +84,9 @@ export interface FXEffectEmitterSpec {
   readonly render?: FXRenderArtifactsByGLSLTier;
   readonly behavior: FXBehaviorArtifact;
   /**
-   * The standard-tier (WebGL2, transform-feedback) behavior artifact - present only when this
-   * emitter's spawn node had "Try GPU simulation" on and the graph compiled to GLSL. `behavior`
-   * above is always present regardless - the mandatory JS fallback, including for the
-   * WebGL2->WebGL1 emergency downgrade - so a spec is never left with only this field and no JS
-   * twin. {@link FXEffect} passes this to
-   * `FXEmitter.fromArtifacts` only when the live renderer actually negotiated WebGL2 (the same
-   * `isWebGL2` signal that already picks `render`'s "standard" tier); the runtime decides for
-   * itself whether GPU setup then actually succeeds, falling back to `behavior` in place if not.
+   * The GPU (WebGL2, transform-feedback) behavior artifact, present only when the spawn node had
+   * "Try GPU simulation" on and the graph compiled to GLSL. `behavior` is always present as the JS
+   * fallback. {@link FXEffect} passes this on only when the renderer negotiated WebGL2.
    */
   readonly gpuBehavior?: FXParticleKernelArtifact;
   readonly expectedCapacity: number;
@@ -109,9 +101,9 @@ export interface FXEffectEmitterSpec {
   readonly trail?: FXEffectTrailSpec;
   /** A ribbon through the particles (the emitter's ribbon graph), as {@link trail} for a trail. */
   readonly ribbon?: FXEffectRibbonSpec;
-  /** Casts a shape-aware shadow; omitted (treated as false) by pre-shadow exports. */
+  /** Casts a shape-aware shadow. Absent means false. */
   readonly castShadow?: boolean;
-  /** Receives shadows; omitted (treated as false) by pre-shadow exports. */
+  /** Receives shadows. Absent means false. */
   readonly receiveShadow?: boolean;
   /**
    * The external texture slots this emitter binds from the effect's `assets` - those of its render
@@ -177,8 +169,8 @@ export interface FXEffectSpec {
   readonly duration: number;
   readonly fps: number;
   /**
-   * Whether the timeline loops (the default, and what a module exported before this field existed
-   * does) or plays once and holds its last frame. `FXEffect.play` can override it per playback.
+   * Whether the timeline loops (default) or plays once and holds its last frame. `FXEffect.play`
+   * can override it per playback.
    */
   readonly loop?: boolean;
   readonly transform: FXTransform;
@@ -228,9 +220,9 @@ export interface FXEffectOptions {
    */
   readonly world?: FXWorld;
   /**
-   * The renderer this effect will draw through: `renderer.capabilities.isWebGL2` picks each
-   * emitter/mesh's `"standard"` or `"baseline"` artifact (see {@link FXRenderArtifactsByGLSLTier}).
-   * Omit to get the `"baseline"` artifact unconditionally (the pre-split behavior).
+   * The renderer the effect draws through. `renderer.capabilities.isWebGL2` picks each emitter's
+   * and mesh's `"standard"` or `"baseline"` artifact (see {@link FXRenderArtifactsByGLSLTier}).
+   * Without it the `"baseline"` artifact is used.
    */
   readonly renderer?: WebGLRenderer;
 }

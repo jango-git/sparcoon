@@ -7,15 +7,14 @@ import type { FXTrailOptions } from "../trail/FXTrail.js";
 import type { FXEmitterOptions } from "./FXEmitter.Internal.js";
 
 /**
- * Options for {@link FXEmitter.fromArtifacts}: the emitter options plus external textures by slot -
- * a uniform declared `{ type: "sampler2D", external: "<slot>" }` binds from `textures[<slot>]` (a
- * whole `Texture`, or a {@link FXTextureRegion} of one) -
- * and custom geometries by name, resolving a `{ type: "custom", external: "<name>" }` geometry
- * source from `geometries[<name>]` and every mesh surface the behavior samples (`meshSurfaces`,
- * required - a missing one throws), and 3D textures by name for every volume the behavior samples
- * (`volumes`, required likewise). The app owns these maps' lifecycle. The runtime never disposes
- * them. A surface or volume is read from its asset when the emitter is built. An asset changed
- * since is read anew by the next emitter built from it.
+ * Options for {@link FXEmitter.fromArtifacts}: the emitter options plus the app's assets.
+ *
+ * `textures` binds `{ type: "sampler2D", external }` uniforms (a `Texture` or a {@link
+ * FXTextureRegion}). `geometries` resolves custom geometry sources and every mesh surface the
+ * behavior samples (`meshSurfaces`, required, a missing one throws). `volumes` holds the 3D
+ * textures it samples (required likewise). A surface or volume is read from its asset when the
+ * emitter is built, so a later change reaches the next emitter built from it. The app owns all of
+ * these and the runtime never disposes them.
  */
 export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
   /**
@@ -34,11 +33,9 @@ export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
    */
   readonly volumes?: Record<string, Data3DTexture>;
   /**
-   * The standard-tier (WebGL2, transform-feedback) behavior artifact, present only when the
-   * graph's spawn node had "Try GPU simulation" on and the graph compiled to GLSL. `renderer` is
-   * required alongside it - without one, or if GPU program setup itself throws (a real
-   * driver-level failure), the emitter falls back to the mandatory JS `behavior` artifact in
-   * place, never a hard error. `expectedCapacity` is the same fixed ring capacity either way.
+   * The GPU (WebGL2, transform-feedback) behavior artifact. Needs `renderer`. Without one, or if
+   * GPU setup throws, the emitter runs the JS `behavior` instead. `expectedCapacity` is the same
+   * ring capacity either way.
    */
   readonly gpuKernel?: FXParticleKernelArtifact;
   readonly renderer?: WebGLRenderer;

@@ -249,18 +249,13 @@ function checkRendererOnFirstDraw(effect: Object3D): void {
 }
 
 /**
- * Runtime for a whole exported Sparcoon project: a `Group` that builds every emitter + VFX mesh
- * from precompiled artifacts and drives the shared timeline. Add it to your scene, call `play()`,
- * and `update(deltaSeconds)` each frame. Lit graphs read the scene's lights, so a lit effect needs
- * a light probe + directional light in the host scene (studio lighting is not part of the export).
- * An editor-emitted module supplies only the data (`FXEffectSpec` + a scene name) and a thin named
- * subclass; this base class is identical for every export.
+ * A `Group` that builds every emitter and VFX mesh of an exported project and drives the shared
+ * timeline. Add it to the scene, call `play()` and `update(deltaSeconds)`. A lit effect needs a
+ * light probe and a directional light in the host scene.
  *
- * The timeline drive mirrors the editor's own transport: burst/play events fire across the
- * continuous swept interval, and while playing, transform tracks are sampled at the continuous time
- * too - a pose that held still between two frames would read as no motion on every tick between
- * them, and as a jump on the next, to anything reading the object's velocity. Value tracks are
- * frame-stepped onto the `fps` grid.
+ * Burst and play events fire across the swept interval, and transform tracks are sampled at
+ * continuous time while playing, so a pose that held still between two frames does not read as no
+ * motion and then a jump. Value tracks are stepped onto the `fps` grid.
  */
 export abstract class FXEffect extends Group<FXEffectEventMap> {
   private readonly specification: FXEffectSpec;
@@ -317,10 +312,8 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     // Checked before anything is built: a throw past here would leave emitters registered in
     // the world with no effect to dispose them.
     const eventSources = reactionSources(specification);
-    // Only offered on an actual WebGL2 negotiation - the same `isWebGL2` signal picking the
-    // "standard" render tier below. FXEmitter itself decides whether GPU setup then actually
-    // succeeds, falling back to `behavior` in place if not - this effect never needs to know which
-    // one ends up driving a given emitter.
+    // The GPU behavior is offered only on WebGL2. FXEmitter decides whether GPU setup succeeds and
+    // falls back to `behavior` if not.
     const gpuKernels = specification.emitters.map((emitterSpec, index) =>
       isWebGL2 && !eventSources.has(index) ? emitterSpec.gpuBehavior : undefined,
     );
@@ -479,10 +472,8 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     this.meshClock += simulationDelta;
     for (let i = 0; i < this.meshes.length; i += 1) {
       const mesh = this.meshes[i];
-      // World-space velocity/angular velocity since the previous frame, from the mesh's own
-      // matrixWorld (posed by `advance()` -> `poseAt()` above, or by a host live-driving it
-      // directly through `getMesh()`) - never from PARTICLE_POSITION-style local state, since a
-      // mesh is a single non-instanced object with no such thing.
+      // World-space velocity and angular velocity since the previous frame, from the mesh's
+      // `matrixWorld`.
       this.meshMaterials[i].advance(
         fillObjectDrawFrame(
           this.meshDrawFrame,
@@ -641,10 +632,8 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     this.lastFrame = -1;
     this.ended = false;
     this.drained = false;
-    // meshClock is deliberately NOT reset: a mesh's time-driven shader runs on monotonic sim time,
-    // decoupled from the timeline playhead, so a replay does not snap its phase back. The motion
-    // trackers ARE reset - unlike meshClock's phase, a restarted effect should not report a
-    // teleport-spike velocity from wherever a mesh was last posed.
+    // meshClock is not reset: a mesh's shader runs on monotonic time, so a replay does not jump its
+    // phase. The motion trackers are reset, so a restart reports no velocity spike.
     for (const emitter of this.emitters) {
       emitter.stop();
       emitter.reset();

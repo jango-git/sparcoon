@@ -71,7 +71,6 @@ export interface FXEmitterSort {
   fraction: number;
 }
 
-/** {@link FXEmitterOptions.sort}. */
 export interface FXEmitterSortOptions {
   /** default 0.1 */
   readonly fraction?: number;

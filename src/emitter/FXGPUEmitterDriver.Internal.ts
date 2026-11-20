@@ -25,17 +25,13 @@ import type { FXLinkedProgram } from "./FXLinkedProgram.Internal.js";
 import { FXTransformFeedbackSimulationHolder } from "./FXTransformFeedbackSimulationHolder.js";
 
 /**
- * @internal The GPU (WebGL2 transform-feedback) particle-simulation backend: a fixed-capacity
- * `FXTransformFeedbackParticle` mesh driven by a precompiled `FXParticleKernelArtifact` through
- * `FXTransformFeedbackSimulationHolder`. Self-sufficient from its own artifact - its fields are the
- * slot `gpu.kernel.buffers` lays out, never a JS behavior artifact's `buffers`; a field only the
- * render reads is a zero constant in the shader, not a buffer (see `particleLayout`).
+ * @internal The GPU backend: a ring `FXTransformFeedbackParticle` driven by
+ * `FXTransformFeedbackSimulationHolder`. Its slot is `gpu.kernel.buffers`. A field only the render
+ * reads is a zero constant in the shader, not a buffer (see `particleLayout`).
  *
- * No dead-particle compaction: every particle slot is always drawn at the fixed `capacity`, and
- * `particleCount`/`particleCapacity` both report that capacity rather than an exact live count,
- * which there is no cheap way to know. Sorted (`sorted`), the slots never move either: the
- * material draws them in the order a {@link FXGPUParticleOrder} keeps, reading them from its
- * textures instead of from attributes.
+ * Every slot is always drawn and processed, so `particleCount` and `particleCapacity` both report
+ * the capacity. When sorted, slots do not move and the material reads them in the order {@link
+ * FXGPUParticleOrder} keeps, from textures instead of attributes.
  */
 export class FXGPUEmitterDriver implements FXEmitterDriver {
   public readonly mesh: FXTransformFeedbackParticle;
@@ -114,9 +110,7 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     return undefined;
   }
 
-  // A fused transform-feedback program always has a spawn branch - assembleTransformFeedbackProgram
-  // (the editor's assembler) refuses to build one without it, so a constructed FXParticleKernelArtifact
-  // is this guarantee already checked, not something to re-derive here.
+  // The fused program always has a spawn branch (the editor's assembler requires it).
   public get canSpawn(): boolean {
     return true;
   }

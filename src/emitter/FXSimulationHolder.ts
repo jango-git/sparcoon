@@ -9,10 +9,9 @@ import { particleSlotLayout } from "../instancedParticle/FXParticleSlot.js";
 import type { FXKernelResources } from "./FXKernelResources.Internal.js";
 
 /**
- * @internal The runtime's JS (CPU) behavior driver - the GPU sibling is
- * `FXTransformFeedbackSimulationHolder`. Holds a precompiled {@link FXBehaviorArtifact} and just
- * calls its `spawn`/`update` each tick (no graph, compiler, or `new Function`). It passes its own
- * bindings (seeded from the artifact's) on every call, so a value scrub is read next tick.
+ * @internal The JS (CPU) behavior driver, sibling of `FXTransformFeedbackSimulationHolder`. Calls
+ * the artifact's `spawn`/`update` each tick with its own bindings, so a value change is read on the
+ * next tick.
  */
 export class FXSimulationHolder {
   /** The particle slot the artifact's kernels index, by the mesh's property keys. */
@@ -20,6 +19,9 @@ export class FXSimulationHolder {
 
   // This emitter's own live bindings - never the shared artifact's.
   private readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
+
+  /** The kernels' `seed`: a new one every update, counted from 0 so that runs repeat. */
+  private seed = 0;
 
   /** `resources` are the tables of the artifact's mesh surfaces and volumes, by binding. */
   constructor(
@@ -45,7 +47,7 @@ export class FXSimulationHolder {
     emitter: FXEmitterTransform,
     inherited: Float32Array,
   ): void {
-    this.artifact.spawn?.(slots, begin, count, this.bindings, emitter, inherited);
+    this.artifact.spawn?.(slots, begin, count, this.seed, this.bindings, emitter, inherited);
   }
 
   public update(
@@ -54,12 +56,14 @@ export class FXSimulationHolder {
     deltaTime: number,
     emitter?: FXEmitterTransform,
   ): void {
-    this.artifact.update(slots, count, deltaTime, this.bindings, emitter);
+    this.seed = (this.seed + 1) >>> 0;
+    this.artifact.update(slots, count, deltaTime, this.seed, this.bindings, emitter);
   }
 
-  /** Behavior half of {@link FXEmitter.applyValues}: mutate each named slot in place; unknown name
-   *  = no-op. Mirrored by `FXTransformFeedbackSimulationHolder.applyBindingValues` for the GPU
-   *  tier - `FXEmitter.applyValues` scrubs both, since either backend may be the active one. */
+  /**
+   * Sets each named slot in place. An unknown name is ignored. The GPU twin is
+   * `FXTransformFeedbackSimulationHolder.applyBindingValues`.
+   */
   public applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void {
     for (const name in values) {
       // A resource is the app's asset, not a value.

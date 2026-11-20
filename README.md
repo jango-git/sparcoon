@@ -6,6 +6,7 @@ an ES module with ready shaders and simulation code, and the runtime draws the p
 the timeline.
 
 **[Editor](https://jango-git.github.io/sparcoon-editor/)** -
+**[Examples](https://jango-git.github.io/sparcoon/)** -
 [Editor source](https://github.com/jango-git/sparcoon-editor) -
 [npm](https://www.npmjs.com/package/sparcoon)
 
@@ -35,7 +36,8 @@ Every effect above is an editor preset. To open one, press `Ctrl+Space`, pick it
 screen and press **Load**.
 
 > **0.x.** The export format still changes, so an effect plays only on the runtime minor version it
-> was exported for. After updating the runtime, export your effects again.
+> was exported for. After updating the runtime, export your effects again. The editor opens projects
+> from every earlier version.
 
 ## Features
 
@@ -64,7 +66,9 @@ screen and press **Load**.
   the CPU otherwise. three dropped WebGL1 in 0.163, so a WebGL1 device needs three 0.157-0.162.
 - `WebGPURenderer` is not supported. An effect given one, or drawn by one, throws an error. If the
   bundler maps `three` to `three/webgpu`, the import of sparcoon fails, because that build has no
-  `UniformsLib`.
+  `UniformsLib`. WebGPU support will be added if users of the editor ask for it, or once mobile
+  playables no longer target WebGL1 devices. To ask for it, open an
+  [issue](https://github.com/jango-git/sparcoon/issues).
 - Neither the runtime nor the export calls `eval` or `new Function`, so effects run under a CSP that
   forbids code generation.
 - The package is unbundled, unminified ESM with types. Loading it through a `<script>` tag is not
@@ -98,6 +102,8 @@ function frame(deltaSeconds: number): void {
   renderer.render(scene, camera);
 }
 ```
+
+A whole page that plays the editor's presets this way is in [examples](examples/).
 
 `renderer` is needed to select the shader tier and for GPU simulation. Without it the effect runs on
 Baseline and the CPU. An effect with depth sorting or with collisions against the scene's depth
@@ -138,15 +144,13 @@ class Pool {
     const effect = this.idle.pop() ?? this.build();
     effect.position.copy(position);
     scene.add(effect);
-    effect.addEventListener(
-      "drained",
-      () => {
-        effect.stop();
-        effect.removeFromParent();
-        this.idle.push(effect);
-      },
-      { once: true },
-    );
+    const onDrained = (): void => {
+      effect.removeEventListener("drained", onDrained);
+      effect.stop();
+      effect.removeFromParent();
+      this.idle.push(effect);
+    };
+    effect.addEventListener("drained", onDrained);
     effect.play({ loop: false });
   }
 }

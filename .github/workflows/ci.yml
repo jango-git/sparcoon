@@ -25,3 +25,5 @@ jobs:
       - run: npx tsc --noEmit -p tsconfig.json
       - run: npx tsc --noEmit -p tests/tsconfig.json
       - run: npm test
+      - run: npm run build
+      - run: npx tsc -p tests/consumer/tsconfig.json

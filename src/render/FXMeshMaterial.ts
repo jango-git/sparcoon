@@ -14,11 +14,8 @@ import { createExternalTextureBindings } from "./FXExternalTexture.Internal.js";
 import type { FXExternalTexture, FXUniformValue } from "./FXExternalTexture.js";
 
 /**
- * Runtime material driver for a **VFX mesh**: the mesh twin of {@link FXArtifactMaterial}. Wraps a
- * precompiled {@link FXRenderArtifact} (compiled against the mesh render target) and builds a
- * self-contained `ShaderMaterial` for a single, non-instanced `THREE.Mesh`. Unlike the particle
- * driver it takes no per-particle `varyings` - a VFX mesh has no simulation and no attributes. The
- * host builds the material once and pushes the shared clock each frame.
+ * Material driver of a VFX mesh, the twin of {@link FXArtifactMaterial}. Builds a `ShaderMaterial`
+ * from a render artifact for a non-instanced `THREE.Mesh`. Takes no per-particle varyings.
  */
 export class FXMeshMaterial {
   // This mesh's own live slots, bound by reference into both of its materials.

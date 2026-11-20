@@ -35,22 +35,16 @@ import type { FXLinkedProgram } from "./FXLinkedProgram.Internal.js";
 import { FXSimulationHolder } from "./FXSimulationHolder.js";
 
 /**
- * @internal The CPU (JS) particle-simulation backend: a fixed-capacity ring `FXInstancedParticle`
- * mesh driven by a precompiled `FXBehaviorArtifact` through `FXSimulationHolder`. Self-sufficient
- * from its own artifact - its slot is `behavior.buffers` alone, never a GPU kernel artifact's
- * (though the editor declares both alike); a field only the render reads is a zero constant in the
- * shader, not a buffer (see `particleLayout`).
+ * @internal The JS backend: a ring `FXInstancedParticle` driven by `FXSimulationHolder`. Its slot
+ * is `behavior.buffers` alone. A field only the render reads is a zero constant in the shader, not
+ * a buffer (see `particleLayout`).
  *
- * Kept step-for-step with the GPU backend's fused pass, so an emitter looks the same on either:
- * each tick first updates every slot that existed before it, reading its age as of the previous
- * tick, then ages it - and only then do the tick's births land, seeded but not updated until the
- * next tick. A birth overwrites the slot at the cursor whether it is live or not, on both backends.
+ * Kept step for step with the GPU pass: each tick updates the slots that existed before it, then
+ * ages them, then seeds the tick's births, which are not updated until the next tick. A birth
+ * overwrites the slot at the cursor whether it is live or not.
  *
- * While no particle is alive (after the last one died, until the next birth), a tick skips the
- * update, the aging and every upload: every slot is dead - and stays dead, its age frozen at or
- * past its lifetime - so none of it would change anything drawn (the mesh draws no instance then,
- * see `FXInstancedParticle.instanceCount`). The drawn range itself is kept (a trail's history
- * relies on it never shrinking, see `FXCPUTrailHistory`).
+ * While no particle is alive a tick skips update, aging and uploads, and keeps the drawn range (a
+ * trail's history relies on it never shrinking, see `FXCPUTrailHistory`).
  */
 export class FXJSEmitterDriver implements FXEmitterDriver {
   public readonly mesh: FXInstancedParticle;
@@ -144,17 +138,10 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     inherited: Float32Array,
     ages?: FXBirthAges,
   ): void {
-    // Host-owned, like age: no write slot exists for id (the editor's FXParticleBehaviorTarget.ts
-    // scalarWriteSlots never lists it), so no graph can ever collide with this assignment.
-    //
-    // Every birth asked for takes an id, seeded or not - a burst larger than the ring seeds only
-    // `capacity` slots, `firstId + 0..capacity-1` in claim order, yet consumes `count` ids - exactly
-    // as the GPU kernel numbers a spawn range (`u_fxSpawnIdBase + relative index`, the base then
-    // advanced by the whole count), so the two backends hand out the same ids, both modulo
-    // FX_PARTICLE_ID_RANGE.
-    //
-    // Age is host-owned too, and written before the spawn kernel runs: the kernel places a birth
-    // by it (the emitter's pose that long ago), as the GPU kernel places it by the age it seeds.
+    // The id and age are set here, not by the graph. Every requested birth takes an id, seeded or
+    // not, so a burst larger than the ring consumes `count` ids, as on the GPU (`u_fxSpawnIdBase`
+    // plus the relative index, both modulo FX_PARTICLE_ID_RANGE). The age is written before the
+    // spawn kernel runs because the kernel places the newborn by it.
     const { slots } = this.mesh;
     const { stride } = this.mesh.slot;
     const idOffset = this.mesh.core.lifecycle + FX_ID;

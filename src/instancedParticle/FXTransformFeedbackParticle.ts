@@ -10,15 +10,13 @@ import {
 import type { FXSlotLayout } from "./FXParticleSlot.js";
 
 /**
- * @internal One packed view of the interleaved slot, as three's renderer reads it: per instance, at
- * its own offset, with the slot as stride, straight from our raw `WebGLBuffer`. No three class does
- * that - a `GLBufferAttribute` is always bound tightly packed, and an `InterleavedBufferAttribute`
- * needs a CPU array three uploads itself - so this duck-types both: `isGLBufferAttribute` makes
- * `WebGLAttributes` register `buffer` as is, and `isInterleavedBufferAttribute` over an
- * `isInstancedInterleavedBuffer` makes `WebGLBindingStates` bind it with `stride`/`offset` and a
- * divisor (three >= 0.187 takes `stride` only from an `isInterleavedBuffer`, else `itemSize`). Its
- * `data` is itself, because three looks the buffer up through `data` - before or after checking
- * `isGLBufferAttribute`, depending on the version; this works in either order.
+ * @internal One packed view of the interleaved slot, bound over a raw `WebGLBuffer`. Three's
+ * `GLBufferAttribute` is always tightly packed and `InterleavedBufferAttribute` needs a CPU array,
+ * so this object duck-types both: `isGLBufferAttribute` registers `buffer` as is,
+ * `isInterleavedBufferAttribute` and `isInstancedInterleavedBuffer` bind it with `stride`, `offset`
+ * and a divisor (three >= 0.187 takes `stride` only from an `isInterleavedBuffer`, else
+ * `itemSize`). `data` is the attribute itself because three looks the buffer up through `data`,
+ * before or after checking `isGLBufferAttribute` depending on the version.
  */
 export class FXInterleavedGLAttribute {
   public readonly isGLBufferAttribute = true;
@@ -49,18 +47,15 @@ export class FXInterleavedGLAttribute {
 }
 
 /**
- * @internal GPU-resident sibling of `FXInstancedParticle`: the same instanced-mesh shape (one base
- * primitive drawn `capacity` times), but its state lives in one **ping-pong pair** of raw
- * `WebGLBuffer`s that the transform-feedback simulation holder writes directly, each particle one
- * interleaved slot of {@link FXSlotLayout} - never a `Float32Array` three uploads itself. The render
- * reads the slot through the views its layout packs (`FXParticleLayout.packed`), several fields per
- * attribute. A field the kernel does not write (an attribute only the render graph reads) has no
- * buffer here at all: the material declares it as the constant zero (`FXParticleLayout.missing`).
+ * @internal GPU sibling of `FXInstancedParticle`: the same fixed-capacity ring, but the state lives
+ * in a ping-pong pair of `WebGLBuffer`s written by the transform-feedback holder, each particle one
+ * interleaved slot of {@link FXSlotLayout}. The render reads the slot through the views its layout
+ * packs (`FXParticleLayout.packed`). A field the kernel does not write has no buffer: the material
+ * declares it as a zero constant (`FXParticleLayout.missing`).
  *
- * Capacity is fixed at construction, no growth - the same ring as `FXInstancedParticle`.
- * Once a birth is seeded every slot is drawn (`instanceCount` is `capacity`) - the CPU never knows
- * the true live count for a GPU-driven emitter, so dead slots are hidden by the render shader's
- * own age/lifetime test. Before the first birth, and after {@link drop}, nothing is drawn.
+ * Once a birth is seeded every slot is drawn (`instanceCount` is `capacity`) and the render
+ * shader's age test hides dead ones. Before the first birth, and after {@link drop}, nothing is
+ * drawn.
  */
 export class FXTransformFeedbackParticle extends Mesh {
   public readonly capacity: number;

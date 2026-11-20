@@ -414,9 +414,9 @@ function budgetParticleTextures(): FXParticleTextures {
 }
 
 /**
- * @internal What a built trail or ribbon material takes, counted as {@link fxStripRenderBudget} and
- * {@link fxStripRenderBudget} count it - so a strip's own check against the device and the
- * editor's budget can never disagree.
+ * @internal What a built trail or ribbon material takes, counted as {@link fxEmitterRenderBudget}
+ * and {@link fxStripRenderBudget} count it, so a strip's own check against the device and the
+ * editor's budget agree.
  */
 export function stripMaterialBudget(material: ShaderMaterial, alphaHash: boolean): FXRenderBudget {
   return materialBudget(material, alphaHash, 1);

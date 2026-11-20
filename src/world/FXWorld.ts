@@ -19,21 +19,12 @@ export interface FXWorldObject {
 }
 
 /**
- * The tick domain that drives effects and their renderables. A world owns a registry of effects, a
- * pool of world objects (emitters and meshes), and a single monotonic clock; one
- * {@link FXWorld.update} call per frame advances every playing effect's timeline, then ticks every
- * registered emitter and mesh exactly once with the shared clock.
+ * The tick domain of effects and their emitters and meshes: one {@link FXWorld.update} per frame
+ * advances every playing timeline, then ticks every registered object once with the shared clock.
+ * Effects and objects join a world on construction and leave on disposal.
  *
- * An {@link FXEffect} (and each standalone emitter/mesh it or the editor builds) subscribes to a
- * world on construction and unsubscribes on disposal - the host never wires that up by hand. Pass a
- * world through `FXEffectOptions.world` to place an effect in a specific world; omit it and it joins
- * the lazily created default world, which the static {@link FXWorld.update} ticks.
- *
- * A world is only a tick/clock domain, NOT a scene graph: a renderable is still a `THREE.Object3D`
- * you add to your own scene. Two worlds give two independent clocks (for an independent time scale or
- * an isolated group); within one world every effect shares the clock and one delta per frame, so
- * {@link FXEffect.stop} clears rather than freezes - freeze one effect independently by giving it its
- * own world.
+ * A world is a clock domain, not a scene graph: add renderables to your own scene. Two worlds have
+ * two clocks, so an effect that must freeze on its own needs its own world.
  */
 export class FXWorld {
   private static defaultInstance: FXWorld | undefined;
@@ -92,9 +83,9 @@ export class FXWorld {
   }
 
   /**
-   * Disposes every effect registered in this world (each frees its emitters and mesh resources),
-   * then drops any remaining objects. Idempotent. After this the world's {@link update} is a no-op;
-   * disposing the default world simply makes the next {@link getDefault} create a fresh one.
+   * Disposes every effect in this world, then drops the remaining objects. Idempotent. After this
+   * {@link update} is a no-op, and disposing the default world makes the next {@link getDefault}
+   * create a new one.
    */
   public dispose(): void {
     if (this.disposed) {
@@ -115,12 +106,12 @@ export class FXWorld {
     }
   }
 
-  /** @internal Called by {@link FXEffect}'s constructor. */
+  /** @internal */
   public registerEffect(effect: FXEffect): void {
     this.effects.push(effect);
   }
 
-  /** @internal Called by {@link FXEffect.dispose}. */
+  /** @internal */
   public unregisterEffect(effect: FXEffect): void {
     const index = this.effects.indexOf(effect);
     if (index !== -1) {
@@ -128,12 +119,12 @@ export class FXWorld {
     }
   }
 
-  /** @internal Called by an emitter's or mesh's constructor. */
+  /** @internal */
   public registerObject(object: FXWorldObject): void {
     this.objects.push(object);
   }
 
-  /** @internal Called on an emitter's or mesh's destroy. */
+  /** @internal */
   public unregisterObject(object: FXWorldObject): void {
     const index = this.objects.indexOf(object);
     if (index !== -1) {

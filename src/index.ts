@@ -1,12 +1,12 @@
-// Public surface of the thin runtime: an editor-emitted module subclasses FXEffect, joins an
-// FXWorld, and is driven by a single FXWorld.update per frame - plus the runtime-owned types the
-// editor imports (artifact contracts and the core layout). No graph, compiler, validator, or live
-// protocol lives here.
+// Public entry. An editor-emitted module subclasses FXEffect, joins an FXWorld and is driven by one
+// FXWorld.update per frame. Also exports the artifact contracts and the core layout the editor
+// imports.
 
 export type {
   FXAttributeDecl,
   FXBehaviorArtifact,
   FXBufferLayout,
+  FXEmitterTransform,
   FXFragmentStageSource,
   FXGeometrySource,
   FXInheritLayout,

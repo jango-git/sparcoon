@@ -405,11 +405,11 @@ export function surfaceFrame(reads: FXSurfaceReads, threeNormals: boolean): FXSu
   };
 }
 
-// `#include <project_vertex>` replacement: projects `fxModelPos`, records camera distance, feeds alpha-hash.
-// World -> view via `viewMatrix` only, deliberately skipping `modelMatrix`: particle simulation
-// authors `fxModelPos` directly in world space (reference space == world by convention), so the
-// emitter's own scene transform must never re-enter here - see fxWorldMatrix for the explicit
-// opt-in a graph uses when it wants particles attached to the emitter instead.
+// `#include <project_vertex>` replacement: projects `fxModelPos`, records camera distance, feeds
+// alpha-hash.
+//
+// World to view through `viewMatrix` only, without `modelMatrix`: `fxModelPos` is authored in world
+// space, so the emitter's scene transform must not apply (a graph opts in with fxWorldMatrix).
 function projectFromModelPos(): string {
   return [
     "vec4 mvPosition = viewMatrix * vec4(fxModelPos, 1.0);",
@@ -708,13 +708,13 @@ export function colorMaterial(options: {
   return material;
 }
 
-// Builds an unlit artifact as a self-contained ShaderMaterial: fog uniforms/defines come from Three
-// (`fog: true`), the tone-mapping + output-colorspace functions from Three's fragment prefix; the rest
-// is ours. The fragment tail mirrors MeshBasic (`opaque_fragment` -> tonemapping -> colorspace -> fog
-// -> premultiply) by reusing those exact ShaderChunks, so pixels match the former onBeforeCompile splice.
-// Deliberately dropped vs MeshBasic: clipping planes, logarithmic depth, dithering (unused by particles).
+// Unlit material. Fog comes from three's `fog: true`, tone mapping and output color space from
+// three's fragment prefix. The fragment tail reuses the MeshBasic chunks (opaque_fragment,
+// tonemapping, colorspace, fog, premultiply). Clipping planes, logarithmic depth and dithering are
+// not supported.
+//
 // The surface frame is built for what the fragment reads (see surfaceFrame), so the
-// `geometryNormal` builtin - fresnel, rim, normal masks - works with no lighting node present.
+// `geometryNormal` builtin (fresnel, rim, normal masks) works with no lighting node present.
 export function buildUnlitArtifactMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
@@ -766,8 +766,8 @@ export function buildUnlitArtifactMaterial(
     "}",
   ].join("\n");
 
-  // `opaque_fragment` below forces alpha to 1 when the material is opaque (the hash case,
-  // `transparent: false`), exactly as MeshBasic did.
+  // `opaque_fragment` forces alpha to 1 for an opaque material (the alpha-hash case, `transparent:
+  // false`).
   const fragmentShader = [
     FX_FRAGMENT_MODEL_MATRIX,
     FX_CORE_PARTICLE_DEFINES,
@@ -934,10 +934,8 @@ function buildLitArtifactMaterial(
   });
 }
 
-// Single entry point the material driver calls: the render artifact's lighting capability
-// ({@link FXRenderArtifact.lightingIntrinsics}) picks the variant. Empty => unlit (flat albedo, no
-// light infrastructure); non-empty => the lit variant, which defines the listed intrinsics and lights up
-// Three's infrastructure. There is no per-model dispatch - the shading lives in the graph.
+// Entry point: a non-empty `lightingIntrinsics` selects the lit variant, an empty one the unlit
+// variant.
 export function buildArtifactMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
@@ -947,11 +945,9 @@ export function buildArtifactMaterial(
   return build(render, layout, slots);
 }
 
-// VFX-mesh material path: a single, non-instanced mesh (compiled against the mesh render target).
-// Everything below reuses the particle path's shared, attribute-free helpers (bindUniforms,
-// alphaDiscardLines, blendTail, materialFlags, the lighting intrinsics, the cache key) but drops the
-// three per-particle couplings: FX_CORE_PARTICLE_DEFINES, the `a_`/`p_` instanced-attribute varyings
-// (declareVaryings), and the particle-center vertex epilogue. It never touches the particle builders.
+// VFX-mesh material path. Reuses the shared helpers (bindUniforms, alphaDiscardLines, blendTail,
+// materialFlags, lighting intrinsics, cache key) but none of the per-particle ones
+// (FX_CORE_PARTICLE_DEFINES, the `a_`/`p_` varyings, the particle-center vertex epilogue).
 
 // Mesh twin of transformPreamble with NO particle center: a mesh is one object, so its vertices
 // project straight from model space. The two optional mat4 outputs are the mesh's object-local
@@ -1199,18 +1195,16 @@ function shadowProgram(render: FXRenderArtifact, builder: string): FXRenderProgr
   return program;
 }
 
-// Depth (shadow-caster) twin of buildArtifactMaterial: the artifact's shadow program - the compiled
-// graph cut down to what decides which fragments cast (the albedo's alpha, the cutoffs) and where
-// they are - spliced into a customDepthMaterial, so a cast shadow's silhouette honors the authored
-// shape/deformation and cutout (dissolve, spherical-clip, blend-mode trim). A stock
-// MeshDepthMaterial would ignore all of that and, worse, collapse every instanced particle onto one
-// un-instanced vertex. It declares the builtins of the unlit color material's scope (the program
-// reads the same target) and ends in the RGBA depth pack. A shade intrinsic left in the program
-// (one whose shaded color feeds the alpha) resolves to its stub (`lightingStubs`), the input color
-// unshaded. No light uniforms (`lights: true`): in the shadow pass Three would bind the light's
-// shadow map - the very target being drawn - to a sampler the shade intrinsics read, a feedback
-// loop the driver answers by dropping the draw (no shadow). Fog/logdepth/clipping-planes are
-// dropped, same as the 4 color builders.
+// Shadow-caster twin of buildArtifactMaterial: the shadow program (albedo alpha, cutoffs and shape)
+// spliced into a customDepthMaterial, so the shadow silhouette follows the authored shape and
+// cutout. A stock MeshDepthMaterial would ignore them and collapse every instanced particle onto
+// one vertex. It declares the builtins of the unlit color material's scope and ends in the RGBA
+// depth pack. A shade intrinsic left in the program resolves to its stub (`lightingStubs`), the
+// input color unshaded.
+//
+// No light uniforms (`lights: true`): in the shadow pass three would bind the shadow map being
+// drawn to a sampler, a feedback loop the driver answers by dropping the draw. Fog, logarithmic
+// depth and clipping planes are not supported.
 export function buildArtifactDepthMaterial(
   render: FXRenderArtifact,
   layout: FXParticleLayout,
@@ -1309,8 +1303,9 @@ export function buildArtifactDepthMaterial(
   return material;
 }
 
-// Mesh twin of buildArtifactDepthMaterial (the mesh-path depth builder): the mesh's shadow program
-// in buildMeshUnlitArtifactMaterial's scope, ending in the depth pack. The same lighting stubs. No `varyings` - a VFX mesh has no instanced attributes.
+// Mesh twin of buildArtifactDepthMaterial: the mesh's shadow program in
+// buildMeshUnlitArtifactMaterial's scope, ending in the depth pack, with the same lighting stubs.
+// No `varyings`, a VFX mesh has no instanced attributes.
 export function buildMeshArtifactDepthMaterial(
   render: FXRenderArtifact,
   slots: FXMaterialSlots,

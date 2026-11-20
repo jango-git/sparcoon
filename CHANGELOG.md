@@ -5,6 +5,21 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## 0.25.0 - 2026-11-20
+
+### Changed
+
+- The CPU simulation repeats itself. Its random draws hash the particle's id and a seed that every
+  update advances, where an exported effect called `Math.random`. An effect played with the same
+  frame times spawns the same particles on every run, so its CPU path can be compared against
+  screenshots. The GPU simulation already did so. Export your effects again.
+
+### Fixed
+
+- `fxSetCameraDepth` accepts `null` and takes the depth away, as with `undefined`. From three r164
+  `WebGLRenderTarget.depthTexture` is typed `DepthTexture | null`, and passing it no longer fails
+  type checking.
+
 ## 0.24.0 - 2026-11-19
 
 ### Added

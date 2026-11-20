@@ -4,5 +4,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["**/*.ts", "../scripts/**/*.ts"]
+  "include": ["**/*.ts", "../scripts/**/*.ts"],
+  "exclude": ["consumer"]
 }

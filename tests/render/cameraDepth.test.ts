@@ -135,6 +135,12 @@ describe("camera depth", () => {
     draw(material, rendererInto(null), camera);
     expect(depthUniforms(material).frame[2]).toBe(0);
     expect(depthUniforms(material).texture).toBeNull();
+
+    fxSetCameraDepth(camera, new DepthTexture(1, 1));
+    fxSetCameraDepth(camera, null);
+    draw(material, rendererInto(null), camera);
+    expect(depthUniforms(material).frame[2]).toBe(0);
+    expect(depthUniforms(material).texture).toBeNull();
   });
 
   it("draws hard into the target that owns the camera's depth - its pre-pass, never a feedback loop", () => {

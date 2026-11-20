@@ -64,20 +64,15 @@ import { sampleObjectMotion } from "./FXObjectMotionSample.Internal.js";
 import { FXParticleEventChannel } from "./FXParticleEventChannel.Internal.js";
 
 /**
- * Particle emitter - one instanced billboard/mesh draw call, per-particle state driven by a
- * precompiled behavior artifact and appearance by a precompiled render artifact spliced into a
- * Three material (or none: an emitter can draw only a strip through its particles). Built and ticked by {@link FXEffect} through an {@link FXWorld}. Not exported from
- * the package (the runtime path is running artifacts, not hand-building emitters); reached only as
- * the live handle returned by {@link FXEffect.getEmitter}.
+ * A particle emitter: one instanced draw. A behavior artifact simulates the particles and a render
+ * artifact draws them (optional, an emitter may draw only a strip). Built and ticked by {@link
+ * FXEffect}, reached through {@link FXEffect.getEmitter}.
  *
- * A thin facade over one {@link FXEmitterDriver} (JS or GPU - see `FXEmitterDriver.Internal.ts`),
- * chosen once by {@link fromArtifacts} and never switched mid-playback. This class itself owns only
- * what is genuinely backend-independent: play/burst/stop/prewarm scheduling, the births queue and
- * when the driver seeds it (see {@link tick}), particle event listeners, sort-fraction timing,
- * object motion tracking and the optional render material. Its strips (a trail, a ribbon, each with
- * its own material) are an `FXEmitterStrips`. The material and each strip CAN be replaced in place,
- * by {@link applyRenderArtifact} and {@link applyStripArtifact}, without touching the driver or its
- * particle state.
+ * A facade over one {@link FXEmitterDriver}, JS or GPU, chosen once by {@link fromArtifacts}. It
+ * owns the backend-independent parts: scheduling, the births queue, event listeners, sort timing,
+ * motion tracking and the material. Its strips (a trail, a ribbon, each with its own material) are
+ * an `FXEmitterStrips`. The material and each strip can be replaced in place with {@link
+ * applyRenderArtifact} and {@link applyStripArtifact}.
  */
 export class FXEmitter extends Object3D {
   /** The camera this emitter sorts from and reads the scene depth of (see
@@ -224,8 +219,10 @@ export class FXEmitter extends Object3D {
     return this.settled && !this.hasScheduledBirths();
   }
 
-  /** Exact live count for a JS-driven emitter; for a GPU-driven one, there is no CPU-visible live
-   *  count to report - `capacity` is the honest upper bound reported instead. */
+  /**
+   * Live particle count on the JS backend. On the GPU backend the live count is not visible to the
+   * CPU, so this is `capacity`.
+   */
   public get particleCount(): number {
     return this.driver.particleCount;
   }
@@ -292,17 +289,13 @@ export class FXEmitter extends Object3D {
     return this.driver.programs;
   }
 
-  // The active driver's own mesh - a thin passthrough, not a second source of truth (this.driver.mesh
-  // is authoritative; nothing caches or duplicates it here).
   private get mesh(): Mesh {
     return this.driver.mesh;
   }
 
   /**
-   * Builds an emitter into `world` from a precompiled effect - the low-level building block behind
-   * {@link FXEffect}. Exposed for editor tooling through the `sparcoon/editor` entry (live preview
-   * rebuilds a single emitter per graph edit); not part of the main package surface, where the
-   * runtime path is running whole projects through `FXEffect`.
+   * Builds an emitter into `world` from precompiled artifacts. For editor tooling
+   * (`sparcoon/editor`). Games run whole projects through {@link FXEffect}.
    */
   public static fromArtifacts(
     behavior: FXBehaviorArtifact,
@@ -699,12 +692,12 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * Scrubs live parameter values into uniform/binding slots by name, picked up next frame - the
-   * runtime's value channel for a non-structural edit. Unknown name = safe no-op; never recompiles.
-   * A structural edit is instead a fresh {@link fromArtifacts} (the editor decides which).
-   * @throws When an external texture is of a variant its slot was not built with (see
-   * {@link FXExternalTexture}); the particles, the strips and the values a later material starts
-   * from are then all left as they were.
+   * Sets parameter values by name in uniform and binding slots, read from the next frame. An
+   * unknown name is ignored. Never recompiles: a structural edit needs a new {@link fromArtifacts}.
+   *
+   * @throws When an external texture is of a variant its slot was not built with (see {@link
+   * FXExternalTexture}). The particles, the strips and the values a later material starts from are
+   * then all left as they were.
    */
   public applyValues(values: FXApplyValues): void {
     if (this.destroyed) {
@@ -747,14 +740,12 @@ export class FXEmitter extends Object3D {
   }
 
   /**
-   * Swaps only this emitter's render half in place - a new shader, geometry primitive/mesh, or
-   * shadow flags - or stops (`undefined`) or starts drawing the particles, leaving the behavior
-   * driver, particle buffers, instance count, and playback schedule completely untouched (unlike a
-   * structural edit that reaches {@link fromArtifacts}, this never resets a running effect). The
-   * editor calls this instead of rebuilding whenever a graph edit only changed the render half.
+   * Replaces the render half in place (shader, geometry, shadow flags), or stops (`undefined`) or
+   * starts drawing the particles. The driver, particle buffers, instance count and schedule are
+   * untouched, so a running effect is not reset.
    *
-   * The buffers depend on the behavior alone, so a render reading an attribute nothing writes
-   * still applies in place (it reads as zero, with no buffer - see `particleLayout`).
+   * The buffers depend on the behavior alone, so a render reading an attribute nothing writes still
+   * applies in place (it reads as zero, with no buffer - see `particleLayout`).
    *
    * @throws If the new render artifact reads an attribute at another width than this emitter's
    * behavior writes it (see {@link FXEmitterDriver.applyRenderArtifact}), or on `undefined` when
@@ -855,8 +846,7 @@ export class FXEmitter extends Object3D {
     frame.time = elapsedTime;
     frame.deltaTime = deltaTime;
     frame.modelMatrix = modelMatrix;
-    // emitterTransform.velocity/angularVelocity are always length 3 (see its declaration) -
-    // computed once per tick in onRendering -> tick.
+    // Always length 3 (see its declaration).
     frame.objectVelocity = this.emitterTransform.velocity as [number, number, number];
     frame.objectAngularVelocity = this.emitterTransform.angularVelocity as [number, number, number];
     material.advance(frame);
@@ -888,11 +878,8 @@ export class FXEmitter extends Object3D {
   }
 
   private tick(deltaTime: number): void {
-    // World-space velocity/angular velocity since the previous tick, computed once here and not
-    // inside worldTransform() - the burst/play loops below and the update phase can each call
-    // worldTransform() several times this tick, and diffing per-call instead of per-tick would
-    // corrupt the value on a frame with more than one of those (each call would diff against a
-    // baseline the previous call already advanced).
+    // Velocity is computed once per tick, not in worldTransform(): that runs several times per tick
+    // and each call would diff against a baseline the previous call had already advanced.
     const motion = sampleObjectMotion(this.motionTracker, this.mesh, deltaTime);
     this.emitterTransform.velocity[0] = motion.velocity[0];
     this.emitterTransform.velocity[1] = motion.velocity[1];
@@ -1141,7 +1128,6 @@ export class FXEmitter extends Object3D {
       }
     }
     if (origin.inherited !== undefined) {
-      // As many as inheritDefaults.
       assertValidInherited(origin.inherited, this.defaultInherited.length, `${subject}.inherited`);
     }
   }
@@ -1187,10 +1173,8 @@ function particleDrawOf(
   };
 }
 
-// Returned by post-destroy `burst`/`play` - never matches a scheduled handler.
 const DEAD_HANDLER = -1;
 
-// Returned by `onParticleEvent` on a destroyed emitter.
 const NO_OP = (): void => undefined;
 
 const ZERO_VECTOR: readonly number[] = [0, 0, 0];

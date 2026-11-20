@@ -32,13 +32,12 @@ export function floatBits(x: number): number {
   return floatBitsU32[0];
 }
 
+/** A lattice point's hash input, `fxLattice` in GLSL. */
+export function lattice(x: number, y: number, z: number): number {
+  return (Math.imul(x, LATTICE_P0) ^ Math.imul(y, LATTICE_P1) ^ Math.imul(z, LATTICE_P2)) >>> 0;
+}
+
 /** The seed hash's first PCG state: the seed's bits as a lattice point, mixed with the salt's. */
 export function seedKey(x: number, y: number, z: number, salt: number): number {
-  return pcg(
-    (Math.imul(floatBits(x), LATTICE_P0) ^
-      Math.imul(floatBits(y), LATTICE_P1) ^
-      Math.imul(floatBits(z), LATTICE_P2) ^
-      pcg(floatBits(salt))) >>>
-      0,
-  );
+  return pcg((lattice(floatBits(x), floatBits(y), floatBits(z)) ^ pcg(floatBits(salt))) >>> 0);
 }

@@ -9,12 +9,9 @@ import type {
 } from "./FXEffectSpec.js";
 
 /**
- * Pure keyframe/transform sampling math for {@link FXEffect}'s timeline drive: hold-before-first,
- * hold-after-last, interpolation between (slerp for rotation) along the earlier key's curve. No
- * side effects, no `three` dependency. Every export here also backs the editor's own
- * track/transform sampling: the editor used to hand-duplicate this exact math under different type
- * names, and now imports it from here (this stays an `.Internal.ts` module, outside the public
- * `sparcoon` package surface) so the two can never drift apart.
+ * Keyframe and transform sampling for the {@link FXEffect} timeline: hold before the first key and
+ * after the last, interpolate between along the earlier key's curve (slerp for rotation). No side
+ * effects, no `three`. The editor imports it too, so both sample identically.
  */
 
 const IDENTITY_QUAT: FXQuat = [0, 0, 0, 1];

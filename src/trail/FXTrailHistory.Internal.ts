@@ -74,24 +74,19 @@ function segmentFrames(frames: number, capacity: number): InstancedBufferAttribu
 }
 
 /**
- * @internal History of a JS-driven emitter: a CPU array the trail's attributes read through three,
- * filled from the emitter's particle slots each recorded tick - except while it
- * is idle: no particle alive, and every frame already dead, so a record would change nothing
- * visible. The first record after an idle stretch uploads the whole array once, which keeps the
- * GPU copy exact without tracking what the skipped ticks left behind.
+ * @internal History of a JS-driven emitter: a CPU array filled from the particle slots each
+ * recorded tick, except while idle (nothing alive, every frame dead). The first record after an
+ * idle stretch uploads the whole array.
  *
- * A point's joint tangent is its position minus the previous recorded point of the same particle
- * (zero for a particle's first point): the direction it arrived from. The segment ending at a
- * point and the one starting there both read that one tangent, so their shared vertices are the
- * same - a seamless ribbon - and a point never changes once the head has moved past it.
+ * A point's joint tangent is its position minus the particle's previous recorded point (zero for
+ * the first point). The segment ending at a point and the one starting there read that one tangent,
+ * so the ribbon has no seams and a point never changes once the head has moved past it.
  *
- * So every tick uploads one contiguous range, which three 0.157's single `updateRange` covers: the
- * head frame, or - while the head is frame 0 - only its mirror, and frames 0..1 together on the
- * tick the head moves on to frame 1, when frame 0 becomes readable with the state the mirror holds.
- * While the head is frame 0, the GPU copy of frame 0 still holds the point recorded there a lap
- * ago. Only the segment starting at frame 0 reads it, and the shader rejects that segment by its
- * start time - older than the tail's (`FXTrailUniforms.tail`) - not by the head (this layout
- * carries no frame index).
+ * Each tick uploads one contiguous range, as three 0.157's single `updateRange` requires: the head
+ * frame, or only its mirror while the head is frame 0, and frames 0..1 together on the tick the
+ * head moves to frame 1. While the head is frame 0 the GPU copy of frame 0 still holds the point
+ * recorded a lap ago. Only the segment starting at frame 0 reads it, and the shader rejects that
+ * segment by its start time (older than the tail's, `FXTrailUniforms.tail`), not by the head.
  */
 export class FXCPUTrailHistory implements FXTrailHistory {
   public readonly kind = "cpu";

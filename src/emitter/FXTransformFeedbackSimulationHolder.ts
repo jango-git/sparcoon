@@ -55,15 +55,11 @@ const PROBE_RANGE: FXKernelSpawnRange = { start: 0, count: 1 };
 const MAX_VERTEX_STRIDE_BYTES = 255;
 
 /**
- * @internal The GPU sibling of `FXSimulationHolder`: holds a precompiled {@link FXParticleKernelArtifact}
- * (one fused GLSL program covering both spawn and update) and drives it via raw WebGL2 transform
- * feedback each tick. Bypasses three.js's `Material`/`WebGLProgram` machinery entirely - three has
- * no transform-feedback support at all.
+ * @internal The GPU sibling of `FXSimulationHolder`. Runs the fused spawn+update program with raw
+ * WebGL2 transform feedback each tick, outside three's material and program machinery.
  *
- * The kernel's outputs are captured interleaved (INTERLEAVED_ATTRIBS) into one buffer, one slot per
- * particle laid out by {@link particleSlotLayout}; its inputs read the same layout back. Interleaved
- * capture is limited only by its total component count (WebGL2 guarantees 64), where capturing each
- * buffer separately is limited to 4 buffers - the two core ones included.
+ * Outputs are captured interleaved into one buffer laid out by {@link particleSlotLayout}, limited
+ * by total component count (64 guaranteed) rather than the 4 buffers of separate capture.
  */
 export class FXTransformFeedbackSimulationHolder {
   /** The slot this kernel writes; the mesh it simulates must be laid out the same. */
@@ -85,17 +81,12 @@ export class FXTransformFeedbackSimulationHolder {
   // The inherited values a pass uploads, whole vec4s (see FX_TRANSFORM_FEEDBACK_INHERITED_UNIFORM).
   private inheritedVectors = new Float32Array(4);
 
-  // A fresh, monotonic seed every tick - decorrelates `rand()` draws across ticks (and, crucially,
-  // across a buffer slot's successive rebirths under the cursor/overwrite scheme - see the `rand`
-  // registry entry's own doc comment in the editor's core/ir/FXFunctions.Internal.ts for why this
-  // matters). Wraparound is harmless: it only ever feeds a hash's bit-mixing, never arithmetic
-  // that needs exact precision.
+  // A new seed every tick, so `rand()` draws differ between ticks and between successive rebirths
+  // of one slot. Wraparound is harmless: it only feeds a hash.
   private randSeedCounter = 0;
 
-  // Particles ever spawned by this emitter, modulo FX_PARTICLE_ID_RANGE - the base a newborn's id
-  // offsets from this tick's relative spawn index (the kernel wraps the sum the same way). Never
-  // reset (no reset() exists on this class, only destroy()): a stop/replay must not reissue ids
-  // just handed out, same reasoning as randSeedCounter above.
+  // Particles spawned so far modulo FX_PARTICLE_ID_RANGE: the base for this tick's ids, which the
+  // kernel offsets by spawn index. Kept across stop and replay so ids do not repeat.
   private spawnIdBase = 0;
 
   /**
@@ -112,10 +103,7 @@ export class FXTransformFeedbackSimulationHolder {
     resources: FXKernelResources = {},
     view?: FXCameraView,
   ) {
-    // Every emitter driven by this class already required the live render tier to be "standard"
-    // (a real WebGL2 context) before this class is ever constructed (FXEmitter.fromArtifacts's
-    // driver-selection rule) - the cast reflects an already-established precondition, not a new
-    // capability check.
+    // The caller (FXEmitter.fromArtifacts) has already checked the context is WebGL2.
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
     this.gl = gl;
     this.slot = particleSlotLayout(artifact.buffers);
@@ -145,10 +133,8 @@ export class FXTransformFeedbackSimulationHolder {
       bindProgram(gl, program, this.bindings, this.resourceTextures, view),
     );
 
-    // A dedicated VAO for this simulation pass only - never one three.js's own WebGLBindingStates
-    // manages, so raw attribute setup here can never corrupt a mesh's cached vertex state. This
-    // is exactly the raw gl.bindVertexArray() call whose effect on three's VAO cache the deferred
-    // state reset that ends every pass exists to correct (see `tick()`).
+    // Own VAO, separate from three's, so raw attribute setup cannot corrupt its cache. The state
+    // reset after each pass (see tick()) corrects the raw bindVertexArray call.
     this.vao = gl.createVertexArray();
   }
 
@@ -184,27 +170,21 @@ export class FXTransformFeedbackSimulationHolder {
     // Consumed - advance past every id this tick's spawn range just claimed.
     this.spawnIdBase = (this.spawnIdBase + spawnRange.count) % FX_PARTICLE_ID_RANGE;
 
-    // Our raw gl.bindVertexArray() call above is invisible to three's own VAO-identity cache
-    // (WebGLBindingStates has no scoped, public way to invalidate just this mesh's entry) - the
-    // world resets three's state once its tick is done.
+    // The raw bindVertexArray call is invisible to three's VAO cache and three has no scoped way to
+    // invalidate one entry, so the world resets three's state after its tick.
     deferStateReset(this.renderer);
   }
 
   /**
-   * Seeds the slots of `spawnRange` right now, from `emitter`, `inherited` and the current binding
-   * values, and
-   * touches no other slot: the spawn half of {@link tick}, run on its own. Lets every `burst()`
-   * outside the emitter's tick spawn from the pose and parameters of the moment it was called,
-   * instead of sharing one pass - and so one pose - with everything else spawned that frame.
+   * Seeds the slots of `spawnRange` now, as the spawn half of {@link tick} on its own, so each
+   * burst outside the tick spawns from the pose and parameters of its moment.
    *
-   * Transform feedback cannot write the buffer it reads, so the seeded range is drawn into the
-   * write half of the pair (`drawArrays(first, count)`: `gl_VertexID` is the slot index, which
-   * makes every drawn vertex a birth under the kernel's own range test) and then copied into the
-   * read half - the side the renderer draws and the next {@link tick} reads. No swap: every slot
-   * outside the range keeps its state untouched. A range that wraps past the end of the ring is
-   * drawn as two segments. `spawnRange.count` must not exceed the mesh's capacity; `births` is how
-   * many births the range stands for - more than its count when a burst exceeded the ring - and
-   * how far the particle ids advance, as {@link tick} advances them by its whole range count.
+   * Transform feedback cannot write the buffer it reads, so the range is drawn into the write half
+   * (`gl_VertexID` is the slot index, which makes every drawn vertex a birth under the kernel's
+   * range test) and then copied into the read half. No swap: slots outside the range keep their
+   * state. A range that wraps is drawn as two segments. `spawnRange.count` must not exceed
+   * capacity. `births` is how many births the range stands for (more than its count when a burst
+   * exceeded the ring) and how far the particle ids advance.
    */
   public spawn(
     mesh: FXTransformFeedbackParticle,
@@ -296,9 +276,7 @@ export class FXTransformFeedbackSimulationHolder {
     this.gl.deleteVertexArray(this.vao);
   }
 
-  /** GPU-tier mirror of `FXSimulationHolder.applyBindingValues`: mutate each named uniform's live
-   *  value in place; unknown name = no-op. `FXEmitter.applyValues` calls both mirrors, since
-   *  either backend may be the active one. */
+  /** Sets each named binding in place, as `FXSimulationHolder.applyBindingValues`. */
   public applyBindingValues(values: Readonly<Record<string, number | Float32Array>>): void {
     for (const name in values) {
       if (name in this.bindings) {
@@ -342,11 +320,7 @@ export class FXTransformFeedbackSimulationHolder {
   /** Binds the program and wires the read half's slot fields as its vertex inputs. */
   private bindProgramAndInputs(mesh: FXTransformFeedbackParticle): void {
     const gl = this.gl;
-    // Routed through the renderer's own cache-aware setter (not raw gl.useProgram()) so three's
-    // `WebGLState.currentProgram` cache stays truthful - its own next draw then correctly detects
-    // the mismatch and re-binds, with no reset needed for this half of the state-hygiene problem.
-    // The other half (the VAO-identity cache) has no such setter - see the raw
-    // gl.bindVertexArray() call below and the deferred state reset that ends every pass.
+    // Set through the renderer's state, so three's current-program cache stays correct.
     this.renderer.state.useProgram(this.programLease.resource.program);
     gl.bindVertexArray(this.vao);
 

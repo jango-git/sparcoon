@@ -7,7 +7,7 @@ const cameraDepths = new WeakMap<Camera, Texture>();
 /**
  * Gives `camera` the depth of the opaque scene it sees, which a graph's Depth Fade (soft particles,
  * an intersection glow) fades against and a GPU-simulated Depth Sample collides with; `undefined`
- * takes it away. A camera without one draws those graphs hard - the fade is 1 - and its
+ * or `null` (a render target's empty `depthTexture`) takes it away. A camera without one draws those graphs hard - the fade is 1 - and its
  * simulations find no surface, so leave it unset where depth is unsupported or not wanted.
  *
  * `depth` holds the window depth in its red channel - a `DepthTexture`, or a resolved copy of one -
@@ -26,8 +26,8 @@ const cameraDepths = new WeakMap<Camera, Texture>();
  * @throws When `depth` is a shadow-comparison texture (`compareFunction` set), which a plain
  * sampler cannot read.
  */
-export function fxSetCameraDepth(camera: Camera, depth: Texture | undefined): void {
-  if (depth === undefined) {
+export function fxSetCameraDepth(camera: Camera, depth: Texture | null | undefined): void {
+  if (depth === undefined || depth === null) {
     cameraDepths.delete(camera);
     return;
   }

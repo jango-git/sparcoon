@@ -25,23 +25,16 @@ export interface FXSlotRange {
 }
 
 /**
- * @internal Instanced mesh backing one JS-driven {@link FXEmitter}: a base primitive drawn once per
- * particle, plus every particle's state in one interleaved CPU array ({@link slots}), each particle
- * one slot of {@link slot} - the same layout a GPU kernel writes, which the JS kernel indexes by
- * literal offsets. The render reads it through the views its layout packs (`a_pack0`, ...,
- * `FXParticleLayout.packed`), several fields per attribute.
+ * @internal Instanced mesh of a JS-driven {@link FXEmitter}: one interleaved CPU array ({@link
+ * slots}) holds every particle's slot ({@link slot}), in the layout the GPU kernel writes and the
+ * JS kernel indexes by literal offsets. The render reads it through the views its layout packs
+ * (`a_pack0`, ..., `FXParticleLayout.packed`).
  *
- * A fixed-capacity **ring**, the same scheme as the GPU backend's `FXTransformFeedbackParticle`:
- * births claim slots at a wrapping cursor and overwrite whatever occupies them, a particle keeps
- * its slot for life (no compaction, no growth), and dead slots stay in place - hidden by the
- * render shader's own `age >= lifetime` clip, exactly as on the GPU. The drawn range is the
- * high-water mark of slots ever claimed, which reaches `capacity` after the first lap.
- *
- * A birth overwrites the slot at the cursor whether its particle is live or not, so `capacity`
- * must cover the spawn rate times the longest lifetime, bursts included; {@link overflowCount}
- * counts the particles that died early because it did not.
- *
- * Whoever writes {@link slots} outside this class (the kernel) says so with {@link markWritten}.
+ * A fixed-capacity ring: births claim slots at a wrapping cursor and overwrite whatever is there, a
+ * particle keeps its slot for life, and dead slots are hidden by the render's `age >= lifetime`
+ * clip. The drawn range is the high-water mark of claimed slots. `capacity` must cover the spawn
+ * rate times the longest lifetime, bursts included, or {@link overflowCount} counts the particles
+ * that died early. Code that writes {@link slots} outside this class calls {@link markWritten}.
  */
 export class FXInstancedParticle extends Mesh {
   public readonly slot: FXSlotLayout;

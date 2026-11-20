@@ -1,12 +1,10 @@
 /**
- * Frozen per-particle ABI shared by the runtime loop and every editor-emitted module.
- * Two core fields of every particle slot: `position` (vec3) and `lifecycle` (vec3 [age, lifetime,
- * id]); a particle is dead once `age >= lifetime`. Everything else (velocity, scale, ...) is an
- * ordinary node-declared `fx_<name>` field, not core (`FXParticleSlot.ts` lays the slot out).
+ * Per-particle layout shared by the runtime and editor-emitted modules. Two core fields per slot:
+ * `position` (vec3) and `lifecycle` (vec3: age, lifetime, id). A particle is dead once `age >=
+ * lifetime`. Every other field is a node-declared `fx_<name>` field (see FXParticleSlot.ts).
  *
- * Two fields, not one, because a vertex attribute is at most a vec4 - a 6-float core cannot be one
- * view, whereas vec3 + vec3 are two clean varyings. Dependency-free (the editor's module emitter
- * imports this too), so keep it three-free and portable.
+ * Two fields, not one, because a vertex attribute is at most a vec4: a 6-float core cannot be one
+ * view, while vec3 + vec3 are two clean varyings. Dependency-free, the editor imports it.
  */
 
 export const FX_CORE_POSITION = "position";
@@ -39,10 +37,8 @@ export const FX_PARTICLE_ID_RANGE = 16_777_216;
 export const FX_CORE_POSITION_VARYING = "p_position";
 export const FX_CORE_LIFECYCLE_VARYING = "p_lifecycle";
 
-// A kernel-compiled buffer name (e.g. "velocity", as authored/compiled - always unprefixed) to its
-// mesh property-buffer key: unchanged for the two core buffers, `fx_<name>` for every attribute.
-// The one place this mapping is defined - every mesh/simulation-holder pairing (JS or GPU) must
-// go through this, not re-derive the prefix locally, or the two sides can silently drift apart.
+// Maps a compiled buffer name ("velocity") to its mesh property key: unchanged for the two core
+// buffers, `fx_<name>` otherwise. Every mesh and simulation pairing goes through this.
 export const ATTRIBUTE_BUFFER_PREFIX = "fx_";
 
 export function isCoreBufferName(bufferName: string): boolean {

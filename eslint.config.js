@@ -3,6 +3,8 @@ import tsParser from "@typescript-eslint/parser";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 
 export default [
+  // Compiled only against the built package (see tests/consumer/tsconfig.json).
+  { ignores: ["tests/consumer/**"] },
   {
     files: ["src/**/*.ts", "scripts/**/*.ts"],
     ignores: ["dist/**", "node_modules/**"],

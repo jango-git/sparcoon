@@ -1,22 +1,16 @@
 /**
- * How per-particle fields are packed into vertex attributes - the one place that decides it.
+ * How per-particle fields are packed into vertex attributes.
  *
- * Vertex-attribute slots are what a particle or trail shader runs out of first: WebGL1 guarantees
- * only 8 (and the base geometry takes up to three of them), WebGL2 16. An attribute is a view of at
- * most four floats, so a field narrower than that - a float alpha, a vec2 offset - wastes the rest
- * of its slot when it gets one of its own. Packing lets several fields that lie side by side in one
- * buffer share one view (`vec4(color.rgb, alpha)`), and the shader splits it back apart with a
- * swizzle. Varyings are not packed here: the driver already packs those itself, and the render
- * budget counts them by the GLSL packing rules.
+ * An attribute is a view of at most four floats, and a particle shader has few of them (WebGL1
+ * guarantees 8, WebGL2 16). Fields lying side by side in a buffer share one view (`vec4(color.rgb,
+ * alpha)`) and the shader swizzles them apart. Varyings are not packed here.
  *
- * Two steps, split by who owns them:
- * - {@link packingOrder}: whoever lays a buffer out (the CPU trail history, the editor ordering a
- *   GPU kernel's buffers) asks for a packing-friendly order of its fields, and lays them out in it.
- * - {@link packConsecutive}: given the fields as they then lie in memory, groups adjacent ones into
- *   views. It is correct for any layout; only how few views it needs depends on the order.
+ * - {@link packingOrder}: whoever lays a buffer out asks for a packing-friendly order of its
+ * fields. - {@link packConsecutive}: groups adjacent fields into views. It is correct for any
+ * order, only the number of views depends on it.
  *
- * Three-free and dependency-free: the editor imports this too (through `sparcoon/editor`), so a
- * kernel it lays out and the views the runtime binds over it agree by construction.
+ * Dependency-free, the editor imports it too, so a kernel it lays out and the views the runtime
+ * binds agree.
  */
 
 /** The most floats one vertex attribute can carry (a vec4). */

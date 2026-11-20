@@ -8,13 +8,10 @@ import type {
 } from "../render/FXMaterialOptions.js";
 
 /**
- * Frozen editor<->runtime boundary. The editor compiles a graph into a plain ESM module that
- * exports an {@link FXRenderArtifact} (GLSL + uniforms + textures) and an {@link FXBehaviorArtifact}
- * (authored spawn/update functions + bindings + buffer layout), plus an optional
- * {@link FXParticleKernelArtifact} (a fused GPU transform-feedback program) when the graph opts into
- * GPU simulation; the runtime only executes them. Runtime-owned and exported; no code generation, no
- * eval (the app's bundler compiles the authored JS functions, the editor precompiles the GLSL).
- * Every value scrub must no-op on an unknown name so a name drift never corrupts values.
+ * The editor-runtime boundary. The editor compiles a graph to an ESM module exporting an {@link
+ * FXRenderArtifact}, an {@link FXBehaviorArtifact} and, for GPU simulation, an {@link
+ * FXParticleKernelArtifact}. The runtime only executes them. A value scrub with an unknown name
+ * must do nothing, so a name drift never corrupts values.
  */
 
 /** One state buffer - a field of the particle slot: name + per-particle width in floats. */
@@ -221,18 +218,10 @@ export interface FXRenderArtifact {
 }
 
 /**
- * Which GLSL-family compiler tier produced a compiled {@link FXRenderArtifact}: `"baseline"` is
- * the WebGL1/GLSL-ES-1.00-style compiler; `"standard"` is the WebGL2/GLSL-ES-3.00-only compiler
- * (may use int/ivec and other standard-only capabilities a `"baseline"` graph cannot). Both
- * compile to the same GLSL-text artifact shape and splice through the same material builders
- * unchanged - Three already upgrades any material to `#version 300 es` (with full
- * `attribute`/`varying`/`gl_FragColor` backward-compat macros) on an actual WebGL2 context,
- * regardless of tier, so the runtime needs no declaration-style distinction between the two.
- *
- * Deliberately scoped to the GLSL family in its name: a structurally different family (the future
- * advanced tier - a WGSL/WebGPU compiler, whose artifact has no vertex/fragment GLSL text at all)
- * would need its own sibling type and its own field on the emitter/mesh spec, never a third member
- * of this union or a third key in {@link FXRenderArtifactsByGLSLTier}.
+ * The GLSL tier an {@link FXRenderArtifact} was compiled for: `"baseline"` is WebGL1 (GLSL ES
+ * 1.00), `"standard"` is WebGL2 only (GLSL ES 3.00, may use int/ivec). Both have the same artifact
+ * shape and the same material builders, because three upgrades any material to `#version 300 es` on
+ * a WebGL2 context.
  */
 export type FXGLSLRenderTier = "baseline" | "standard";
 
@@ -241,8 +230,7 @@ export type FXRenderArtifactsByGLSLTier = Readonly<Record<FXGLSLRenderTier, FXRe
 
 /**
  * Behavior half of an emitted effect: authored spawn/update functions mutating the particle slots,
- * plus the slot's layout and live bindings. Math helpers are inlined, so the artifact carries no
- * runtime dependency.
+ * plus the slot's layout and live bindings. Its math helpers come from `sparcoon/helpers`.
  */
 export interface FXBehaviorArtifact {
   /**
@@ -275,11 +263,13 @@ export interface FXBehaviorArtifact {
    *  Optional (an update-only, non-particle host). A newborn's `age` is already seeded: born that
    *  long before the end of its tick, it spawns from where the emitter stood then - `worldMatrix`
    *  with its translation moved back along `velocity` by that age. `inherited` is the one
-   *  {@link inherit} layout's values every newborn of the call shares. */
+   *  {@link inherit} layout's values every newborn of the call shares. `seed` is the one
+   *  {@link update} gets: the spawn's random draws hash it (`fxRandom`). */
   spawn?(
     slots: Float32Array,
     start: number,
     count: number,
+    seed: number,
     bindings: Record<string, FXValueSlot<number | Float32Array>>,
     emitter: FXEmitterTransform,
     inherited: Float32Array,
@@ -293,29 +283,27 @@ export interface FXBehaviorArtifact {
    * no particle is alive.
    *
    * Writes `age` only to kill: `age = max(age, lifetime)`. `lifetime` stays birth-only.
+   *
+   * `seed` is another number every update, the same for every run of the simulation: the kernel's
+   * random draws hash it with the particle's id (`fxRandom`), so they differ from tick to tick
+   * and repeat from run to run.
    */
   update(
     slots: Float32Array,
     count: number,
     deltaTime: number,
+    seed: number,
     bindings: Record<string, FXValueSlot<number | Float32Array>>,
     emitter?: FXEmitterTransform,
   ): void;
 }
 
 /**
- * Standard-tier (WebGL2, transform-feedback) behavior half of an emitted effect - a sibling of
- * {@link FXBehaviorArtifact}, not a variant of it: a compiled GLSL program has no JS function
- * shape to reuse. One fused GLSL ES 3.00 vertex-shader program handles both spawn and update in a
- * single draw, branching per-invocation on the runtime-supplied spawn range (see
- * `behaviorTransformFeedbackLayout.ts`'s uniform-name contract) - never two separate programs,
- * since transform feedback cannot read and write the same buffer in one pass, and splitting the
- * update range around a wrapping spawn cursor compounds badly with GPU-side buffer offsets.
- *
- * Optional per emitter/mesh spec: present only when the graph's spawn node had "Try GPU
- * simulation" on and the graph actually compiled to GLSL; every emitter always has a matching
- * {@link FXBehaviorArtifact} too (the mandatory JS fallback, including for the WebGL2->WebGL1
- * emergency downgrade), so the runtime is never left with only this artifact and no JS twin.
+ * GPU behavior half of an effect: one fused GLSL ES 3.00 vertex program that spawns and updates in
+ * a single draw, branching on the runtime-supplied spawn range (uniform names in
+ * `behaviorTransformFeedbackLayout.ts`). Transform feedback cannot read and write one buffer in a
+ * pass, so spawn and update are not split. Present only when the graph opted into GPU simulation.
+ * Every emitter also has the JS {@link FXBehaviorArtifact}.
  */
 export interface FXParticleKernelArtifact {
   readonly vertexSource: string;

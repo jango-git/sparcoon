@@ -1,0 +1,244 @@
+/* The editor's dark theme (sparcoon-editor/styles/tokens.css), the colors this page uses. */
+:root {
+  --accent: hsl(28 90% 58%);
+  --panel-background: #1b1d22;
+  --panel-foreground: #e6e6e6;
+  --stage-background: #0b0d14;
+  --muted: #9aa0a6;
+  --dim: #6a7077;
+  --border-hard: #000;
+  --border-soft: #333;
+  --zebra: rgba(255, 255, 255, 0.025);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  height: 100dvh;
+  overflow: hidden;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  background: var(--stage-background);
+  color: var(--panel-foreground);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel-background);
+  border-right: 1px solid var(--border-hard);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.caption {
+  margin: 0;
+  padding: 14px 12px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.effects {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.effects a {
+  display: grid;
+  grid-template-columns: 7px 1fr;
+  column-gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  color: var(--muted);
+}
+
+.effects li:nth-child(even) a {
+  background-image: linear-gradient(var(--zebra), var(--zebra));
+}
+
+.effects a:hover {
+  color: var(--panel-foreground);
+  background-color: color-mix(in srgb, var(--panel-foreground) 8%, var(--panel-background));
+}
+
+.effects .active a {
+  color: var(--panel-foreground);
+  background-color: color-mix(in srgb, var(--accent) 16%, var(--panel-background));
+}
+
+.marker {
+  width: 7px;
+  height: 7px;
+  background: var(--dim);
+}
+
+.active .marker {
+  background: var(--accent);
+}
+
+.tags {
+  grid-column: 2;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border-soft);
+}
+
+.links a:hover {
+  color: var(--accent);
+}
+
+.icons {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.icons svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.status {
+  flex-basis: 100%;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.viewport {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+#stage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* A phone held upright: the effect on top, the list as a strip under it. */
+@media (orientation: portrait) and (max-width: 820px) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .viewport {
+    grid-row: 1;
+  }
+
+  .panel {
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    border-right: none;
+    border-top: 1px solid var(--border-hard);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .brand {
+    border-bottom: none;
+  }
+
+  .caption {
+    display: none;
+  }
+
+  .links {
+    justify-content: flex-end;
+    align-items: center;
+    border-top: none;
+  }
+
+  .status {
+    display: none;
+  }
+
+  .effects {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .effects li {
+    flex: none;
+    width: 42vw;
+    max-width: 220px;
+    scroll-snap-align: start;
+    border-right: 1px solid var(--border-soft);
+  }
+
+  .effects a {
+    padding: 12px;
+  }
+}
+
+/* A phone held sideways: the list stays at the side, narrower. */
+@media (orientation: landscape) and (max-height: 500px) {
+  body {
+    grid-template-columns: 200px 1fr;
+  }
+
+  .caption,
+  .tags {
+    display: none;
+  }
+
+  .effects a {
+    padding: 7px 12px;
+  }
+}

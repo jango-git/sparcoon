@@ -1,0 +1,32 @@
+name: three latest
+
+# The peer range ends below the next three release. This run installs the latest published three
+# and @types/three over it, so a new release that breaks the runtime fails here before the range
+# is raised. Only releases are tested, never three's development branch.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      # Built with the locked types, as the package is published.
+      - run: npm run build
+      - run: npm install --no-save three@latest @types/three@latest
+      - run: npm ls three @types/three || true
+      - run: npm test
+      - run: npx tsc -p tests/consumer/tsconfig.json

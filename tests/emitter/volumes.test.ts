@@ -18,9 +18,9 @@ function sampling(seen: unknown[]): FXBehaviorArtifact {
   return {
     ...base,
     volumes: { v: "field" },
-    spawn(slots, start, count, bindings, emitter, inherited): void {
+    spawn(slots, start, count, seed, bindings, emitter, inherited): void {
       seen.push(bindings["v"]?.value);
-      base.spawn?.(slots, start, count, bindings, emitter, inherited);
+      base.spawn?.(slots, start, count, seed, bindings, emitter, inherited);
     },
   };
 }

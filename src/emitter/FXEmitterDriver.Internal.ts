@@ -28,12 +28,8 @@ import type { FXParticleEventKind } from "./FXEmitter.Internal.js";
 import type { FXLinkedProgram } from "./FXLinkedProgram.Internal.js";
 
 /**
- * @internal The backend-independent half of an {@link FXEmitter}: everything that differs between
- * the JS (CPU) and GPU (WebGL2 transform-feedback) particle-simulation backends, behind one shared
- * shape. `FXEmitter` holds exactly one implementation, chosen once by `fromArtifacts`.
- * Scheduling (`burst`/`play`/`stop`/`prewarm`'s rate/delay bookkeeping), sort-fraction timing, and
- * motion tracking stay on `FXEmitter` itself - they are cheap scalar arithmetic that does not care
- * which backend actually writes particle state.
+ * @internal The interface of the JS and GPU simulation backends. `FXEmitter` holds one, chosen once
+ * by `fromArtifacts`. Scheduling, sort timing and motion tracking stay in `FXEmitter`.
  */
 export interface FXEmitterDriver {
   /** The real Three.js draw object; `FXEmitter` adds it to the scene and sets shadow flags on it. */
@@ -59,18 +55,17 @@ export interface FXEmitterDriver {
   /** The raw WebGL programs it runs itself, building or built: none for a CPU simulation. */
   readonly programs: readonly FXLinkedProgram[];
 
-  /** Claims `count` newborn slots and seeds them from `transform`, `inherited` (the behavior's
-   *  inherit layout, shared by every newborn of the call) and the current binding values.
-   *  `FXEmitter` is the only caller, once per queued birth, from its own tick (see its `tick`):
-   *  between {@link beginTick} and {@link endTick} for the births at the tick's pose - JS seeds
-   *  them right away, GPU gathers them into the tick's one pass - and after {@link endTick} (or on
-   *  a paused tick, with neither) for every other pose, which JS seeds right away and GPU seeds
-   *  with a pass of its own. Either way a newborn is seeded, not yet updated.
+  /**
+   * Claims `count` newborn slots and seeds them from `transform`, `inherited` and the current
+   * binding values. Between {@link beginTick} and {@link endTick} the births at the tick's pose are
+   * seeded at once (JS) or gathered into the tick's pass (GPU). Other births are seeded at once
+   * (JS) or by a pass of their own (GPU). A newborn is seeded, not updated.
    *
-   *  `ages`: the births were born earlier in the tick, this old (see {@link FXBirthAges}) - seeded
-   *  with that age, where the kernel places them by it; without, they are born at its end. Inside
-   *  a tick, aged births are its last at its pose: on the GPU they are the tail of the tick's
-   *  pass. Every birth of one tick's pose shares one `inherited` array - on the GPU, one pass. */
+   * `ages`: the births happened this long before the tick's end (see {@link FXBirthAges}) and are
+   * seeded with that age. Without it they are born at the tick's end. Inside a tick, aged births
+   * are the last at its pose, the tail of the GPU pass. All births at one pose share one
+   * `inherited` array.
+   */
   spawn(
     count: number,
     transform: FXEmitterTransform,

@@ -26,16 +26,10 @@ export interface FXFromMeshArtifactOptions {
 }
 
 /**
- * A single, non-instanced VFX mesh built from one precompiled render artifact - the mesh twin of
- * {@link FXEmitter}. Extends `THREE.Mesh`, so the host adds it to its own scene; it self-subscribes
- * to an {@link FXWorld} on construction and unsubscribes on {@link destroy}, so one
- * {@link FXWorld.update} per frame drives it alongside every emitter. Each tick pushes the shared
- * clock and the mesh's world-space velocity/angular velocity, so a render graph reading the
- * object-velocity/object-angular-velocity builtins works without the host tracking motion by hand.
- *
- * Not exported from the main package (the runtime path is running whole projects through
- * {@link FXEffect}); reached through the `sparcoon/editor` entry, for editor live preview and
- * similar tooling that renders one artifact-driven mesh at a time.
+ * A non-instanced VFX mesh built from one render artifact, the mesh twin of {@link FXEmitter}.
+ * Extends `THREE.Mesh`. It joins an {@link FXWorld} on construction and leaves on {@link destroy},
+ * and each tick receives the shared clock and its world-space velocity and angular velocity. Not in
+ * the main entry, available through `sparcoon/editor`.
  */
 export class FXMesh extends Mesh {
   private readonly world: FXWorld;

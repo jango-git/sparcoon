@@ -1,9 +1,6 @@
 /**
- * Pure world-space motion tracking shared by {@link FXEmitter} and `FXEffect`'s VFX-mesh
- * driving: given an object's current world position/quaternion (from a decomposed
- * `matrixWorld`) and the real per-frame `dt`, derives its linear and angular velocity - both
- * already normalized to units/radians per second, never a raw "delta this frame". Three-free
- * (like `FXEffectSampling.Internal`) so the math unit-tests as plain arithmetic.
+ * Velocity and angular velocity per second from an object's world pose and the frame time. Shared
+ * by FXEmitter and the VFX meshes of FXEffect. Three-free, so it unit-tests as plain arithmetic.
  */
 
 export type FXObjectVec3 = readonly [number, number, number];

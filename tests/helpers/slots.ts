@@ -87,7 +87,7 @@ export function fieldBehavior(spec: {
     buffers: spec.buffers,
     bindings: spec.bindings ?? {},
     ...(spec.inherit === undefined ? {} : { inherit: spec.inherit }),
-    update(slots, count, deltaTime, bindings, emitter): void {
+    update(slots, count, deltaTime, _seed, bindings, emitter): void {
       if (update !== undefined) {
         run(slots, (fields) => {
           update(fields, count, deltaTime, bindings, emitter);
@@ -101,6 +101,7 @@ export function fieldBehavior(spec: {
             slots: Float32Array,
             start: number,
             count: number,
+            _seed: number,
             bindings: Bindings,
             emitter: FXEmitterTransform,
             inherited: Float32Array,
