@@ -13,6 +13,9 @@ export interface Example {
   readonly view: View;
   /** Whether the effect stands on a ground: what its shadows and debris fall on. */
   readonly ground: boolean;
+  /** Whether the effect reads the scene depth (Depth Fade or Depth Sample), which the page then
+   *  renders each frame. */
+  readonly depth: boolean;
   /** The effect's position at a time of its timeline, for an effect that the game moves. */
   readonly path?: (time: number) => Vector3;
   /** Loads the effect's module and assets. The page fetches only the effects a visitor opens. */
@@ -68,6 +71,7 @@ export const EXAMPLES: readonly Example[] = [
     },
     view: { position: [0, 1.5, 4.2], target: [0, 1.35, 0], fov: 50 },
     ground: false,
+    depth: false,
   }),
   example({
     id: "lightning-crack",
@@ -84,6 +88,7 @@ export const EXAMPLES: readonly Example[] = [
     },
     view: { position: [-1.2, 2.4, 9.5], target: [-1, 2.2, 0], fov: 45 },
     ground: true,
+    depth: true,
     path: (time) => crackCurve.getPoint((time % CRACK_DURATION) / CRACK_DURATION),
   }),
   example({
@@ -99,6 +104,7 @@ export const EXAMPLES: readonly Example[] = [
     },
     view: { position: [0, 2.3, 8.4], target: [0, 1.3, 0], fov: 42 },
     ground: false,
+    depth: true,
   }),
   example({
     id: "shield",
@@ -112,6 +118,7 @@ export const EXAMPLES: readonly Example[] = [
     },
     view: { position: [0, 2.6, 8.2], target: [0, 1, 0], fov: 38 },
     ground: false,
+    depth: false,
   }),
   example({
     id: "fireworks",
@@ -121,6 +128,7 @@ export const EXAMPLES: readonly Example[] = [
     assets: { tGlow: "T_Glow.webp", tSmoke: "T_Smoke.webp" },
     view: { position: [0, 6.2, 25], target: [0, 6.6, -1], fov: 47 },
     ground: false,
+    depth: false,
   }),
   example({
     id: "destruction",
@@ -138,6 +146,7 @@ export const EXAMPLES: readonly Example[] = [
     },
     view: { position: [5.5, 3.2, 8.5], target: [0, 1, 0], fov: 42 },
     ground: true,
+    depth: true,
   }),
   example({
     id: "fireflies",
@@ -147,6 +156,7 @@ export const EXAMPLES: readonly Example[] = [
     assets: { tGlow: "T_Glow.webp", MossRock: "MossRock.glb" },
     view: { position: [0, 1.8, 4.3], target: [0, 1.25, 0], fov: 50 },
     ground: true,
+    depth: false,
   }),
   example({
     id: "sparks",
@@ -156,5 +166,6 @@ export const EXAMPLES: readonly Example[] = [
     assets: {},
     view: { position: [0, 1.3, 5.2], target: [0, 1, 0], fov: 45 },
     ground: false,
+    depth: false,
   }),
 ];

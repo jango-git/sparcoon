@@ -21,7 +21,8 @@ const UNIFORMS = {
 // clip = P * view, ndc = (P22 z + P32) / (P23 z + P33), so z = (P32 - ndc P33) / (ndc P23 - P22) -
 // one expression for perspective, orthographic and off-axis alike, and no near/far needed.
 const DEPTH_FADE_DEFINITION = [
-  `uniform sampler2D ${UNIFORMS.texture};`,
+  // highp: the default lowp, which mobile GPUs honor, is too coarse for depth near 1.
+  `uniform highp sampler2D ${UNIFORMS.texture};`,
   `uniform vec4 ${UNIFORMS.projection};`,
   `uniform vec3 ${UNIFORMS.frame};`,
   "float fxCameraDepthDistance(float windowDepth) {",

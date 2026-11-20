@@ -44,8 +44,8 @@ export class ViewRig {
     this.camera.updateProjectionMatrix();
     this.camera.position.copy(target).add(offset);
     this.controls.target.copy(target);
-    this.controls.minDistance = distance * 0.4;
-    this.controls.maxDistance = distance * 2;
+    this.controls.minDistance = distance * 0.85;
+    this.controls.maxDistance = distance * 1.2;
     this.controls.update();
     return distance;
   }

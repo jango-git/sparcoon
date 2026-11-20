@@ -68,11 +68,33 @@ new ResizeObserver(() => {
   }
 }).observe(canvas);
 
+const fps = document.querySelector("#fps")!;
+// Frames counted over each half second, shown as frames per second.
+const FPS_WINDOW_MS = 500;
+let fpsWindowStart: number | undefined;
+let fpsFrames = 0;
+
+function countFrame(now: number): void {
+  if (fpsWindowStart === undefined || now - fpsWindowStart > 4 * FPS_WINDOW_MS) {
+    fpsWindowStart = now;
+    fpsFrames = 0;
+    return;
+  }
+  fpsFrames += 1;
+  const elapsed = now - fpsWindowStart;
+  if (elapsed >= FPS_WINDOW_MS) {
+    fps.textContent = `${Math.round((fpsFrames * 1000) / elapsed).toString()} FPS`;
+    fpsWindowStart = now;
+    fpsFrames = 0;
+  }
+}
+
 let previous: number | undefined;
 renderer.setAnimationLoop((now: number) => {
   // A tab in the background stops the loop. Its first frame back is not a long step.
   const deltaSeconds = previous === undefined ? 0 : Math.min((now - previous) / 1000, 0.1);
   previous = now;
+  countFrame(now);
 
   const moved = showcase.advance(deltaSeconds);
   if (moved !== undefined) {
@@ -80,6 +102,8 @@ renderer.setAnimationLoop((now: number) => {
   }
   rig.update();
   FXWorld.update(deltaSeconds);
-  depthPass.render(renderer, studio.scene, camera, effects);
+  if (showcase.shown?.example.depth === true) {
+    depthPass.render(renderer, studio.scene, camera, effects);
+  }
   renderer.render(studio.scene, camera);
 });

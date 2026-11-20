@@ -5,6 +5,13 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## 0.25.1 - 2026-11-20
+
+### Fixed
+
+- Depth Fade fades near the scene on mobile GPUs. It read the scene depth at low precision there,
+  so particles cut into the ground as with no fade. Effects need no new export.
+
 ## 0.25.0 - 2026-11-20
 
 ### Changed
