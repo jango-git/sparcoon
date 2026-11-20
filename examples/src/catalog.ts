@@ -115,6 +115,7 @@ export const EXAMPLES: readonly Example[] = [
       tGlow: "T_Glow.webp",
       tHexDome: "T_HexDome.webp",
       tHexDomeCells: "T_HexDomeCells.webp",
+      Dome: "Dome.glb",
     },
     view: { position: [0, 2.6, 8.2], target: [0, 1, 0], fov: 38 },
     ground: false,
