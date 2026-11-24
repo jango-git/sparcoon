@@ -73,6 +73,9 @@ screen and press **Load**.
   forbids code generation.
 - The package is unbundled, unminified ESM with types. Loading it through a `<script>` tag is not
   supported. For older devices, transpile it together with your own code.
+- The published code prefixes class members outside the API with `_private_`. A minifier shortens
+  them when given the prefix: terser `mangle: { properties: { regex: /^_private_/ } }`, esbuild
+  `--mangle-props=^_private_`.
 
 ## Quick start
 

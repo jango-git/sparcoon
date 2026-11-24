@@ -61,7 +61,7 @@
   "sideEffects": false,
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "npm run clean && node scripts/build.mjs",
     "lint": "eslint src tests scripts",
     "test": "vitest run",
     "test:watch": "vitest",
