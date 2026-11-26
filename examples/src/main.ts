@@ -28,7 +28,8 @@ const rig = new ViewRig(camera, canvas);
 function frameShown(): void {
   const shown = showcase.shown;
   if (shown !== undefined) {
-    studio.setGround(shown.example.ground, rig.frame(shown.example.view, shown.effect.position));
+    const distance = rig.frame(shown.example.view, shown.effect.position);
+    studio.surround(shown.surroundings, shown.example.ground, distance);
   }
 }
 

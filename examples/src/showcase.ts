@@ -1,4 +1,4 @@
-import type { Camera, Group, Scene, Vector3, WebGLRenderer } from "three";
+import type { Camera, Group, Object3D, Scene, Vector3, WebGLRenderer } from "three";
 import type { FXEffect } from "sparcoon";
 
 import type { Example } from "./catalog";
@@ -15,6 +15,8 @@ export interface Stage {
 export interface Shown {
   readonly example: Example;
   readonly effect: FXEffect;
+  /** The scene it plays in, if it has one. */
+  readonly surroundings: Object3D | undefined;
 }
 
 /** The one effect on show: loading it, swapping it in and moving it along its path. */
@@ -40,7 +42,10 @@ export class Showcase {
    */
   public async open(example: Example): Promise<void> {
     const request = ++this.request;
-    const create = await example.load(this.media);
+    const [create, surroundings] = await Promise.all([
+      example.load(this.media),
+      example.scene === undefined ? undefined : this.media.scene(example.scene),
+    ]);
     if (request !== this.request) {
       return;
     }
@@ -58,7 +63,7 @@ export class Showcase {
     }
 
     this.current?.effect.dispose();
-    this.current = { example, effect };
+    this.current = { example, effect, surroundings };
     this.playedSeconds = 0;
     effect.visible = true;
     effect.play();

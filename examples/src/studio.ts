@@ -5,16 +5,19 @@ import {
   HemisphereLight,
   Mesh,
   MeshStandardMaterial,
+  type Object3D,
   PlaneGeometry,
   Scene,
 } from "three";
 
 const BACKGROUND = 0x0b0d14;
 
-/** The editor preview's surroundings: a sun with shadows, a sky fill and a ground. */
+/** The editor preview's surroundings: a sun with shadows, a sky fill, and a ground or the scene an
+ *  effect plays in. */
 export class Studio {
   public readonly scene = new Scene();
   private readonly ground: Mesh;
+  private shownScene: Object3D | undefined;
 
   public constructor() {
     this.scene.background = new Color(BACKGROUND);
@@ -40,11 +43,22 @@ export class Studio {
   }
 
   /**
-   * Shows or hides the ground. Fog starting at `fadeFrom`, the distance to the point the camera
-   * looks at, fades the ground into the background long before its edge.
+   * Shows `surroundings` in place of the ground, or the ground when `ground` is true, or neither.
+   * Fog starting at `fadeFrom`, the distance to the point the camera looks at, fades them into the
+   * background long before their edge.
    */
-  public setGround(visible: boolean, fadeFrom: number): void {
-    this.ground.visible = visible;
-    this.scene.fog = visible ? new Fog(BACKGROUND, fadeFrom, fadeFrom * 1.8) : null;
+  public surround(surroundings: Object3D | undefined, ground: boolean, fadeFrom: number): void {
+    if (this.shownScene !== surroundings) {
+      if (this.shownScene !== undefined) {
+        this.scene.remove(this.shownScene);
+      }
+      if (surroundings !== undefined) {
+        this.scene.add(surroundings);
+      }
+      this.shownScene = surroundings;
+    }
+    this.ground.visible = surroundings === undefined && ground;
+    this.scene.fog =
+      surroundings !== undefined || ground ? new Fog(BACKGROUND, fadeFrom, fadeFrom * 1.8) : null;
   }
 }

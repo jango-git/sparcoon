@@ -29,6 +29,7 @@ export class ViewRig {
     this.controls = new OrbitControls(camera, element);
     this.controls.enableDamping = true;
     this.controls.enablePan = false;
+    this.controls.enableZoom = false;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.05;
   }
 
@@ -44,8 +45,6 @@ export class ViewRig {
     this.camera.updateProjectionMatrix();
     this.camera.position.copy(target).add(offset);
     this.controls.target.copy(target);
-    this.controls.minDistance = distance * 0.85;
-    this.controls.maxDistance = distance * 1.2;
     this.controls.update();
     return distance;
   }
