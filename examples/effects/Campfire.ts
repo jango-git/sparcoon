@@ -11,7 +11,6 @@ import {
   type FXParticleKernelArtifact,
   type FXExternalTexture,
 } from "sparcoon";
-import { type Data3DTexture } from "three";
 import {
   FX_GLSL_BASELINE_HASH,
   FX_GLSL_BASELINE_SEED_HASH,
@@ -19,11 +18,9 @@ import {
   FX_GLSL_FLIPBOOK_FRAME_ONCE,
   FX_GLSL_FLIPBOOK_FRAME_UV,
   FX_GLSL_RAND,
-  FX_GLSL_SPHERICAL_NORMAL,
   FX_GLSL_STANDARD_HASH,
   FX_GLSL_STANDARD_NOISED,
   FX_GLSL_STANDARD_SEED_HASH,
-  FX_GLSL_TANGENT_TO_WORLD_NORMAL,
   FX_GLSL_TRANSPOSE,
   fxCurl2,
   fxCurl3,
@@ -32,8 +29,6 @@ import {
   fxFractal3,
   fxMix,
   fxRandom,
-  fxSmoothstep,
-  fxVolumeFetch,
 } from "sparcoon/helpers";
 
 const render0Baseline: FXRenderArtifact = {
@@ -42,17 +37,17 @@ const render0Baseline: FXRenderArtifact = {
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_1j","type":"vec3","interpolation":"flat"},{"name":"_1k","type":"float","interpolation":"flat"},{"name":"_1l","type":"float","interpolation":"flat"},{"name":"_1m","type":"float","interpolation":"flat"}],
-    vertex: { uniformDeclarations: ["uniform float _1i;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _2 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _q = cos(0.0);","float _r = sin(0.0);","vec3 _s = (cameraPosition - PARTICLE_POSITION);","float _t = length(_s);","vec3 _u = (_s / (_t == 0.0 ? 1.0 : _t));","vec3 _v = cross(vec3(0.0, 1.0, 0.0), _u);","float _w = smoothstep(0.0, 0.001, length(_v));","vec3 _x = cross(vec3(0.0, 1.0, 0.0), (abs((vec3(0.0, 1.0, 0.0)).z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));","vec3 _y = mix(_x, _v, _w);","vec3 _z = normalize(cross(_y, vec3(0.0, 1.0, 0.0)));","vec3 _10 = cross(vec3(0.0, 1.0, 0.0), _z);","mat3 _11 = mat3(((_10 * _q) - (_z * _r)), vec3(0.0, 1.0, 0.0), ((_z * _q) + (_10 * _r)));","float _12 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 1.0));","float _13 = (0.75 + (((_12 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.15 - 0.75)));","float _14 = (_13 * 0.86082627);","float _15 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _16 = (_15 * 2.0);","float _17 = floor(_16);","float _18 = (-1.0 + (((_17 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _19 = (_14 * _18);","float _1a = (_13 * 1.271005);","vec3 _1b = vec3(_19, _1a, 1.0);","float _1c = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.55, 0.61055664, clamp(((_2 - 0.0) * 26.6666667), 0.0, 1.0)), 0.67726562, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.814375, clamp(((_2 - 0.075) * 13.333333), 0.0, 1.0)), 0.8773926, clamp(((_2 - 0.15) * 26.6666667), 0.0, 1.0)), 0.931796875, clamp(((_2 - 0.1875) * 26.6666667), 0.0, 1.0)), 0.9546155, clamp(((_2 - 0.225) * 53.333333), 0.0, 1.0)), 0.9738965, clamp(((_2 - 0.24375) * 53.333333), 0.0, 1.0)), 0.9891785, clamp(((_2 - 0.2625) * 53.333333), 0.0, 1.0)), 1.0, clamp(((_2 - 0.28125) * 53.333333), 0.0, 1.0)), 1.0173035, clamp(((_2 - 0.3) * 22.857143), 0.0, 1.0)), 1.0301465, clamp(((_2 - 0.34375) * 22.857143), 0.0, 1.0)), 1.0389905, clamp(((_2 - 0.3875) * 22.857143), 0.0, 1.0)), 1.0442969, clamp(((_2 - 0.43125) * 22.857143), 0.0, 1.0)), 1.0461426, clamp(((_2 - 0.475) * 11.4285714), 0.0, 1.0)), 1.039375, clamp(((_2 - 0.5625) * 11.4285714), 0.0, 1.0)), 1.0147656, clamp(((_2 - 0.65) * 5.714286), 0.0, 1.0)), 1.00430664, clamp(((_2 - 0.825) * 11.4285714), 0.0, 1.0)), 1.0, clamp(((_2 - 0.9125) * 11.4285714), 0.0, 1.0));","vec3 _1d = (_1b * vec3(_1c, _1c, _1c));","mat4 _1e = mat4(vec4((_1d).x, 0.0, 0.0, 0.0), vec4(0.0, (_1d).y, 0.0, 0.0), vec4(0.0, 0.0, (_1d).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _1f = mat4(_11);","mat4 _1g = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_11 * (_1d * vec3(0.0, -0.4546, 0.0)))), 1.0));","mat4 _1h = ((_1g * _1f) * _1e);","float _3 = (0.17391304 + (((_2 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.95652174 - 0.17391304)));","vec3 _4 = fxAnimatedFrameOnce(_3, (23.0 > 0.5 ? floor(23.0 + 0.5) : 5.0 * 5.0));","float _7 = _4.z;","float _g = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 2.0));","float _h = (0.56 + (((_g - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.805 - 0.56)));","float _l = (_h * _1i);","float _n = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.13662109, clamp(((_2 - 0.0) * 53.333333), 0.0, 1.0)), 0.28984375, clamp(((_2 - 0.01875) * 53.333333), 0.0, 1.0)), 0.60625, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.7495117, clamp(((_2 - 0.075) * 53.333333), 0.0, 1.0)), 0.86953125, clamp(((_2 - 0.09375) * 53.333333), 0.0, 1.0)), 0.9177124, clamp(((_2 - 0.1125) * 106.666667), 0.0, 1.0)), 0.95634766, clamp(((_2 - 0.121875) * 106.666667), 0.0, 1.0)), 0.9841919, clamp(((_2 - 0.13125) * 106.666667), 0.0, 1.0)), 1.0, clamp(((_2 - 0.140625) * 106.666667), 0.0, 1.0)), 1.0466919, clamp(((_2 - 0.15) * 18.82353), 0.0, 1.0)), 1.0813477, clamp(((_2 - 0.203125) * 18.82353), 0.0, 1.0)), 1.1052124, clamp(((_2 - 0.25625) * 18.82353), 0.0, 1.0)), 1.1195313, clamp(((_2 - 0.309375) * 18.82353), 0.0, 1.0)), 1.1245117, clamp(((_2 - 0.3625) * 9.411765), 0.0, 1.0)), 1.10625, clamp(((_2 - 0.46875) * 9.411765), 0.0, 1.0)), 1.03984375, clamp(((_2 - 0.575) * 4.7058824), 0.0, 1.0)), 1.0116211, clamp(((_2 - 0.7875) * 9.411765), 0.0, 1.0)), 1.0, clamp(((_2 - 0.89375) * 9.411765), 0.0, 1.0));","_1j = _4;","_1k = _7;","_1l = _l;","_1m = _n;"], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _0 = 0.4;","vec3 _1 = vec3(0.0, 0.0, 0.0);","vec2 _5 = fxFlipbookFrameUV(p_uv, _1j.x, 5.0, 5.0);","vec2 _6 = fxFlipbookFrameUV(p_uv, _1j.y, 5.0, 5.0);","vec4 _8 = fxSample_u_param_tFire(_5);","vec4 _9 = fxSample_u_param_tFire(_6);","vec4 _a = mix(_8, _9, _1k);","float _c = (_a).w;","vec4 _d = mix(mix(mix(mix(vec4(0.3, 0.02, 0.005, 1.0), vec4(0.75, 0.1, 0.01, 1.0), clamp(((_c - 0.0) * 2.857143), 0.0, 1.0)), vec4(1.0, 0.3, 0.04, 1.0), clamp(((_c - 0.35) * 3.3333333), 0.0, 1.0)), vec4(1.0, 0.55, 0.12, 1.0), clamp(((_c - 0.65) * 4.347826), 0.0, 1.0)), vec4(1.0, 0.8, 0.42, 1.0), clamp(((_c - 0.88) * 8.333333), 0.0, 1.0));","vec3 _e = (_d).xyz;","vec3 _m = mix(_1, _e, _1l);","float _o = (_c * _1m);","vec4 _p = vec4(_m, _o);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
-    outputs: {"particleTransform":"_1h","albedo":"_p","additivity":"_0"},
+    varyings: [{"name":"_1h","type":"vec3","interpolation":"flat"},{"name":"_1i","type":"float","interpolation":"flat"},{"name":"_1j","type":"float","interpolation":"flat"}],
+    vertex: { uniformDeclarations: ["uniform float _1g;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _2 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _o = cos(0.0);","float _p = sin(0.0);","vec3 _q = (cameraPosition - PARTICLE_POSITION);","float _r = length(_q);","vec3 _s = (_q / (_r == 0.0 ? 1.0 : _r));","vec3 _t = cross(vec3(0.0, 1.0, 0.0), _s);","float _u = smoothstep(0.0, 0.001, length(_t));","vec3 _v = cross(vec3(0.0, 1.0, 0.0), (abs((vec3(0.0, 1.0, 0.0)).z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));","vec3 _w = mix(_v, _t, _u);","vec3 _x = normalize(cross(_w, vec3(0.0, 1.0, 0.0)));","vec3 _y = cross(vec3(0.0, 1.0, 0.0), _x);","mat3 _z = mat3(((_y * _o) - (_x * _p)), vec3(0.0, 1.0, 0.0), ((_x * _o) + (_y * _p)));","float _10 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 1.0));","float _11 = (0.75 + (((_10 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.15 - 0.75)));","float _12 = (_11 * 0.86082627);","float _13 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _14 = (_13 * 2.0);","float _15 = floor(_14);","float _16 = (-1.0 + (((_15 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _17 = (_12 * _16);","float _18 = (_11 * 1.271005);","vec3 _19 = vec3(_17, _18, 1.0);","float _1a = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.55, 0.61055664, clamp(((_2 - 0.0) * 26.6666667), 0.0, 1.0)), 0.67726562, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.814375, clamp(((_2 - 0.075) * 13.333333), 0.0, 1.0)), 0.8773926, clamp(((_2 - 0.15) * 26.6666667), 0.0, 1.0)), 0.931796875, clamp(((_2 - 0.1875) * 26.6666667), 0.0, 1.0)), 0.9546155, clamp(((_2 - 0.225) * 53.333333), 0.0, 1.0)), 0.9738965, clamp(((_2 - 0.24375) * 53.333333), 0.0, 1.0)), 0.9891785, clamp(((_2 - 0.2625) * 53.333333), 0.0, 1.0)), 1.0, clamp(((_2 - 0.28125) * 53.333333), 0.0, 1.0)), 1.0173035, clamp(((_2 - 0.3) * 22.857143), 0.0, 1.0)), 1.0301465, clamp(((_2 - 0.34375) * 22.857143), 0.0, 1.0)), 1.0389905, clamp(((_2 - 0.3875) * 22.857143), 0.0, 1.0)), 1.0442969, clamp(((_2 - 0.43125) * 22.857143), 0.0, 1.0)), 1.0461426, clamp(((_2 - 0.475) * 11.4285714), 0.0, 1.0)), 1.039375, clamp(((_2 - 0.5625) * 11.4285714), 0.0, 1.0)), 1.0147656, clamp(((_2 - 0.65) * 5.714286), 0.0, 1.0)), 1.00430664, clamp(((_2 - 0.825) * 11.4285714), 0.0, 1.0)), 1.0, clamp(((_2 - 0.9125) * 11.4285714), 0.0, 1.0));","vec3 _1b = (_19 * vec3(_1a, _1a, _1a));","mat4 _1c = mat4(vec4((_1b).x, 0.0, 0.0, 0.0), vec4(0.0, (_1b).y, 0.0, 0.0), vec4(0.0, 0.0, (_1b).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _1d = mat4(_z);","mat4 _1e = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_z * (_1b * vec3(0.0, -0.4546, 0.0)))), 1.0));","mat4 _1f = ((_1e * _1d) * _1c);","float _3 = (0.17391304 + (((_2 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.95652174 - 0.17391304)));","vec3 _4 = fxAnimatedFrameOnce(_3, (23.0 > 0.5 ? floor(23.0 + 0.5) : 5.0 * 5.0));","float _e = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 2.0));","float _f = (0.56 + (((_e - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.805 - 0.56)));","float _j = (_f * _1g);","float _l = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.13662109, clamp(((_2 - 0.0) * 53.333333), 0.0, 1.0)), 0.28984375, clamp(((_2 - 0.01875) * 53.333333), 0.0, 1.0)), 0.60625, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.7495117, clamp(((_2 - 0.075) * 53.333333), 0.0, 1.0)), 0.86953125, clamp(((_2 - 0.09375) * 53.333333), 0.0, 1.0)), 0.9177124, clamp(((_2 - 0.1125) * 106.666667), 0.0, 1.0)), 0.95634766, clamp(((_2 - 0.121875) * 106.666667), 0.0, 1.0)), 0.9841919, clamp(((_2 - 0.13125) * 106.666667), 0.0, 1.0)), 1.0, clamp(((_2 - 0.140625) * 106.666667), 0.0, 1.0)), 1.0466919, clamp(((_2 - 0.15) * 18.82353), 0.0, 1.0)), 1.0813477, clamp(((_2 - 0.203125) * 18.82353), 0.0, 1.0)), 1.1052124, clamp(((_2 - 0.25625) * 18.82353), 0.0, 1.0)), 1.1195313, clamp(((_2 - 0.309375) * 18.82353), 0.0, 1.0)), 1.1245117, clamp(((_2 - 0.3625) * 9.411765), 0.0, 1.0)), 1.10625, clamp(((_2 - 0.46875) * 9.411765), 0.0, 1.0)), 1.03984375, clamp(((_2 - 0.575) * 4.7058824), 0.0, 1.0)), 1.0116211, clamp(((_2 - 0.7875) * 9.411765), 0.0, 1.0)), 1.0, clamp(((_2 - 0.89375) * 9.411765), 0.0, 1.0));","_1h = _4;","_1i = _j;","_1j = _l;"], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
+    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _0 = 0.4;","vec3 _1 = vec3(0.0, 0.0, 0.0);","vec2 _5 = fxFlipbookFrameUV(p_uv, _1h.x, 5.0, 5.0);","vec4 _8 = fxSample_u_param_tFire(_5);","float _a = (_8).w;","vec4 _b = mix(mix(mix(mix(vec4(0.3, 0.02, 0.005, 1.0), vec4(0.75, 0.1, 0.01, 1.0), clamp(((_a - 0.0) * 2.857143), 0.0, 1.0)), vec4(1.0, 0.3, 0.04, 1.0), clamp(((_a - 0.35) * 3.3333333), 0.0, 1.0)), vec4(1.0, 0.55, 0.12, 1.0), clamp(((_a - 0.65) * 4.347826), 0.0, 1.0)), vec4(1.0, 0.8, 0.42, 1.0), clamp(((_a - 0.88) * 8.333333), 0.0, 1.0));","vec3 _c = (_b).xyz;","vec3 _k = mix(_1, _c, _1i);","float _m = (_a * _1j);","vec4 _n = vec4(_k, _m);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    outputs: {"particleTransform":"_1f","albedo":"_n","additivity":"_0"},
   },
-  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1i": { type: "float", value: 0 } },
+  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1g": { type: "float", value: 0 } },
   attributeReads: [],
   compute(inputs, uniforms) {
-    const _j = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
-    const _k = ((0.85 + (((_j - -1) / 2) * 0.27)));
-    uniforms["_1i"].value = _k;
+    const _h = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
+    const _i = ((0.85 + (((_h - -1) / 2) * 0.27)));
+    uniforms["_1g"].value = _i;
   },
 };
 
@@ -62,17 +57,17 @@ const render0Standard: FXRenderArtifact = {
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_1j","type":"vec3","interpolation":"flat"},{"name":"_1k","type":"float","interpolation":"flat"},{"name":"_1l","type":"float","interpolation":"flat"},{"name":"_1m","type":"float","interpolation":"flat"}],
-    vertex: { uniformDeclarations: ["uniform float _1i;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render0Baseline.color.vertex.body.slice(0, 40)], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render0Baseline.color.fragment.body.slice(0, 13)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
-    outputs: {"particleTransform":"_1h","albedo":"_p","additivity":"_0"},
+    varyings: [{"name":"_1h","type":"vec3","interpolation":"flat"},{"name":"_1i","type":"float","interpolation":"flat"},{"name":"_1j","type":"float","interpolation":"flat"}],
+    vertex: { uniformDeclarations: ["uniform float _1g;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render0Baseline.color.vertex.body.slice(0, 38)], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
+    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render0Baseline.color.fragment.body.slice(0, 10)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    outputs: {"particleTransform":"_1f","albedo":"_n","additivity":"_0"},
   },
-  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1i": { type: "float", value: 0 } },
+  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1g": { type: "float", value: 0 } },
   attributeReads: [],
   compute(inputs, uniforms) {
-    const _j = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
-    const _k = ((0.85 + (((_j - -1) / 2) * 0.27)));
-    uniforms["_1i"].value = _k;
+    const _h = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
+    const _i = ((0.85 + (((_h - -1) / 2) * 0.27)));
+    uniforms["_1g"].value = _i;
   },
 };
 
@@ -150,17 +145,17 @@ const render1Baseline: FXRenderArtifact = {
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_1j","type":"vec3","interpolation":"flat"},{"name":"_1k","type":"float","interpolation":"flat"},{"name":"_1l","type":"float","interpolation":"flat"},{"name":"_1m","type":"float","interpolation":"flat"}],
-    vertex: { uniformDeclarations: ["uniform float _1i;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _2 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _q = cos(0.0);","float _r = sin(0.0);","vec3 _s = (cameraPosition - PARTICLE_POSITION);","float _t = length(_s);","vec3 _u = (_s / (_t == 0.0 ? 1.0 : _t));","vec3 _v = cross(vec3(0.0, 1.0, 0.0), _u);","float _w = smoothstep(0.0, 0.001, length(_v));","vec3 _x = cross(vec3(0.0, 1.0, 0.0), (abs((vec3(0.0, 1.0, 0.0)).z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));","vec3 _y = mix(_x, _v, _w);","vec3 _z = normalize(cross(_y, vec3(0.0, 1.0, 0.0)));","vec3 _10 = cross(vec3(0.0, 1.0, 0.0), _z);","mat3 _11 = mat3(((_10 * _q) - (_z * _r)), vec3(0.0, 1.0, 0.0), ((_z * _q) + (_10 * _r)));","float _12 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 1.0));","float _13 = (0.35 + (((_12 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.6 - 0.35)));","float _14 = (_13 * 0.86082627);","float _15 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _16 = (_15 * 2.0);","float _17 = floor(_16);","float _18 = (-1.0 + (((_17 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _19 = (_14 * _18);","float _1a = (_13 * 1.271005);","vec3 _1b = vec3(_19, _1a, 1.0);","float _1c = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.55, 0.61055664, clamp(((_2 - 0.0) * 26.6666667), 0.0, 1.0)), 0.67726562, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.814375, clamp(((_2 - 0.075) * 13.333333), 0.0, 1.0)), 0.8773926, clamp(((_2 - 0.15) * 26.6666667), 0.0, 1.0)), 0.931796875, clamp(((_2 - 0.1875) * 26.6666667), 0.0, 1.0)), 0.9546155, clamp(((_2 - 0.225) * 53.333333), 0.0, 1.0)), 0.9738965, clamp(((_2 - 0.24375) * 53.333333), 0.0, 1.0)), 0.9891785, clamp(((_2 - 0.2625) * 53.333333), 0.0, 1.0)), 1.0, clamp(((_2 - 0.28125) * 53.333333), 0.0, 1.0)), 1.0173035, clamp(((_2 - 0.3) * 22.857143), 0.0, 1.0)), 1.0301465, clamp(((_2 - 0.34375) * 22.857143), 0.0, 1.0)), 1.0389905, clamp(((_2 - 0.3875) * 22.857143), 0.0, 1.0)), 1.0442969, clamp(((_2 - 0.43125) * 22.857143), 0.0, 1.0)), 1.0461426, clamp(((_2 - 0.475) * 11.4285714), 0.0, 1.0)), 1.039375, clamp(((_2 - 0.5625) * 11.4285714), 0.0, 1.0)), 1.0147656, clamp(((_2 - 0.65) * 5.714286), 0.0, 1.0)), 1.00430664, clamp(((_2 - 0.825) * 11.4285714), 0.0, 1.0)), 1.0, clamp(((_2 - 0.9125) * 11.4285714), 0.0, 1.0));","vec3 _1d = (_1b * vec3(_1c, _1c, _1c));","mat4 _1e = mat4(vec4((_1d).x, 0.0, 0.0, 0.0), vec4(0.0, (_1d).y, 0.0, 0.0), vec4(0.0, 0.0, (_1d).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _1f = mat4(_11);","mat4 _1g = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_11 * (_1d * vec3(0.0, -0.4546, 0.0)))), 1.0));","mat4 _1h = ((_1g * _1f) * _1e);","float _3 = (0.17391304 + (((_2 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.95652174 - 0.17391304)));","vec3 _4 = fxAnimatedFrameOnce(_3, (23.0 > 0.5 ? floor(23.0 + 0.5) : 5.0 * 5.0));","float _7 = _4.z;","float _g = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 2.0));","float _h = (0.48 + (((_g - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.69 - 0.48)));","float _l = (_h * _1i);","float _n = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.13662109, clamp(((_2 - 0.0) * 53.333333), 0.0, 1.0)), 0.28984375, clamp(((_2 - 0.01875) * 53.333333), 0.0, 1.0)), 0.60625, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.7495117, clamp(((_2 - 0.075) * 53.333333), 0.0, 1.0)), 0.86953125, clamp(((_2 - 0.09375) * 53.333333), 0.0, 1.0)), 0.9177124, clamp(((_2 - 0.1125) * 106.666667), 0.0, 1.0)), 0.95634766, clamp(((_2 - 0.121875) * 106.666667), 0.0, 1.0)), 0.9841919, clamp(((_2 - 0.13125) * 106.666667), 0.0, 1.0)), 1.0, clamp(((_2 - 0.140625) * 106.666667), 0.0, 1.0)), 1.0466919, clamp(((_2 - 0.15) * 18.82353), 0.0, 1.0)), 1.0813477, clamp(((_2 - 0.203125) * 18.82353), 0.0, 1.0)), 1.1052124, clamp(((_2 - 0.25625) * 18.82353), 0.0, 1.0)), 1.1195313, clamp(((_2 - 0.309375) * 18.82353), 0.0, 1.0)), 1.1245117, clamp(((_2 - 0.3625) * 9.411765), 0.0, 1.0)), 1.10625, clamp(((_2 - 0.46875) * 9.411765), 0.0, 1.0)), 1.03984375, clamp(((_2 - 0.575) * 4.7058824), 0.0, 1.0)), 1.0116211, clamp(((_2 - 0.7875) * 9.411765), 0.0, 1.0)), 1.0, clamp(((_2 - 0.89375) * 9.411765), 0.0, 1.0));","_1j = _4;","_1k = _7;","_1l = _l;","_1m = _n;"], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _0 = 0.7;","vec3 _1 = vec3(0.0, 0.0, 0.0);","vec2 _5 = fxFlipbookFrameUV(p_uv, _1j.x, 5.0, 5.0);","vec2 _6 = fxFlipbookFrameUV(p_uv, _1j.y, 5.0, 5.0);","vec4 _8 = fxSample_u_param_tFire(_5);","vec4 _9 = fxSample_u_param_tFire(_6);","vec4 _a = mix(_8, _9, _1k);","float _c = (_a).w;","vec4 _d = mix(mix(mix(mix(vec4(0.3, 0.02, 0.005, 1.0), vec4(0.75, 0.1, 0.01, 1.0), clamp(((_c - 0.0) * 2.857143), 0.0, 1.0)), vec4(1.0, 0.3, 0.04, 1.0), clamp(((_c - 0.35) * 3.3333333), 0.0, 1.0)), vec4(1.0, 0.55, 0.12, 1.0), clamp(((_c - 0.65) * 4.347826), 0.0, 1.0)), vec4(1.0, 0.8, 0.42, 1.0), clamp(((_c - 0.88) * 8.333333), 0.0, 1.0));","vec3 _e = (_d).xyz;","vec3 _m = mix(_1, _e, _1l);","float _o = (_c * _1m);","vec4 _p = vec4(_m, _o);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
-    outputs: {"particleTransform":"_1h","albedo":"_p","additivity":"_0"},
+    varyings: [{"name":"_1h","type":"vec3","interpolation":"flat"},{"name":"_1i","type":"float","interpolation":"flat"},{"name":"_1j","type":"float","interpolation":"flat"}],
+    vertex: { uniformDeclarations: ["uniform float _1g;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _2 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _o = cos(0.0);","float _p = sin(0.0);","vec3 _q = (cameraPosition - PARTICLE_POSITION);","float _r = length(_q);","vec3 _s = (_q / (_r == 0.0 ? 1.0 : _r));","vec3 _t = cross(vec3(0.0, 1.0, 0.0), _s);","float _u = smoothstep(0.0, 0.001, length(_t));","vec3 _v = cross(vec3(0.0, 1.0, 0.0), (abs((vec3(0.0, 1.0, 0.0)).z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));","vec3 _w = mix(_v, _t, _u);","vec3 _x = normalize(cross(_w, vec3(0.0, 1.0, 0.0)));","vec3 _y = cross(vec3(0.0, 1.0, 0.0), _x);","mat3 _z = mat3(((_y * _o) - (_x * _p)), vec3(0.0, 1.0, 0.0), ((_x * _o) + (_y * _p)));","float _10 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 1.0));","float _11 = (0.35 + (((_10 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.6 - 0.35)));","float _12 = (_11 * 0.86082627);","float _13 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _14 = (_13 * 2.0);","float _15 = floor(_14);","float _16 = (-1.0 + (((_15 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _17 = (_12 * _16);","float _18 = (_11 * 1.271005);","vec3 _19 = vec3(_17, _18, 1.0);","float _1a = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.55, 0.61055664, clamp(((_2 - 0.0) * 26.6666667), 0.0, 1.0)), 0.67726562, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.814375, clamp(((_2 - 0.075) * 13.333333), 0.0, 1.0)), 0.8773926, clamp(((_2 - 0.15) * 26.6666667), 0.0, 1.0)), 0.931796875, clamp(((_2 - 0.1875) * 26.6666667), 0.0, 1.0)), 0.9546155, clamp(((_2 - 0.225) * 53.333333), 0.0, 1.0)), 0.9738965, clamp(((_2 - 0.24375) * 53.333333), 0.0, 1.0)), 0.9891785, clamp(((_2 - 0.2625) * 53.333333), 0.0, 1.0)), 1.0, clamp(((_2 - 0.28125) * 53.333333), 0.0, 1.0)), 1.0173035, clamp(((_2 - 0.3) * 22.857143), 0.0, 1.0)), 1.0301465, clamp(((_2 - 0.34375) * 22.857143), 0.0, 1.0)), 1.0389905, clamp(((_2 - 0.3875) * 22.857143), 0.0, 1.0)), 1.0442969, clamp(((_2 - 0.43125) * 22.857143), 0.0, 1.0)), 1.0461426, clamp(((_2 - 0.475) * 11.4285714), 0.0, 1.0)), 1.039375, clamp(((_2 - 0.5625) * 11.4285714), 0.0, 1.0)), 1.0147656, clamp(((_2 - 0.65) * 5.714286), 0.0, 1.0)), 1.00430664, clamp(((_2 - 0.825) * 11.4285714), 0.0, 1.0)), 1.0, clamp(((_2 - 0.9125) * 11.4285714), 0.0, 1.0));","vec3 _1b = (_19 * vec3(_1a, _1a, _1a));","mat4 _1c = mat4(vec4((_1b).x, 0.0, 0.0, 0.0), vec4(0.0, (_1b).y, 0.0, 0.0), vec4(0.0, 0.0, (_1b).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _1d = mat4(_z);","mat4 _1e = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_z * (_1b * vec3(0.0, -0.4546, 0.0)))), 1.0));","mat4 _1f = ((_1e * _1d) * _1c);","float _3 = (0.17391304 + (((_2 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.95652174 - 0.17391304)));","vec3 _4 = fxAnimatedFrameOnce(_3, (23.0 > 0.5 ? floor(23.0 + 0.5) : 5.0 * 5.0));","float _e = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 2.0));","float _f = (0.48 + (((_e - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.69 - 0.48)));","float _j = (_f * _1g);","float _l = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.13662109, clamp(((_2 - 0.0) * 53.333333), 0.0, 1.0)), 0.28984375, clamp(((_2 - 0.01875) * 53.333333), 0.0, 1.0)), 0.60625, clamp(((_2 - 0.0375) * 26.6666667), 0.0, 1.0)), 0.7495117, clamp(((_2 - 0.075) * 53.333333), 0.0, 1.0)), 0.86953125, clamp(((_2 - 0.09375) * 53.333333), 0.0, 1.0)), 0.9177124, clamp(((_2 - 0.1125) * 106.666667), 0.0, 1.0)), 0.95634766, clamp(((_2 - 0.121875) * 106.666667), 0.0, 1.0)), 0.9841919, clamp(((_2 - 0.13125) * 106.666667), 0.0, 1.0)), 1.0, clamp(((_2 - 0.140625) * 106.666667), 0.0, 1.0)), 1.0466919, clamp(((_2 - 0.15) * 18.82353), 0.0, 1.0)), 1.0813477, clamp(((_2 - 0.203125) * 18.82353), 0.0, 1.0)), 1.1052124, clamp(((_2 - 0.25625) * 18.82353), 0.0, 1.0)), 1.1195313, clamp(((_2 - 0.309375) * 18.82353), 0.0, 1.0)), 1.1245117, clamp(((_2 - 0.3625) * 9.411765), 0.0, 1.0)), 1.10625, clamp(((_2 - 0.46875) * 9.411765), 0.0, 1.0)), 1.03984375, clamp(((_2 - 0.575) * 4.7058824), 0.0, 1.0)), 1.0116211, clamp(((_2 - 0.7875) * 9.411765), 0.0, 1.0)), 1.0, clamp(((_2 - 0.89375) * 9.411765), 0.0, 1.0));","_1h = _4;","_1i = _j;","_1j = _l;"], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
+    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _0 = 0.7;","vec3 _1 = vec3(0.0, 0.0, 0.0);","vec2 _5 = fxFlipbookFrameUV(p_uv, _1h.x, 5.0, 5.0);","vec4 _8 = fxSample_u_param_tFire(_5);","float _a = (_8).w;","vec4 _b = mix(mix(mix(mix(vec4(0.3, 0.02, 0.005, 1.0), vec4(0.75, 0.1, 0.01, 1.0), clamp(((_a - 0.0) * 2.857143), 0.0, 1.0)), vec4(1.0, 0.3, 0.04, 1.0), clamp(((_a - 0.35) * 3.3333333), 0.0, 1.0)), vec4(1.0, 0.55, 0.12, 1.0), clamp(((_a - 0.65) * 4.347826), 0.0, 1.0)), vec4(1.0, 0.8, 0.42, 1.0), clamp(((_a - 0.88) * 8.333333), 0.0, 1.0));","vec3 _c = (_b).xyz;","vec3 _k = mix(_1, _c, _1i);","float _m = (_a * _1j);","vec4 _n = vec4(_k, _m);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    outputs: {"particleTransform":"_1f","albedo":"_n","additivity":"_0"},
   },
-  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1i": { type: "float", value: 0 } },
+  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1g": { type: "float", value: 0 } },
   attributeReads: [],
   compute(inputs, uniforms) {
-    const _j = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
-    const _k = ((0.85 + (((_j - -1) / 2) * 0.27)));
-    uniforms["_1i"].value = _k;
+    const _h = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
+    const _i = ((0.85 + (((_h - -1) / 2) * 0.27)));
+    uniforms["_1g"].value = _i;
   },
 };
 
@@ -170,17 +165,17 @@ const render1Standard: FXRenderArtifact = {
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_1j","type":"vec3","interpolation":"flat"},{"name":"_1k","type":"float","interpolation":"flat"},{"name":"_1l","type":"float","interpolation":"flat"},{"name":"_1m","type":"float","interpolation":"flat"}],
-    vertex: { uniformDeclarations: ["uniform float _1i;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render1Baseline.color.vertex.body.slice(0, 40)], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render1Baseline.color.fragment.body.slice(0, 13)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
-    outputs: {"particleTransform":"_1h","albedo":"_p","additivity":"_0"},
+    varyings: [{"name":"_1h","type":"vec3","interpolation":"flat"},{"name":"_1i","type":"float","interpolation":"flat"},{"name":"_1j","type":"float","interpolation":"flat"}],
+    vertex: { uniformDeclarations: ["uniform float _1g;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render1Baseline.color.vertex.body.slice(0, 38)], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
+    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tFire;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render1Baseline.color.fragment.body.slice(0, 10)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    outputs: {"particleTransform":"_1f","albedo":"_n","additivity":"_0"},
   },
-  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1i": { type: "float", value: 0 } },
+  uniforms: { "u_param_tFire": { type: "sampler2D", external: "u_param_tFire" }, "_1g": { type: "float", value: 0 } },
   attributeReads: [],
   compute(inputs, uniforms) {
-    const _j = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
-    const _k = ((0.85 + (((_j - -1) / 2) * 0.27)));
-    uniforms["_1i"].value = _k;
+    const _h = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
+    const _i = ((0.85 + (((_h - -1) / 2) * 0.27)));
+    uniforms["_1g"].value = _i;
   },
 };
 
@@ -362,48 +357,47 @@ const gpuKernel2: FXParticleKernelArtifact = {
 
 const render3Baseline: FXRenderArtifact = {
   lightingIntrinsics: ["fxHalfLitShade"],
-  sceneDepth: true,
+  sceneDepth: false,
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_1k","type":"float","interpolation":"flat"},{"name":"_1l","type":"float","interpolation":"flat"},{"name":"_1m","type":"float","interpolation":"flat"},{"name":"_1n","type":"float","interpolation":"flat"}],
-    vertex: { uniformDeclarations: [], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_TRANSPOSE], body: ["float _0 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _12 = mix(0.0, 6.283, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _13 = cos(_12);","float _14 = sin(_12);","mat3 _15 = fxTranspose(mat3(viewMatrix));","vec3 _16 = (_15 * vec3(0.0, 0.0, 1.0));","vec3 _17 = (_15 * vec3(1.0, 0.0, 0.0));","vec3 _18 = (_15 * vec3(0.0, 1.0, 0.0));","mat3 _19 = mat3(((_17 * _13) + (_18 * _14)), ((_18 * _13) - (_17 * _14)), _16);","float _1a = mix(mix(mix(mix(mix(mix(0.5, 0.815, clamp(((_0 - 0.0) * 5.0), 0.0, 1.0)), 0.966875, clamp(((_0 - 0.2) * 10.0), 0.0, 1.0)), 1.1, clamp(((_0 - 0.3) * 10.0), 0.0, 1.0)), 1.266875, clamp(((_0 - 0.4) * 6.6666667), 0.0, 1.0)), 1.415, clamp(((_0 - 0.55) * 6.6666667), 0.0, 1.0)), 1.7, clamp(((_0 - 0.7) * 3.3333333), 0.0, 1.0));","float _1b = mix(0.8, 1.2, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _1c = (_1a * _1b);","float _1d = (_1c * 0.6612);","vec3 _1e = vec3(_1d, _1c, 1.0);","mat4 _1f = mat4(vec4((_1e).x, 0.0, 0.0, 0.0), vec4(0.0, (_1e).y, 0.0, 0.0), vec4(0.0, 0.0, (_1e).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _1g = mat4(_19);","mat4 _1h = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_19 * (_1e * vec3(0.0, 0.0, 0.0)))), 1.0));","mat4 _1i = ((_1h * _1g) * _1f);","float _1 = (0.45 + (((_0 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.9 - 0.45)));","float _b = smoothstep(0.05, (0.5 == 0.05 ? (0.05 + 0.000001) : 0.5), _0);","float _e = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.11573828, clamp(((_0 - 0.0) * 66.666667), 0.0, 1.0)), 0.24503125, clamp(((_0 - 0.015) * 66.666667), 0.0, 1.0)), 0.51175, clamp(((_0 - 0.03) * 33.333333), 0.0, 1.0)), 0.63291016, clamp(((_0 - 0.06) * 66.666667), 0.0, 1.0)), 0.73509375, clamp(((_0 - 0.075) * 66.666667), 0.0, 1.0)), 0.7765278, clamp(((_0 - 0.09) * 133.33333), 0.0, 1.0)), 0.81016797, clamp(((_0 - 0.0975) * 133.33333), 0.0, 1.0)), 0.83499756, clamp(((_0 - 0.105) * 133.33333), 0.0, 1.0)), 0.85, clamp(((_0 - 0.1125) * 133.33333), 0.0, 1.0)), 0.8760339, clamp(((_0 - 0.12) * 42.105263), 0.0, 1.0)), 0.8929537, clamp(((_0 - 0.14375) * 42.105263), 0.0, 1.0)), 0.90161144, clamp(((_0 - 0.1675) * 42.105263), 0.0, 1.0)), 0.90285916, clamp(((_0 - 0.19125) * 42.105263), 0.0, 1.0)), 0.8865328, clamp(((_0 - 0.215) * 21.052632), 0.0, 1.0)), 0.8507911, clamp(((_0 - 0.2625) * 21.052632), 0.0, 1.0)), 0.65, clamp(((_0 - 0.31) * 5.263158), 0.0, 1.0)), 0.56837436, clamp(((_0 - 0.5) * 11.4285714), 0.0, 1.0)), 0.4709161, clamp(((_0 - 0.5875) * 11.4285714), 0.0, 1.0)), 0.25, clamp(((_0 - 0.675) * 5.714286), 0.0, 1.0)), 0.19523438, clamp(((_0 - 0.85) * 26.6666667), 0.0, 1.0)), 0.131875, clamp(((_0 - 0.8875) * 26.6666667), 0.0, 1.0)), 0.0, clamp(((_0 - 0.925) * 13.333333), 0.0, 1.0));","float _t = mix(mix(mix(mix(mix(mix(mix(1.3, 0.90347222, clamp(((_0 - 0.0) * 10.0), 0.0, 1.0)), 0.71328125, clamp(((_0 - 0.1) * 20.0), 0.0, 1.0)), 0.55, clamp(((_0 - 0.15) * 20.0), 0.0, 1.0)), 0.38828125, clamp(((_0 - 0.2) * 16.0), 0.0, 1.0)), 0.2534722, clamp(((_0 - 0.2625) * 16.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.325) * 8.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.45) * 1.81818182), 0.0, 1.0));","_1k = _1;","_1l = _b;","_1m = _e;","_1n = _t;"], particleReads: {"position":false,"lifecycle":true,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tSmoke;","uniform sampler2D u_param_tSmokeLight;","uniform float _1j;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV, FX_GLSL_SPHERICAL_NORMAL, FX_GLSL_TANGENT_TO_WORLD_NORMAL], body: ["vec3 _2 = fxAnimatedFrameOnce(_1k, (64.0 > 0.5 ? floor(64.0 + 0.5) : 8.0 * 8.0));","vec2 _3 = fxFlipbookFrameUV(p_uv, _2.x, 8.0, 8.0);","vec4 _6 = fxSample_u_param_tSmoke(_3);","vec3 _7 = (_6).xyz;","float _8 = (_6).w;","vec3 _9 = vec3(0.33, 0.29, 0.27);","vec3 _a = vec3(0.42, 0.44, 0.49);","vec3 _c = mix(_9, _a, _1l);","vec3 _d = (_7 * _c);","float _f = (_8 * _1m);","float _g = fxDepthFade(0.3);","float _h = (_f * _g);","vec4 _i = vec4(_d, _h);","vec3 _j = fxTangentToWorldNormal(fxComputeSphericalNormal(p_uv), geometryNormal, geometryTangent);","vec3 _k = vec3(0.0, 0.0, 0.0);","vec3 _l = vec3(1.0, 0.4, 0.1);","vec4 _m = fxSample_u_param_tSmokeLight(_3);","vec3 _n = (_m).xyz;","float _p = (_n).x;","float _q = (_n).y;","float _s = (_p + _q);","float _x = (_1n * _1j);","float _y = (_s * _x);","vec3 _z = mix(_k, _l, _y);","vec4 _10 = vec4(_z, 1.0);","vec4 _11 = vec4(((fxHalfLitShade(_i, _j, 0.5, 0.5, 8.0)).xyz + (_10).xyz), (_i).w);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":true,"tangent":true,"position":false} },
-    outputs: {"particleTransform":"_1i","albedo":"_11"},
+    varyings: [{"name":"_1p","type":"vec3","interpolation":"flat"},{"name":"_1q","type":"vec3","interpolation":"flat"},{"name":"_1r","type":"float","interpolation":"flat"},{"name":"_1s","type":"float","interpolation":"flat"}],
+    vertex: { uniformDeclarations: ["uniform float _1o;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _z = cos(0.0);","float _10 = sin(0.0);","vec3 _11 = (cameraPosition - PARTICLE_POSITION);","float _12 = length(_11);","vec3 _13 = (_11 / (_12 == 0.0 ? 1.0 : _12));","vec3 _14 = cross(vec3(0.0, 1.0, 0.0), _13);","float _15 = smoothstep(0.0, 0.001, length(_14));","vec3 _16 = cross(vec3(0.0, 1.0, 0.0), (abs((vec3(0.0, 1.0, 0.0)).z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));","vec3 _17 = mix(_16, _14, _15);","vec3 _18 = normalize(cross(_17, vec3(0.0, 1.0, 0.0)));","vec3 _19 = cross(vec3(0.0, 1.0, 0.0), _18);","mat3 _1a = mat3(((_19 * _z) - (_18 * _10)), vec3(0.0, 1.0, 0.0), ((_18 * _z) + (_19 * _10)));","float _1b = mix(0.8, 1.15, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _1c = (_1b * 1.6739997);","float _1d = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _1e = (_1d * 2.0);","float _1f = floor(_1e);","float _1g = (-1.0 + (((_1f - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _1h = (_1c * _1g);","float _1i = (_1b * 2.53176);","vec3 _1j = vec3(_1h, _1i, 1.0);","mat4 _1k = mat4(vec4((_1j).x, 0.0, 0.0, 0.0), vec4(0.0, (_1j).y, 0.0, 0.0), vec4(0.0, 0.0, (_1j).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _1l = mat4(_1a);","mat4 _1m = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_1a * (_1j * vec3(0.0, -0.4705, 0.0)))), 1.0));","mat4 _1n = ((_1m * _1l) * _1k);","float _0 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _1 = (0.0 + (((_0 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.984375 - 0.0)));","vec3 _2 = fxAnimatedFrameOnce(_1, (64.0 > 0.5 ? floor(64.0 + 0.5) : 8.0 * 8.0));","vec3 _9 = vec3(0.33, 0.29, 0.27);","vec3 _a = vec3(0.38, 0.4, 0.45);","float _b = smoothstep(0.1, (0.6 == 0.1 ? (0.1 + 0.000001) : 0.6), _0);","vec3 _c = mix(_9, _a, _b);","float _e = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.0604579, clamp(((_0 - 0.0) * 40.0), 0.0, 1.0)), 0.12692708, clamp(((_0 - 0.025) * 40.0), 0.0, 1.0)), 0.26347222, clamp(((_0 - 0.05) * 20.0), 0.0, 1.0)), 0.32633464, clamp(((_0 - 0.1) * 40.0), 0.0, 1.0)), 0.38078125, clamp(((_0 - 0.125) * 40.0), 0.0, 1.0)), 0.4232053, clamp(((_0 - 0.15) * 40.0), 0.0, 1.0)), 0.43878174, clamp(((_0 - 0.175) * 80.0), 0.0, 1.0)), 0.45, clamp(((_0 - 0.1875) * 80.0), 0.0, 1.0)), 0.4588397, clamp(((_0 - 0.2) * 64.0), 0.0, 1.0)), 0.46342177, clamp(((_0 - 0.215625) * 64.0), 0.0, 1.0)), 0.46152344, clamp(((_0 - 0.23125) * 32.0), 0.0, 1.0)), 0.44772624, clamp(((_0 - 0.2625) * 32.0), 0.0, 1.0)), 0.4254514, clamp(((_0 - 0.29375) * 32.0), 0.0, 1.0)), 0.36915365, clamp(((_0 - 0.325) * 16.0), 0.0, 1.0)), 0.3419732, clamp(((_0 - 0.3875) * 32.0), 0.0, 1.0)), 0.32, clamp(((_0 - 0.41875) * 32.0), 0.0, 1.0)), 0.1, clamp(((_0 - 0.45) * 2.857143), 0.0, 1.0)), 0.047954545, clamp(((_0 - 0.8) * 10.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.9) * 10.0), 0.0, 1.0));","float _q = mix(mix(mix(mix(mix(mix(mix(1.3, 0.90625, clamp(((_0 - 0.0) * 6.6666667), 0.0, 1.0)), 0.71640625, clamp(((_0 - 0.15) * 13.333333), 0.0, 1.0)), 0.55, clamp(((_0 - 0.225) * 13.333333), 0.0, 1.0)), 0.39140625, clamp(((_0 - 0.3) * 11.4285714), 0.0, 1.0)), 0.25625, clamp(((_0 - 0.3875) * 11.4285714), 0.0, 1.0)), 0.0, clamp(((_0 - 0.475) * 5.714286), 0.0, 1.0)), 0.0, clamp(((_0 - 0.65) * 2.857143), 0.0, 1.0));","float _u = (_q * _1o);","_1p = _2;","_1q = _c;","_1r = _e;","_1s = _u;"], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
+    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tSmoke;","uniform sampler2D u_param_tSmokeLight;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["vec2 _3 = fxFlipbookFrameUV(p_uv, _1p.x, 8.0, 8.0);","vec4 _6 = fxSample_u_param_tSmoke(_3);","vec3 _7 = (_6).xyz;","float _8 = (_6).w;","vec3 _d = (_7 * _1q);","float _f = (_8 * _1r);","vec4 _g = vec4(_d, _f);","vec3 _h = vec3(0.0, 0.0, 0.0);","vec3 _i = vec3(1.0, 0.4, 0.1);","vec4 _j = fxSample_u_param_tSmokeLight(_3);","vec3 _k = (_j).xyz;","float _m = (_k).x;","float _n = (_k).y;","float _p = (_m + _n);","float _v = (_p * _1s);","vec3 _w = mix(_h, _i, _v);","vec4 _x = vec4(_w, 1.0);","vec4 _y = vec4(((fxHalfLitShade(_g, geometryNormal, 0.5, 0.5, 8.0)).xyz + (_x).xyz), (_g).w);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":true,"tangent":false,"position":false} },
+    outputs: {"particleTransform":"_1n","albedo":"_y"},
   },
-  uniforms: { "u_param_tSmoke": { type: "sampler2D", external: "u_param_tSmoke" }, "u_param_tSmokeLight": { type: "sampler2D", external: "u_param_tSmokeLight" }, "_1j": { type: "float", value: 0 } },
+  uniforms: { "u_param_tSmoke": { type: "sampler2D", external: "u_param_tSmoke" }, "u_param_tSmokeLight": { type: "sampler2D", external: "u_param_tSmokeLight" }, "_1o": { type: "float", value: 0 } },
   attributeReads: [],
   compute(inputs, uniforms) {
-    const _v = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
-    const _w = ((0.75 + (((_v - -1) / 2) * 0.45)));
-    uniforms["_1j"].value = _w;
+    const _s = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
+    const _t = ((0.75 + (((_s - -1) / 2) * 0.45)));
+    uniforms["_1o"].value = _t;
   },
 };
 
 const render3Standard: FXRenderArtifact = {
   lightingIntrinsics: ["fxHalfLitShade"],
-  sceneDepth: true,
+  sceneDepth: false,
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_1k","type":"vec3","interpolation":"flat"},{"name":"_1l","type":"vec3","interpolation":"flat"},{"name":"_1m","type":"float","interpolation":"flat"},{"name":"_1n","type":"float","interpolation":"flat"}],
-    vertex: { uniformDeclarations: ["uniform float _1j;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_SEED_HASH, FX_GLSL_TRANSPOSE, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render3Baseline.color.vertex.body.slice(0, 19), "vec3 _2 = fxAnimatedFrameOnce(_1, (64.0 > 0.5 ? floor(64.0 + 0.5) : 8.0 * 8.0));", "vec3 _9 = vec3(0.33, 0.29, 0.27);", "vec3 _a = vec3(0.42, 0.44, 0.49);", ...render3Baseline.color.vertex.body.slice(19, 20), "vec3 _c = mix(_9, _a, _b);", ...render3Baseline.color.vertex.body.slice(20, 22), "float _x = (_t * _1j);", "_1k = _2;", "_1l = _c;", "_1m = _e;", "_1n = _x;"], particleReads: {"position":false,"lifecycle":true,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tSmoke;","uniform sampler2D u_param_tSmokeLight;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV, FX_GLSL_SPHERICAL_NORMAL, FX_GLSL_TANGENT_TO_WORLD_NORMAL], body: ["vec2 _3 = fxFlipbookFrameUV(p_uv, _1k.x, 8.0, 8.0);", ...render3Baseline.color.fragment.body.slice(2, 5), "vec3 _d = (_7 * _1l);", ...render3Baseline.color.fragment.body.slice(9, 21), "float _y = (_s * _1n);", ...render3Baseline.color.fragment.body.slice(23, 26)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":true,"tangent":true,"position":false} },
-    outputs: {"particleTransform":"_1i","albedo":"_11"},
+    varyings: [{"name":"_1p","type":"vec3","interpolation":"flat"},{"name":"_1q","type":"vec3","interpolation":"flat"},{"name":"_1r","type":"float","interpolation":"flat"},{"name":"_1s","type":"float","interpolation":"flat"}],
+    vertex: { uniformDeclarations: ["uniform float _1o;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_SEED_HASH, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render3Baseline.color.vertex.body.slice(0, 39)], particleReads: {"position":true,"lifecycle":true,"attributes":[]} },
+    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tSmoke;","uniform sampler2D u_param_tSmokeLight;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render3Baseline.color.fragment.body.slice(0, 18)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":true,"tangent":false,"position":false} },
+    outputs: {"particleTransform":"_1n","albedo":"_y"},
   },
-  uniforms: { "u_param_tSmoke": { type: "sampler2D", external: "u_param_tSmoke" }, "u_param_tSmokeLight": { type: "sampler2D", external: "u_param_tSmokeLight" }, "_1j": { type: "float", value: 0 } },
+  uniforms: { "u_param_tSmoke": { type: "sampler2D", external: "u_param_tSmoke" }, "u_param_tSmokeLight": { type: "sampler2D", external: "u_param_tSmokeLight" }, "_1o": { type: "float", value: 0 } },
   attributeReads: [],
   compute(inputs, uniforms) {
-    const _v = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
-    const _w = ((0.75 + (((_v - -1) / 2) * 0.45)));
-    uniforms["_1j"].value = _w;
+    const _s = (fxFractal1(((inputs.time + 3.1) * 2.6), 2, 2, 0.5));
+    const _t = ((0.75 + (((_s - -1) / 2) * 0.45)));
+    uniforms["_1o"].value = _t;
   },
 };
 
 const behavior3: FXBehaviorArtifact = {
   buffers: [{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
   bindings: {},
-  volumes: {"b_volume$60":"CampCollider SDF"},
   spawn(slots, start, count, seed, bindings, emitter, inherited) {
     
     const world_matrix_out_x$8 = (emitter.worldMatrix[0]);
@@ -419,25 +413,25 @@ const behavior3: FXBehaviorArtifact = {
     const world_matrix_out_m10$18 = (emitter.worldMatrix[10]);
     const world_matrix_out_m11$19 = (emitter.worldMatrix[11]);
     const world_matrix_out_m15$23 = (emitter.worldMatrix[15]);
-    const random_disc_point_position_y$27 = ((0.55 + 0));
+    const random_disc_point_position_y$27 = ((0.5 + 0));
     for (let i = start; i < start + count; i++) {
       const b_lifecycle = i * 9 + 0;
       const b_position = i * 9 + 3;
       const b_velocity = i * 9 + 6;
     
-      const speed$0 = (fxMix(0.15, 0.35, fxRandom(slots[b_lifecycle + 2], seed, 0)));
-      const initial_velocity_velocity_x$1 = ((0 * speed$0));
+      const speed$0 = (fxMix(0.05, 0.15, fxRandom(slots[b_lifecycle + 2], seed, 0)));
+      const initial_velocity_velocity_x$1 = ((0.25 * speed$0));
       const initial_velocity_velocity_y$2 = ((1 * speed$0));
-      const initial_velocity_velocity_z$3 = ((0 * speed$0));
+      const initial_velocity_velocity_z$3 = ((0.05 * speed$0));
       const store_attribute_value_x$4 = (initial_velocity_velocity_x$1);
       const store_attribute_value_y$5 = (initial_velocity_velocity_y$2);
       const store_attribute_value_z$6 = (initial_velocity_velocity_z$3);
-      const lifetime_value$7 = (fxMix(4, 5.5, fxRandom(slots[b_lifecycle + 2], seed, 1)));
+      const lifetime_value$7 = (fxMix(3.2, 4.2, fxRandom(slots[b_lifecycle + 2], seed, 1)));
       const world_matrix_out_m12$20 = ((emitter.worldMatrix[12] - emitter.velocity[0] * slots[b_lifecycle + 0]));
       const world_matrix_out_m13$21 = ((emitter.worldMatrix[13] - emitter.velocity[1] * slots[b_lifecycle + 0]));
       const world_matrix_out_m14$22 = ((emitter.worldMatrix[14] - emitter.velocity[2] * slots[b_lifecycle + 0]));
       const disc_theta$24 = ((fxRandom(slots[b_lifecycle + 2], seed, 2) * 6.2831853));
-      const disc_r$25 = (Math.sqrt(fxMix((0 * 0), (0.18 * 0.18), fxRandom(slots[b_lifecycle + 2], seed, 3))));
+      const disc_r$25 = (Math.sqrt(fxMix((0 * 0), (0.15 * 0.15), fxRandom(slots[b_lifecycle + 2], seed, 3))));
       const random_disc_point_position_x$26 = ((0 + (disc_r$25 * Math.cos(disc_theta$24))));
       const random_disc_point_position_z$28 = ((0 + (disc_r$25 * Math.sin(disc_theta$24))));
       const tp_h_x$29 = (((((world_matrix_out_x$8 * random_disc_point_position_x$26) + (world_matrix_out_m4$12 * random_disc_point_position_y$27)) + (world_matrix_out_m8$16 * random_disc_point_position_z$28)) + (world_matrix_out_m12$20 * 1)));
@@ -458,17 +452,7 @@ const behavior3: FXBehaviorArtifact = {
     }
   },
   update(slots, count, dt, seed, bindings, emitter) {
-    const b_volume$60 = bindings["b_volume$60"].value;
-    const delta_time_out$39 = (dt);
-    const cse$99 = ((0 * delta_time_out$39));
-    const binary_op_out$52 = ((delta_time_out$39 * 0.6));
-    const dragFactor$56 = (Math.exp((- (0.8 * delta_time_out$39))));
-    const sd_extent_x$61 = ((2.2 - -1.9));
-    const sd_extent_y$62 = ((4.2 - 1.4));
-    const sd_extent_z$63 = ((1.2 - -3));
-    const sd_texel_x$70 = ((1 / b_volume$60[0]));
-    const sd_texel_y$71 = ((1 / b_volume$60[1]));
-    const sd_texel_z$72 = ((1 / b_volume$60[2]));
+    
     for (let i = 0; i < count; i++) {
       const b_lifecycle = i * 9 + 0;
       const b_position = i * 9 + 3;
@@ -478,99 +462,25 @@ const behavior3: FXBehaviorArtifact = {
       const custom_attribute_value_x$36 = (slots[b_velocity + 0]);
       const custom_attribute_value_y$37 = (slots[b_velocity + 1]);
       const custom_attribute_value_z$38 = (slots[b_velocity + 2]);
-      const gravity_velocity_x$40 = ((custom_attribute_value_x$36 + cse$99));
-      const gravity_velocity_y$41 = ((custom_attribute_value_y$37 + (0.45 * delta_time_out$39)));
-      const gravity_velocity_z$42 = ((custom_attribute_value_z$38 + cse$99));
-      const builtin_attribute_position_x$43 = (slots[b_position + 0]);
-      const builtin_attribute_position_y$44 = (slots[b_position + 1]);
-      const builtin_attribute_position_z$45 = (slots[b_position + 2]);
-      const builtin_attribute_age$46 = (slots[b_lifecycle + 0]);
-      const builtin_attribute_lifetime$47 = (slots[b_lifecycle + 1]);
-      const builtin_attribute_id$48 = (slots[b_lifecycle + 2]);
-      const cse$100 = (((builtin_attribute_position_x$43 + 0) * 0.8));
-      const cse$101 = (((builtin_attribute_position_y$44 + 0) * 0.8));
-      const cse$102 = (((builtin_attribute_position_z$45 + 0) * 0.8));
-      const curl_noise_out_x$49 = (fxCurl3(cse$100, cse$101, cse$102, 1, 2, 0.5, 0));
-      const curl_noise_out_y$50 = (fxCurl3(cse$100, cse$101, cse$102, 1, 2, 0.5, 1));
-      const curl_noise_out_z$51 = (fxCurl3(cse$100, cse$101, cse$102, 1, 2, 0.5, 2));
-      const add_scaled_vector_out_x$53 = ((gravity_velocity_x$40 + (curl_noise_out_x$49 * binary_op_out$52)));
-      const add_scaled_vector_out_y$54 = ((gravity_velocity_y$41 + (curl_noise_out_y$50 * binary_op_out$52)));
-      const add_scaled_vector_out_z$55 = ((gravity_velocity_z$42 + (curl_noise_out_z$51 * binary_op_out$52)));
-      const drag_velocity_x$57 = ((add_scaled_vector_out_x$53 * dragFactor$56));
-      const drag_velocity_y$58 = ((add_scaled_vector_out_y$54 * dragFactor$56));
-      const drag_velocity_z$59 = ((add_scaled_vector_out_z$55 * dragFactor$56));
-      const sd_near_x$64 = (Math.min(Math.max(slots[b_position + 0], -1.9), 2.2));
-      const sd_near_y$65 = (Math.min(Math.max(slots[b_position + 1], 1.4), 4.2));
-      const sd_near_z$66 = (Math.min(Math.max(slots[b_position + 2], -3), 1.2));
-      const sd_uvw_x$67 = (((sd_near_x$64 - -1.9) / sd_extent_x$61));
-      const sd_uvw_y$68 = (((sd_near_y$65 - 1.4) / sd_extent_y$62));
-      const sd_uvw_z$69 = (((sd_near_z$66 - -3) / sd_extent_z$63));
-      const cse$103 = ((sd_uvw_x$67 + (sd_texel_x$70 * 1)));
-      const cse$104 = ((sd_uvw_y$68 + (sd_texel_y$71 * -1)));
-      const cse$105 = ((sd_uvw_z$69 + (sd_texel_z$72 * -1)));
-      const sd_f0$73 = (fxVolumeFetch(b_volume$60, cse$103, cse$104, cse$105));
-      const cse$106 = ((sd_uvw_x$67 + (sd_texel_x$70 * -1)));
-      const cse$107 = ((sd_uvw_z$69 + (sd_texel_z$72 * 1)));
-      const sd_f1$74 = (fxVolumeFetch(b_volume$60, cse$106, cse$104, cse$107));
-      const cse$108 = ((sd_uvw_y$68 + (sd_texel_y$71 * 1)));
-      const sd_f2$75 = (fxVolumeFetch(b_volume$60, cse$106, cse$108, cse$105));
-      const sd_f3$76 = (fxVolumeFetch(b_volume$60, cse$103, cse$108, cse$107));
-      const cse$109 = (((((((sd_f0$73 - sd_f1$74) - sd_f2$75) + sd_f3$76) / (sd_texel_x$70 * 4)) * 1.2) / sd_extent_x$61));
-      const cse$111 = ((- sd_f0$73));
-      const cse$110 = (((((((cse$111 - sd_f1$74) + sd_f2$75) + sd_f3$76) / (sd_texel_y$71 * 4)) * 1.2) / sd_extent_y$62));
-      const cse$112 = (((((((cse$111 + sd_f1$74) - sd_f2$75) + sd_f3$76) / (sd_texel_z$72 * 4)) * 1.2) / sd_extent_z$63));
-      const sd_nlen$77 = (Math.sqrt((((cse$109 * cse$109) + (cse$110 * cse$110)) + (cse$112 * cse$112))));
-      const cse$113 = (((sd_nlen$77 === 0 ? 1 : 0) !== 0 ? 1 : sd_nlen$77));
-      const sd_n_x$78 = ((cse$109 / cse$113));
-      const sd_n_y$79 = ((cse$110 / cse$113));
-      const sd_n_z$80 = ((cse$112 / cse$113));
-      const cse$114 = ((slots[b_position + 0] - sd_near_x$64));
-      const cse$115 = ((slots[b_position + 1] - sd_near_y$65));
-      const cse$116 = ((slots[b_position + 2] - sd_near_z$66));
-      const sdf_sample_distance$81 = ((((((((sd_f0$73 + sd_f1$74) + sd_f2$75) + sd_f3$76) * 0.25) * 1.2) + -0.6) + Math.sqrt((((cse$114 * cse$114) + (cse$115 * cse$115)) + (cse$116 * cse$116)))));
-      const sdf_sample_normal_x$82 = (sd_n_x$78);
-      const sdf_sample_normal_y$83 = (sd_n_y$79);
-      const sdf_sample_normal_z$84 = (sd_n_z$80);
-      const dot_out$85 = ((((drag_velocity_x$57 * sdf_sample_normal_x$82) + (drag_velocity_y$58 * sdf_sample_normal_y$83)) + (drag_velocity_z$59 * sdf_sample_normal_z$84)));
-      const binary_op_out$86 = (Math.min(dot_out$85, 0));
-      const smoothstep_out$87 = (fxSmoothstep(0.35, ((0 === 0.35 ? 1 : 0) !== 0 ? (0.35 + 0.000001) : 0), sdf_sample_distance$81));
-      const binary_op_out$88 = ((binary_op_out$86 * smoothstep_out$87));
-      const binary_op_out$89 = ((binary_op_out$88 * -1));
-      const add_scaled_vector_out_x$90 = ((drag_velocity_x$57 + (sdf_sample_normal_x$82 * binary_op_out$89)));
-      const add_scaled_vector_out_y$91 = ((drag_velocity_y$58 + (sdf_sample_normal_y$83 * binary_op_out$89)));
-      const add_scaled_vector_out_z$92 = ((drag_velocity_z$59 + (sdf_sample_normal_z$84 * binary_op_out$89)));
-      const integrate_motion_position_x$93 = ((slots[b_position + 0] + (add_scaled_vector_out_x$90 * dt)));
-      const integrate_motion_position_y$94 = ((slots[b_position + 1] + (add_scaled_vector_out_y$91 * dt)));
-      const integrate_motion_position_z$95 = ((slots[b_position + 2] + (add_scaled_vector_out_z$92 * dt)));
-      const store_attribute_value_x$96 = (add_scaled_vector_out_x$90);
-      const store_attribute_value_y$97 = (add_scaled_vector_out_y$91);
-      const store_attribute_value_z$98 = (add_scaled_vector_out_z$92);
-      slots[b_velocity + 0] = store_attribute_value_x$96;
-      slots[b_velocity + 1] = store_attribute_value_y$97;
-      slots[b_velocity + 2] = store_attribute_value_z$98;
-      slots[b_position + 0] = integrate_motion_position_x$93;
-      slots[b_position + 1] = integrate_motion_position_y$94;
-      slots[b_position + 2] = integrate_motion_position_z$95;
+      const integrate_motion_position_x$39 = ((slots[b_position + 0] + (custom_attribute_value_x$36 * dt)));
+      const integrate_motion_position_y$40 = ((slots[b_position + 1] + (custom_attribute_value_y$37 * dt)));
+      const integrate_motion_position_z$41 = ((slots[b_position + 2] + (custom_attribute_value_z$38 * dt)));
+      slots[b_position + 0] = integrate_motion_position_x$39;
+      slots[b_position + 1] = integrate_motion_position_y$40;
+      slots[b_position + 2] = integrate_motion_position_z$41;
     
     }
   },
 };
 
-const gpuKernel3Lines = [...gpuKernel0Lines.slice(0, 7), "layout(location = 2) in vec3 in_velocity;", ...gpuKernel0Lines.slice(7, 10), "out vec3 out_velocity;", ...gpuKernel0Lines.slice(10, 22), "uniform sampler3D _l;", "uniform float _14;", "", FX_GLSL_STANDARD_HASH, FX_GLSL_RAND, FX_GLSL_STANDARD_NOISED, FX_GLSL_CURL_OCTAVES_1, ...gpuKernel0Lines.slice(25, 39), "    vec3 fx_newborn_velocity = vec3(0.0);", "    float _0 = mix((vec2(0.15, 0.35)).x, (vec2(0.15, 0.35)).y, fxNextRandom());", "    vec3 _1 = (vec3(0.0, 1.0, 0.0) * _0);", "    float _2 = mix(4.0, 5.5, fxNextRandom());", "    mat4 _3 = fx_birthModelMatrix;", "    float _4 = (fxNextRandom() * 6.2831853);", "    float _5 = sqrt(mix((0.0 * 0.0), (0.18 * 0.18), fxNextRandom()));", "    vec3 _6 = (vec3(0.0, 0.55, 0.0) + vec3((_5 * cos(_4)), 0.0, (_5 * sin(_4))));", "    vec4 _7 = (_3 * vec4(_6, 1.0));", "    vec3 _8 = (_7).xyz;", "  out_lifecycle = vec3(0.0);", "  out_lifecycle.y = _2;", ...gpuKernel0Lines.slice(48, 51), "  out_position.x = _8.x;", "  out_position.y = _8.y;", "  out_position.z = _8.z;", "  out_velocity = vec3(0.0);", "  out_velocity.x = _1.x;", "  out_velocity.y = _1.y;", "  out_velocity.z = _1.z;", ...gpuKernel0Lines.slice(54, 57), "    out_velocity = in_velocity;", "  } else {", "    vec3 _9 = in_velocity;", "    float _a = u_fxDt;", "    vec3 _b = (_9 + (vec3(0.0, 0.45, 0.0) * _a));", "    vec3 _c = in_position;", "    vec3 _g = fxCurlOctaves1(((_c + vec3(0.0, 0.0, 0.0)) * 0.8), 2.0, 0.5);", "    float _h = (_a * 0.6);", "    vec3 _i = (_b + (_g * _h));", "    vec3 _k = (_i * _14);", "    vec3 _m = (vec3(2.2, 4.2, 1.2) - vec3(-1.9, 1.4, -3.0));", "    vec3 _n = clamp(in_position, vec3(-1.9, 1.4, -3.0), vec3(2.2, 4.2, 1.2));", "    vec3 _o = ((_n - vec3(-1.9, 1.4, -3.0)) / _m);", "    vec3 _p = (vec3(1.0, 1.0, 1.0) / vec3(textureSize(_l, 0)));", "    float _q = texture(_l, (_o + (_p * vec3(1.0, -1.0, -1.0)))).r;", "    float _r = texture(_l, (_o + (_p * vec3(-1.0, -1.0, 1.0)))).r;", "    float _s = texture(_l, (_o + (_p * vec3(-1.0, 1.0, -1.0)))).r;", "    float _t = texture(_l, (_o + (_p * vec3(1.0, 1.0, 1.0)))).r;", "    float _u = length((((vec3((((_q - _r) - _s) + _t), ((((- _q) - _r) + _s) + _t), ((((- _q) + _r) - _s) + _t)) / (_p * 4.0)) * 1.2) / _m));", "    vec3 _v = ((((vec3((((_q - _r) - _s) + _t), ((((- _q) - _r) + _s) + _t), ((((- _q) + _r) - _s) + _t)) / (_p * 4.0)) * 1.2) / _m) / (_u == 0.0 ? 1.0 : _u));", "    float _w = (((((((_q + _r) + _s) + _t) * 0.25) * 1.2) + -0.6) + length((in_position - _n)));", "    float _x = dot(_k, _v);", "    float _y = min(_x, 0.0);", "    float _z = smoothstep(0.35, (0.0 == 0.35 ? (0.35 + 0.000001) : 0.0), _w);", "    float _10 = (_y * _z);", "    float _11 = (_10 * -1.0);", "    vec3 _12 = (_k + (_v * _11));", "    vec3 _13 = (in_position + (_12 * u_fxDt));", ...gpuKernel0Lines.slice(58, 61), "  out_position.x = _13.x;", "  out_position.y = _13.y;", "  out_position.z = _13.z;", "  out_velocity = in_velocity;", "  out_velocity.x = _12.x;", "  out_velocity.y = _12.y;", "  out_velocity.z = _12.z;", "  }", "}", ""];
+const gpuKernel3Lines = [...gpuKernel0Lines.slice(0, 7), "layout(location = 2) in vec3 in_velocity;", ...gpuKernel0Lines.slice(7, 10), "out vec3 out_velocity;", ...gpuKernel0Lines.slice(10, 39), "    vec3 fx_newborn_velocity = vec3(0.0);", "    float _0 = mix((vec2(0.05, 0.15)).x, (vec2(0.05, 0.15)).y, fxNextRandom());", "    vec3 _1 = (vec3(0.25, 1.0, 0.05) * _0);", "    float _2 = mix(3.2, 4.2, fxNextRandom());", "    mat4 _3 = fx_birthModelMatrix;", "    float _4 = (fxNextRandom() * 6.2831853);", "    float _5 = sqrt(mix((0.0 * 0.0), (0.15 * 0.15), fxNextRandom()));", "    vec3 _6 = (vec3(0.0, 0.5, 0.0) + vec3((_5 * cos(_4)), 0.0, (_5 * sin(_4))));", "    vec4 _7 = (_3 * vec4(_6, 1.0));", "    vec3 _8 = (_7).xyz;", "  out_lifecycle = vec3(0.0);", "  out_lifecycle.y = _2;", ...gpuKernel0Lines.slice(48, 51), "  out_position.x = _8.x;", "  out_position.y = _8.y;", "  out_position.z = _8.z;", "  out_velocity = vec3(0.0);", "  out_velocity.x = _1.x;", "  out_velocity.y = _1.y;", "  out_velocity.z = _1.z;", ...gpuKernel0Lines.slice(54, 57), "    out_velocity = in_velocity;", "  } else {", "    vec3 _9 = in_velocity;", "    vec3 _a = (in_position + (_9 * u_fxDt));", ...gpuKernel0Lines.slice(58, 61), "  out_position.x = _a.x;", "  out_position.y = _a.y;", "  out_position.z = _a.z;", "  out_velocity = in_velocity;", "  }", "}", ""];
 
 const gpuKernel3: FXParticleKernelArtifact = {
   vertexSource: gpuKernel3Lines.join("\n"),
   fragmentSource: gpuKernel0.fragmentSource,
   buffers: [{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
   transformFeedbackVaryings: ["out_lifecycle","out_position","out_velocity"],
-  bindings: { "_14": { value: 0 } },
-  volumes: {"_l":"CampCollider SDF"},
-  compute(inputs, uniforms) {
-    {
-      const _j = (Math.exp((- (0.8 * inputs.deltaTime))));
-      uniforms["_14"].value = _j;
-    }
-  },
+  bindings: {},
 };
 
 const render4Baseline: FXRenderArtifact = {
@@ -606,7 +516,6 @@ const render4Standard: FXRenderArtifact = {
 const behavior4: FXBehaviorArtifact = {
   buffers: [{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
   bindings: {},
-  volumes: {"b_volume$56":"CampCollider SDF"},
   spawn(slots, start, count, seed, bindings, emitter, inherited) {
     
     const world_matrix_out_x$8 = (emitter.worldMatrix[0]);
@@ -661,17 +570,9 @@ const behavior4: FXBehaviorArtifact = {
     }
   },
   update(slots, count, dt, seed, bindings, emitter) {
-    const b_volume$56 = bindings["b_volume$56"].value;
+    
     const delta_time_out$48 = (dt);
     const dragFactor$52 = (Math.exp((- (0.6 * delta_time_out$48))));
-    const sd_extent_x$57 = ((2.2 - -1.9));
-    const sd_extent_y$58 = ((4.2 - 1.4));
-    const sd_extent_z$59 = ((1.2 - -3));
-    const sd_texel_x$66 = ((1 / b_volume$56[0]));
-    const sd_texel_y$67 = ((1 / b_volume$56[1]));
-    const sd_texel_z$68 = ((1 / b_volume$56[2]));
-    const cse$121 = (Math.min(Math.max(0.1, 0.0), 1.0));
-    const cse$120 = ((1 - cse$121));
     for (let i = 0; i < count; i++) {
       const b_lifecycle = i * 9 + 0;
       const b_position = i * 9 + 3;
@@ -687,98 +588,47 @@ const behavior4: FXBehaviorArtifact = {
       const builtin_attribute_age$42 = (slots[b_lifecycle + 0]);
       const builtin_attribute_lifetime$43 = (slots[b_lifecycle + 1]);
       const builtin_attribute_id$44 = (slots[b_lifecycle + 2]);
-      const cse$102 = (((builtin_attribute_position_x$39 + 0) * 1.3));
-      const cse$103 = (((builtin_attribute_position_y$40 + 0) * 1.3));
-      const cse$104 = (((builtin_attribute_position_z$41 + 0) * 1.3));
-      const curl_noise_out_x$45 = (fxCurl3(cse$102, cse$103, cse$104, 1, 2, 0.5, 0));
-      const curl_noise_out_y$46 = (fxCurl3(cse$102, cse$103, cse$104, 1, 2, 0.5, 1));
-      const curl_noise_out_z$47 = (fxCurl3(cse$102, cse$103, cse$104, 1, 2, 0.5, 2));
+      const cse$62 = (((builtin_attribute_position_x$39 + 0) * 1.3));
+      const cse$63 = (((builtin_attribute_position_y$40 + 0) * 1.3));
+      const cse$64 = (((builtin_attribute_position_z$41 + 0) * 1.3));
+      const curl_noise_out_x$45 = (fxCurl3(cse$62, cse$63, cse$64, 1, 2, 0.5, 0));
+      const curl_noise_out_y$46 = (fxCurl3(cse$62, cse$63, cse$64, 1, 2, 0.5, 1));
+      const curl_noise_out_z$47 = (fxCurl3(cse$62, cse$63, cse$64, 1, 2, 0.5, 2));
       const add_scaled_vector_out_x$49 = ((custom_attribute_value_x$36 + (curl_noise_out_x$45 * delta_time_out$48)));
       const add_scaled_vector_out_y$50 = ((custom_attribute_value_y$37 + (curl_noise_out_y$46 * delta_time_out$48)));
       const add_scaled_vector_out_z$51 = ((custom_attribute_value_z$38 + (curl_noise_out_z$47 * delta_time_out$48)));
       const drag_velocity_x$53 = ((add_scaled_vector_out_x$49 * dragFactor$52));
       const drag_velocity_y$54 = ((add_scaled_vector_out_y$50 * dragFactor$52));
       const drag_velocity_z$55 = ((add_scaled_vector_out_z$51 * dragFactor$52));
-      const sd_near_x$60 = (Math.min(Math.max(slots[b_position + 0], -1.9), 2.2));
-      const sd_near_y$61 = (Math.min(Math.max(slots[b_position + 1], 1.4), 4.2));
-      const sd_near_z$62 = (Math.min(Math.max(slots[b_position + 2], -3), 1.2));
-      const sd_uvw_x$63 = (((sd_near_x$60 - -1.9) / sd_extent_x$57));
-      const sd_uvw_y$64 = (((sd_near_y$61 - 1.4) / sd_extent_y$58));
-      const sd_uvw_z$65 = (((sd_near_z$62 - -3) / sd_extent_z$59));
-      const cse$105 = ((sd_uvw_x$63 + (sd_texel_x$66 * 1)));
-      const cse$106 = ((sd_uvw_y$64 + (sd_texel_y$67 * -1)));
-      const cse$107 = ((sd_uvw_z$65 + (sd_texel_z$68 * -1)));
-      const sd_f0$69 = (fxVolumeFetch(b_volume$56, cse$105, cse$106, cse$107));
-      const cse$108 = ((sd_uvw_x$63 + (sd_texel_x$66 * -1)));
-      const cse$109 = ((sd_uvw_z$65 + (sd_texel_z$68 * 1)));
-      const sd_f1$70 = (fxVolumeFetch(b_volume$56, cse$108, cse$106, cse$109));
-      const cse$110 = ((sd_uvw_y$64 + (sd_texel_y$67 * 1)));
-      const sd_f2$71 = (fxVolumeFetch(b_volume$56, cse$108, cse$110, cse$107));
-      const sd_f3$72 = (fxVolumeFetch(b_volume$56, cse$105, cse$110, cse$109));
-      const cse$111 = (((((((sd_f0$69 - sd_f1$70) - sd_f2$71) + sd_f3$72) / (sd_texel_x$66 * 4)) * 1.2) / sd_extent_x$57));
-      const cse$113 = ((- sd_f0$69));
-      const cse$112 = (((((((cse$113 - sd_f1$70) + sd_f2$71) + sd_f3$72) / (sd_texel_y$67 * 4)) * 1.2) / sd_extent_y$58));
-      const cse$114 = (((((((cse$113 + sd_f1$70) - sd_f2$71) + sd_f3$72) / (sd_texel_z$68 * 4)) * 1.2) / sd_extent_z$59));
-      const sd_nlen$73 = (Math.sqrt((((cse$111 * cse$111) + (cse$112 * cse$112)) + (cse$114 * cse$114))));
-      const cse$115 = (((sd_nlen$73 === 0 ? 1 : 0) !== 0 ? 1 : sd_nlen$73));
-      const sd_n_x$74 = ((cse$111 / cse$115));
-      const sd_n_y$75 = ((cse$112 / cse$115));
-      const sd_n_z$76 = ((cse$114 / cse$115));
-      const cse$116 = ((slots[b_position + 0] - sd_near_x$60));
-      const cse$117 = ((slots[b_position + 1] - sd_near_y$61));
-      const cse$118 = ((slots[b_position + 2] - sd_near_z$62));
-      const sdf_sample_distance$77 = ((((((((sd_f0$69 + sd_f1$70) + sd_f2$71) + sd_f3$72) * 0.25) * 1.2) + -0.6) + Math.sqrt((((cse$116 * cse$116) + (cse$117 * cse$117)) + (cse$118 * cse$118)))));
-      const sdf_sample_normal_x$78 = (sd_n_x$74);
-      const sdf_sample_normal_y$79 = (sd_n_y$75);
-      const sdf_sample_normal_z$80 = (sd_n_z$76);
-      const fc_nlen$81 = (Math.sqrt((((sdf_sample_normal_x$78 * sdf_sample_normal_x$78) + (sdf_sample_normal_y$79 * sdf_sample_normal_y$79)) + (sdf_sample_normal_z$80 * sdf_sample_normal_z$80))));
-      const cse$119 = (((fc_nlen$81 === 0 ? 1 : 0) !== 0 ? 1 : fc_nlen$81));
-      const fc_n_x$82 = ((sdf_sample_normal_x$78 / cse$119));
-      const fc_n_y$83 = ((sdf_sample_normal_y$79 / cse$119));
-      const fc_n_z$84 = ((sdf_sample_normal_z$80 / cse$119));
-      const fc_vn$85 = ((((drag_velocity_x$53 * fc_n_x$82) + (drag_velocity_y$54 * fc_n_y$83)) + (drag_velocity_z$55 * fc_n_z$84)));
-      const fc_vnorm_x$86 = ((fc_n_x$82 * fc_vn$85));
-      const fc_vnorm_y$87 = ((fc_n_y$83 * fc_vn$85));
-      const fc_vnorm_z$88 = ((fc_n_z$84 * fc_vn$85));
-      const fc_resp_x$89 = ((((drag_velocity_x$53 - fc_vnorm_x$86) * cse$120) - (fc_vnorm_x$86 * cse$121)));
-      const fc_resp_y$90 = ((((drag_velocity_y$54 - fc_vnorm_y$87) * cse$120) - (fc_vnorm_y$87 * cse$121)));
-      const fc_resp_z$91 = ((((drag_velocity_z$55 - fc_vnorm_z$88) * cse$120) - (fc_vnorm_z$88 * cse$121)));
-      const cse$122 = ((sdf_sample_distance$77 < 0.02 ? 1 : 0));
-      const cse$123 = ((fc_vn$85 < 0 ? 1 : 0));
-      const field_collision_velocity_x$92 = ((cse$122 !== 0 ? (cse$123 !== 0 ? fc_resp_x$89 : drag_velocity_x$53) : drag_velocity_x$53));
-      const field_collision_velocity_y$93 = ((cse$122 !== 0 ? (cse$123 !== 0 ? fc_resp_y$90 : drag_velocity_y$54) : drag_velocity_y$54));
-      const field_collision_velocity_z$94 = ((cse$122 !== 0 ? (cse$123 !== 0 ? fc_resp_z$91 : drag_velocity_z$55) : drag_velocity_z$55));
-      const field_collision_contact$95 = ((cse$122 !== 0 ? (cse$123 !== 0 ? 1 : 0) : 0));
-      const integrate_motion_position_x$96 = ((slots[b_position + 0] + (field_collision_velocity_x$92 * dt)));
-      const integrate_motion_position_y$97 = ((slots[b_position + 1] + (field_collision_velocity_y$93 * dt)));
-      const integrate_motion_position_z$98 = ((slots[b_position + 2] + (field_collision_velocity_z$94 * dt)));
-      const store_attribute_value_x$99 = (field_collision_velocity_x$92);
-      const store_attribute_value_y$100 = (field_collision_velocity_y$93);
-      const store_attribute_value_z$101 = (field_collision_velocity_z$94);
-      slots[b_velocity + 0] = store_attribute_value_x$99;
-      slots[b_velocity + 1] = store_attribute_value_y$100;
-      slots[b_velocity + 2] = store_attribute_value_z$101;
-      slots[b_position + 0] = integrate_motion_position_x$96;
-      slots[b_position + 1] = integrate_motion_position_y$97;
-      slots[b_position + 2] = integrate_motion_position_z$98;
+      const integrate_motion_position_x$56 = ((slots[b_position + 0] + (drag_velocity_x$53 * dt)));
+      const integrate_motion_position_y$57 = ((slots[b_position + 1] + (drag_velocity_y$54 * dt)));
+      const integrate_motion_position_z$58 = ((slots[b_position + 2] + (drag_velocity_z$55 * dt)));
+      const store_attribute_value_x$59 = (drag_velocity_x$53);
+      const store_attribute_value_y$60 = (drag_velocity_y$54);
+      const store_attribute_value_z$61 = (drag_velocity_z$55);
+      slots[b_velocity + 0] = store_attribute_value_x$59;
+      slots[b_velocity + 1] = store_attribute_value_y$60;
+      slots[b_velocity + 2] = store_attribute_value_z$61;
+      slots[b_position + 0] = integrate_motion_position_x$56;
+      slots[b_position + 1] = integrate_motion_position_y$57;
+      slots[b_position + 2] = integrate_motion_position_z$58;
     
     }
   },
 };
 
-const gpuKernel4Lines = [...gpuKernel3Lines.slice(0, 24), "uniform sampler3D _j;", "uniform float _13;", ...gpuKernel3Lines.slice(26, 46), "    float _0 = mix((vec2(0.6, 1.6)).x, (vec2(0.6, 1.6)).y, fxNextRandom());", "    vec3 _1 = (vec3(0.0, 1.0, 0.0) * _0);", "    float _2 = mix(1.4, 2.8, fxNextRandom());", ...gpuKernel3Lines.slice(49, 51), "    float _5 = sqrt(mix((0.0 * 0.0), (0.25 * 0.25), fxNextRandom()));", "    vec3 _6 = (vec3(0.0, 0.15, 0.0) + vec3((_5 * cos(_4)), 0.0, (_5 * sin(_4))));", ...gpuKernel3Lines.slice(53, 73), "    vec3 _a = in_position;", "    vec3 _e = fxCurlOctaves1(((_a + vec3(0.0, 0.0, 0.0)) * 1.3), 2.0, 0.5);", "    float _f = u_fxDt;", "    vec3 _g = (_9 + (_e * _f));", "    vec3 _i = (_g * _13);", "    vec3 _k = (vec3(2.2, 4.2, 1.2) - vec3(-1.9, 1.4, -3.0));", "    vec3 _l = clamp(in_position, vec3(-1.9, 1.4, -3.0), vec3(2.2, 4.2, 1.2));", "    vec3 _m = ((_l - vec3(-1.9, 1.4, -3.0)) / _k);", "    vec3 _n = (vec3(1.0, 1.0, 1.0) / vec3(textureSize(_j, 0)));", "    float _o = texture(_j, (_m + (_n * vec3(1.0, -1.0, -1.0)))).r;", "    float _p = texture(_j, (_m + (_n * vec3(-1.0, -1.0, 1.0)))).r;", "    float _q = texture(_j, (_m + (_n * vec3(-1.0, 1.0, -1.0)))).r;", "    float _r = texture(_j, (_m + (_n * vec3(1.0, 1.0, 1.0)))).r;", "    float _s = length((((vec3((((_o - _p) - _q) + _r), ((((- _o) - _p) + _q) + _r), ((((- _o) + _p) - _q) + _r)) / (_n * 4.0)) * 1.2) / _k));", "    vec3 _t = ((((vec3((((_o - _p) - _q) + _r), ((((- _o) - _p) + _q) + _r), ((((- _o) + _p) - _q) + _r)) / (_n * 4.0)) * 1.2) / _k) / (_s == 0.0 ? 1.0 : _s));", "    float _u = (((((((_o + _p) + _q) + _r) * 0.25) * 1.2) + -0.6) + length((in_position - _l)));", "    float _v = length(_t);", "    vec3 _w = (_t / (_v == 0.0 ? 1.0 : _v));", "    float _x = dot(_i, _w);", "    vec3 _y = (_w * _x);", "    vec3 _z = (((_i - _y) * (1.0 - clamp(0.1, 0.0, 1.0))) - (_y * clamp(0.1, 0.0, 1.0)));", "    vec3 _10 = (_u < 0.02 ? (_x < 0.0 ? _z : _i) : _i);", "    vec3 _12 = (in_position + (_10 * u_fxDt));", ...gpuKernel3Lines.slice(98, 101), "  out_position.x = _12.x;", "  out_position.y = _12.y;", "  out_position.z = _12.z;", "  out_velocity = in_velocity;", "  out_velocity.x = _10.x;", "  out_velocity.y = _10.y;", "  out_velocity.z = _10.z;", "  }", "}", ""];
+const gpuKernel4Lines = [...gpuKernel3Lines.slice(0, 24), "uniform float _k;", "", FX_GLSL_STANDARD_HASH, FX_GLSL_RAND, FX_GLSL_STANDARD_NOISED, FX_GLSL_CURL_OCTAVES_1, ...gpuKernel3Lines.slice(27, 42), "    float _0 = mix((vec2(0.6, 1.6)).x, (vec2(0.6, 1.6)).y, fxNextRandom());", "    vec3 _1 = (vec3(0.0, 1.0, 0.0) * _0);", "    float _2 = mix(1.4, 2.8, fxNextRandom());", ...gpuKernel3Lines.slice(45, 47), "    float _5 = sqrt(mix((0.0 * 0.0), (0.25 * 0.25), fxNextRandom()));", "    vec3 _6 = (vec3(0.0, 0.15, 0.0) + vec3((_5 * cos(_4)), 0.0, (_5 * sin(_4))));", ...gpuKernel3Lines.slice(49, 69), "    vec3 _a = in_position;", "    vec3 _e = fxCurlOctaves1(((_a + vec3(0.0, 0.0, 0.0)) * 1.3), 2.0, 0.5);", "    float _f = u_fxDt;", "    vec3 _g = (_9 + (_e * _f));", "    vec3 _i = (_g * _k);", "    vec3 _j = (in_position + (_i * u_fxDt));", ...gpuKernel3Lines.slice(70, 73), "  out_position.x = _j.x;", "  out_position.y = _j.y;", "  out_position.z = _j.z;", "  out_velocity = in_velocity;", "  out_velocity.x = _i.x;", "  out_velocity.y = _i.y;", "  out_velocity.z = _i.z;", "  }", "}", ""];
 
 const gpuKernel4: FXParticleKernelArtifact = {
   vertexSource: gpuKernel4Lines.join("\n"),
   fragmentSource: gpuKernel0.fragmentSource,
   buffers: [{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
   transformFeedbackVaryings: ["out_lifecycle","out_position","out_velocity"],
-  bindings: { "_13": { value: 0 } },
-  volumes: {"_j":"CampCollider SDF"},
+  bindings: { "_k": { value: 0 } },
   compute(inputs, uniforms) {
     {
       const _h = (Math.exp((- (0.6 * inputs.deltaTime))));
-      uniforms["_13"].value = _h;
+      uniforms["_k"].value = _h;
     }
   },
 };
@@ -803,7 +653,6 @@ const render5Standard: FXRenderArtifact = render5Baseline;
 const behavior5: FXBehaviorArtifact = {
   buffers: [{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
   bindings: {},
-  volumes: {"b_volume$98":"CampCollider SDF"},
   spawn(slots, start, count, seed, bindings, emitter, inherited) {
     
     const cse$53 = ((0 * 0));
@@ -887,24 +736,18 @@ const behavior5: FXBehaviorArtifact = {
     }
   },
   update(slots, count, dt, seed, bindings, emitter) {
-    const b_volume$98 = bindings["b_volume$98"].value;
+    
     const delta_time_out$74 = (dt);
-    const cse$144 = ((0 * delta_time_out$74));
+    const cse$104 = ((0 * delta_time_out$74));
     const dragFactor$78 = (Math.exp((- (0.4 * delta_time_out$74))));
-    const cse$145 = ((0 * 0));
-    const pc_nlen$82 = (Math.sqrt(((cse$145 + (1 * 1)) + cse$145)));
-    const cse$146 = (((pc_nlen$82 === 0 ? 1 : 0) !== 0 ? 1 : pc_nlen$82));
-    const pc_n_x$83 = ((0 / cse$146));
-    const pc_n_y$84 = ((1 / cse$146));
-    const pc_n_z$85 = ((0 / cse$146));
-    const cse$147 = ((1 - Math.min(Math.max(0.4, 0.0), 1.0)));
-    const cse$148 = (Math.min(Math.max(0.3, 0.0), 1.0));
-    const sd_extent_x$99 = ((2.2 - -1.9));
-    const sd_extent_y$100 = ((4.2 - 1.4));
-    const sd_extent_z$101 = ((1.2 - -3));
-    const sd_texel_x$108 = ((1 / b_volume$98[0]));
-    const sd_texel_y$109 = ((1 / b_volume$98[1]));
-    const sd_texel_z$110 = ((1 / b_volume$98[2]));
+    const cse$105 = ((0 * 0));
+    const pc_nlen$82 = (Math.sqrt(((cse$105 + (1 * 1)) + cse$105)));
+    const cse$106 = (((pc_nlen$82 === 0 ? 1 : 0) !== 0 ? 1 : pc_nlen$82));
+    const pc_n_x$83 = ((0 / cse$106));
+    const pc_n_y$84 = ((1 / cse$106));
+    const pc_n_z$85 = ((0 / cse$106));
+    const cse$107 = ((1 - Math.min(Math.max(0.4, 0.0), 1.0)));
+    const cse$108 = (Math.min(Math.max(0.3, 0.0), 1.0));
     for (let i = 0; i < count; i++) {
       const b_lifecycle = i * 9 + 0;
       const b_position = i * 9 + 3;
@@ -920,9 +763,9 @@ const behavior5: FXBehaviorArtifact = {
       const custom_attribute_value_x$71 = (slots[b_velocity + 0]);
       const custom_attribute_value_y$72 = (slots[b_velocity + 1]);
       const custom_attribute_value_z$73 = (slots[b_velocity + 2]);
-      const gravity_velocity_x$75 = ((custom_attribute_value_x$71 + cse$144));
+      const gravity_velocity_x$75 = ((custom_attribute_value_x$71 + cse$104));
       const gravity_velocity_y$76 = ((custom_attribute_value_y$72 + (-9.81 * delta_time_out$74)));
-      const gravity_velocity_z$77 = ((custom_attribute_value_z$73 + cse$144));
+      const gravity_velocity_z$77 = ((custom_attribute_value_z$73 + cse$104));
       const drag_velocity_x$79 = ((gravity_velocity_x$75 * dragFactor$78));
       const drag_velocity_y$80 = ((gravity_velocity_y$76 * dragFactor$78));
       const drag_velocity_z$81 = ((gravity_velocity_z$77 * dragFactor$78));
@@ -931,95 +774,44 @@ const behavior5: FXBehaviorArtifact = {
       const pc_vnorm_x$88 = ((pc_n_x$83 * pc_vn$87));
       const pc_vnorm_y$89 = ((pc_n_y$84 * pc_vn$87));
       const pc_vnorm_z$90 = ((pc_n_z$85 * pc_vn$87));
-      const pc_resp_x$91 = ((((drag_velocity_x$79 - pc_vnorm_x$88) * cse$147) - (pc_vnorm_x$88 * cse$148)));
-      const pc_resp_y$92 = ((((drag_velocity_y$80 - pc_vnorm_y$89) * cse$147) - (pc_vnorm_y$89 * cse$148)));
-      const pc_resp_z$93 = ((((drag_velocity_z$81 - pc_vnorm_z$90) * cse$147) - (pc_vnorm_z$90 * cse$148)));
-      const cse$149 = ((pc_sd$86 < 0.01 ? 1 : 0));
-      const cse$150 = ((pc_vn$87 < 0 ? 1 : 0));
-      const plane_collision_velocity_x$94 = ((cse$149 !== 0 ? (cse$150 !== 0 ? pc_resp_x$91 : drag_velocity_x$79) : drag_velocity_x$79));
-      const plane_collision_velocity_y$95 = ((cse$149 !== 0 ? (cse$150 !== 0 ? pc_resp_y$92 : drag_velocity_y$80) : drag_velocity_y$80));
-      const plane_collision_velocity_z$96 = ((cse$149 !== 0 ? (cse$150 !== 0 ? pc_resp_z$93 : drag_velocity_z$81) : drag_velocity_z$81));
-      const plane_collision_contact$97 = ((cse$149 !== 0 ? (cse$150 !== 0 ? 1 : 0) : 0));
-      const sd_near_x$102 = (Math.min(Math.max(slots[b_position + 0], -1.9), 2.2));
-      const sd_near_y$103 = (Math.min(Math.max(slots[b_position + 1], 1.4), 4.2));
-      const sd_near_z$104 = (Math.min(Math.max(slots[b_position + 2], -3), 1.2));
-      const sd_uvw_x$105 = (((sd_near_x$102 - -1.9) / sd_extent_x$99));
-      const sd_uvw_y$106 = (((sd_near_y$103 - 1.4) / sd_extent_y$100));
-      const sd_uvw_z$107 = (((sd_near_z$104 - -3) / sd_extent_z$101));
-      const cse$151 = ((sd_uvw_x$105 + (sd_texel_x$108 * 1)));
-      const cse$152 = ((sd_uvw_y$106 + (sd_texel_y$109 * -1)));
-      const cse$153 = ((sd_uvw_z$107 + (sd_texel_z$110 * -1)));
-      const sd_f0$111 = (fxVolumeFetch(b_volume$98, cse$151, cse$152, cse$153));
-      const cse$154 = ((sd_uvw_x$105 + (sd_texel_x$108 * -1)));
-      const cse$155 = ((sd_uvw_z$107 + (sd_texel_z$110 * 1)));
-      const sd_f1$112 = (fxVolumeFetch(b_volume$98, cse$154, cse$152, cse$155));
-      const cse$156 = ((sd_uvw_y$106 + (sd_texel_y$109 * 1)));
-      const sd_f2$113 = (fxVolumeFetch(b_volume$98, cse$154, cse$156, cse$153));
-      const sd_f3$114 = (fxVolumeFetch(b_volume$98, cse$151, cse$156, cse$155));
-      const cse$157 = (((((((sd_f0$111 - sd_f1$112) - sd_f2$113) + sd_f3$114) / (sd_texel_x$108 * 4)) * 1.2) / sd_extent_x$99));
-      const cse$159 = ((- sd_f0$111));
-      const cse$158 = (((((((cse$159 - sd_f1$112) + sd_f2$113) + sd_f3$114) / (sd_texel_y$109 * 4)) * 1.2) / sd_extent_y$100));
-      const cse$160 = (((((((cse$159 + sd_f1$112) - sd_f2$113) + sd_f3$114) / (sd_texel_z$110 * 4)) * 1.2) / sd_extent_z$101));
-      const sd_nlen$115 = (Math.sqrt((((cse$157 * cse$157) + (cse$158 * cse$158)) + (cse$160 * cse$160))));
-      const cse$161 = (((sd_nlen$115 === 0 ? 1 : 0) !== 0 ? 1 : sd_nlen$115));
-      const sd_n_x$116 = ((cse$157 / cse$161));
-      const sd_n_y$117 = ((cse$158 / cse$161));
-      const sd_n_z$118 = ((cse$160 / cse$161));
-      const cse$162 = ((slots[b_position + 0] - sd_near_x$102));
-      const cse$163 = ((slots[b_position + 1] - sd_near_y$103));
-      const cse$164 = ((slots[b_position + 2] - sd_near_z$104));
-      const sdf_sample_distance$119 = ((((((((sd_f0$111 + sd_f1$112) + sd_f2$113) + sd_f3$114) * 0.25) * 1.2) + -0.6) + Math.sqrt((((cse$162 * cse$162) + (cse$163 * cse$163)) + (cse$164 * cse$164)))));
-      const sdf_sample_normal_x$120 = (sd_n_x$116);
-      const sdf_sample_normal_y$121 = (sd_n_y$117);
-      const sdf_sample_normal_z$122 = (sd_n_z$118);
-      const fc_nlen$123 = (Math.sqrt((((sdf_sample_normal_x$120 * sdf_sample_normal_x$120) + (sdf_sample_normal_y$121 * sdf_sample_normal_y$121)) + (sdf_sample_normal_z$122 * sdf_sample_normal_z$122))));
-      const cse$165 = (((fc_nlen$123 === 0 ? 1 : 0) !== 0 ? 1 : fc_nlen$123));
-      const fc_n_x$124 = ((sdf_sample_normal_x$120 / cse$165));
-      const fc_n_y$125 = ((sdf_sample_normal_y$121 / cse$165));
-      const fc_n_z$126 = ((sdf_sample_normal_z$122 / cse$165));
-      const fc_vn$127 = ((((plane_collision_velocity_x$94 * fc_n_x$124) + (plane_collision_velocity_y$95 * fc_n_y$125)) + (plane_collision_velocity_z$96 * fc_n_z$126)));
-      const fc_vnorm_x$128 = ((fc_n_x$124 * fc_vn$127));
-      const fc_vnorm_y$129 = ((fc_n_y$125 * fc_vn$127));
-      const fc_vnorm_z$130 = ((fc_n_z$126 * fc_vn$127));
-      const fc_resp_x$131 = ((((plane_collision_velocity_x$94 - fc_vnorm_x$128) * cse$147) - (fc_vnorm_x$128 * cse$148)));
-      const fc_resp_y$132 = ((((plane_collision_velocity_y$95 - fc_vnorm_y$129) * cse$147) - (fc_vnorm_y$129 * cse$148)));
-      const fc_resp_z$133 = ((((plane_collision_velocity_z$96 - fc_vnorm_z$130) * cse$147) - (fc_vnorm_z$130 * cse$148)));
-      const cse$166 = ((sdf_sample_distance$119 < 0.01 ? 1 : 0));
-      const cse$167 = ((fc_vn$127 < 0 ? 1 : 0));
-      const field_collision_velocity_x$134 = ((cse$166 !== 0 ? (cse$167 !== 0 ? fc_resp_x$131 : plane_collision_velocity_x$94) : plane_collision_velocity_x$94));
-      const field_collision_velocity_y$135 = ((cse$166 !== 0 ? (cse$167 !== 0 ? fc_resp_y$132 : plane_collision_velocity_y$95) : plane_collision_velocity_y$95));
-      const field_collision_velocity_z$136 = ((cse$166 !== 0 ? (cse$167 !== 0 ? fc_resp_z$133 : plane_collision_velocity_z$96) : plane_collision_velocity_z$96));
-      const field_collision_contact$137 = ((cse$166 !== 0 ? (cse$167 !== 0 ? 1 : 0) : 0));
-      const add_scaled_vector_out_x$138 = ((builtin_attribute_position_x$65 + (field_collision_velocity_x$134 * delta_time_out$74)));
-      const add_scaled_vector_out_y$139 = ((builtin_attribute_position_y$66 + (field_collision_velocity_y$135 * delta_time_out$74)));
-      const add_scaled_vector_out_z$140 = ((builtin_attribute_position_z$67 + (field_collision_velocity_z$136 * delta_time_out$74)));
-      const store_attribute_value_x$141 = (field_collision_velocity_x$134);
-      const store_attribute_value_y$142 = (field_collision_velocity_y$135);
-      const store_attribute_value_z$143 = (field_collision_velocity_z$136);
-      slots[b_velocity + 0] = store_attribute_value_x$141;
-      slots[b_velocity + 1] = store_attribute_value_y$142;
-      slots[b_velocity + 2] = store_attribute_value_z$143;
-      slots[b_position + 0] = add_scaled_vector_out_x$138;
-      slots[b_position + 1] = add_scaled_vector_out_y$139;
-      slots[b_position + 2] = add_scaled_vector_out_z$140;
+      const pc_resp_x$91 = ((((drag_velocity_x$79 - pc_vnorm_x$88) * cse$107) - (pc_vnorm_x$88 * cse$108)));
+      const pc_resp_y$92 = ((((drag_velocity_y$80 - pc_vnorm_y$89) * cse$107) - (pc_vnorm_y$89 * cse$108)));
+      const pc_resp_z$93 = ((((drag_velocity_z$81 - pc_vnorm_z$90) * cse$107) - (pc_vnorm_z$90 * cse$108)));
+      const cse$109 = ((pc_sd$86 < 0.01 ? 1 : 0));
+      const cse$110 = ((pc_vn$87 < 0 ? 1 : 0));
+      const plane_collision_velocity_x$94 = ((cse$109 !== 0 ? (cse$110 !== 0 ? pc_resp_x$91 : drag_velocity_x$79) : drag_velocity_x$79));
+      const plane_collision_velocity_y$95 = ((cse$109 !== 0 ? (cse$110 !== 0 ? pc_resp_y$92 : drag_velocity_y$80) : drag_velocity_y$80));
+      const plane_collision_velocity_z$96 = ((cse$109 !== 0 ? (cse$110 !== 0 ? pc_resp_z$93 : drag_velocity_z$81) : drag_velocity_z$81));
+      const plane_collision_contact$97 = ((cse$109 !== 0 ? (cse$110 !== 0 ? 1 : 0) : 0));
+      const add_scaled_vector_out_x$98 = ((builtin_attribute_position_x$65 + (plane_collision_velocity_x$94 * delta_time_out$74)));
+      const add_scaled_vector_out_y$99 = ((builtin_attribute_position_y$66 + (plane_collision_velocity_y$95 * delta_time_out$74)));
+      const add_scaled_vector_out_z$100 = ((builtin_attribute_position_z$67 + (plane_collision_velocity_z$96 * delta_time_out$74)));
+      const store_attribute_value_x$101 = (plane_collision_velocity_x$94);
+      const store_attribute_value_y$102 = (plane_collision_velocity_y$95);
+      const store_attribute_value_z$103 = (plane_collision_velocity_z$96);
+      slots[b_velocity + 0] = store_attribute_value_x$101;
+      slots[b_velocity + 1] = store_attribute_value_y$102;
+      slots[b_velocity + 2] = store_attribute_value_z$103;
+      slots[b_position + 0] = add_scaled_vector_out_x$98;
+      slots[b_position + 1] = add_scaled_vector_out_y$99;
+      slots[b_position + 2] = add_scaled_vector_out_z$100;
     
     }
   },
 };
 
-const gpuKernel5Lines = [...gpuKernel4Lines.slice(0, 24), "uniform sampler3D _z;", "uniform float _1j;", "", FX_GLSL_STANDARD_HASH, FX_GLSL_RAND, ...gpuKernel4Lines.slice(31, 46), "    float _0 = length(vec3(0.0, 1.0, 0.0));", "    vec3 _1 = (vec3(0.0, 1.0, 0.0) / (_0 == 0.0 ? 1.0 : _0));", "    vec3 _2 = normalize(vec3((((_1).y * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).z) - ((_1).z * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).y)), (((_1).z * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).x) - ((_1).x * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).z)), (((_1).x * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).y) - ((_1).y * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).x))));", "    vec3 _3 = vec3((((_1).y * (_2).z) - ((_1).z * (_2).y)), (((_1).z * (_2).x) - ((_1).x * (_2).z)), (((_1).x * (_2).y) - ((_1).y * (_2).x)));", "    float _4 = (fxNextRandom() * 6.2831853);", "    vec3 _5 = ((_2 * cos(_4)) + (_3 * sin(_4)));", "    float _6 = mix(cos(0.7), 1.0, fxNextRandom());", "    float _7 = sqrt(max(0.0, (1.0 - (_6 * _6))));", "    vec3 _8 = (((_1 * _6) + (_5 * _7)) * 3.2);", "    float _9 = mix(0.4, 0.9, fxNextRandom());", "    mat4 _a = fx_birthModelMatrix;", "    float _b = (fxNextRandom() * 6.2831853);", "    float _c = ((fxNextRandom() * 2.0) - 1.0);", "    float _d = sqrt(max(0.0, (1.0 - (_c * _c))));", "    float _e = (0.1 * pow(fxNextRandom(), 1.0 / 3.0));", "    vec3 _f = vec3(((vec3(0.0, 0.25, 0.0)).x + ((_d * cos(_b)) * _e)), ((vec3(0.0, 0.25, 0.0)).y + ((_d * sin(_b)) * _e)), ((vec3(0.0, 0.25, 0.0)).z + (_c * _e)));", "    vec4 _g = (_a * vec4(_f, 1.0));", "    vec3 _h = (_g).xyz;", "  out_lifecycle = vec3(0.0);", "  out_lifecycle.y = _9;", ...gpuKernel4Lines.slice(57, 60), "  out_position.x = _h.x;", "  out_position.y = _h.y;", "  out_position.z = _h.z;", "  out_velocity = vec3(0.0);", "  out_velocity.x = _8.x;", "  out_velocity.y = _8.y;", "  out_velocity.z = _8.z;", ...gpuKernel4Lines.slice(67, 72), "    vec3 _i = in_position;", "    vec3 _m = in_velocity;", "    float _n = u_fxDt;", "    vec3 _o = (_m + (vec3(0.0, -9.81, 0.0) * _n));", "    vec3 _q = (_o * _1j);", "    float _r = length(vec3(0.0, 1.0, 0.0));", "    vec3 _s = (vec3(0.0, 1.0, 0.0) / (_r == 0.0 ? 1.0 : _r));", "    float _t = dot((_i - vec3(0.0, 0.0, 0.0)), _s);", "    float _u = dot(_q, _s);", "    vec3 _v = (_s * _u);", "    vec3 _w = (((_q - _v) * (1.0 - clamp(0.4, 0.0, 1.0))) - (_v * clamp(0.3, 0.0, 1.0)));", "    vec3 _x = (_t < 0.01 ? (_u < 0.0 ? _w : _q) : _q);", "    vec3 _10 = (vec3(2.2, 4.2, 1.2) - vec3(-1.9, 1.4, -3.0));", "    vec3 _11 = clamp(in_position, vec3(-1.9, 1.4, -3.0), vec3(2.2, 4.2, 1.2));", "    vec3 _12 = ((_11 - vec3(-1.9, 1.4, -3.0)) / _10);", "    vec3 _13 = (vec3(1.0, 1.0, 1.0) / vec3(textureSize(_z, 0)));", "    float _14 = texture(_z, (_12 + (_13 * vec3(1.0, -1.0, -1.0)))).r;", "    float _15 = texture(_z, (_12 + (_13 * vec3(-1.0, -1.0, 1.0)))).r;", "    float _16 = texture(_z, (_12 + (_13 * vec3(-1.0, 1.0, -1.0)))).r;", "    float _17 = texture(_z, (_12 + (_13 * vec3(1.0, 1.0, 1.0)))).r;", "    float _18 = length((((vec3((((_14 - _15) - _16) + _17), ((((- _14) - _15) + _16) + _17), ((((- _14) + _15) - _16) + _17)) / (_13 * 4.0)) * 1.2) / _10));", "    vec3 _19 = ((((vec3((((_14 - _15) - _16) + _17), ((((- _14) - _15) + _16) + _17), ((((- _14) + _15) - _16) + _17)) / (_13 * 4.0)) * 1.2) / _10) / (_18 == 0.0 ? 1.0 : _18));", "    float _1a = (((((((_14 + _15) + _16) + _17) * 0.25) * 1.2) + -0.6) + length((in_position - _11)));", "    float _1b = length(_19);", "    vec3 _1c = (_19 / (_1b == 0.0 ? 1.0 : _1b));", "    float _1d = dot(_x, _1c);", "    vec3 _1e = (_1c * _1d);", "    vec3 _1f = (((_x - _1e) * (1.0 - clamp(0.4, 0.0, 1.0))) - (_1e * clamp(0.3, 0.0, 1.0)));", "    vec3 _1g = (_1a < 0.01 ? (_1d < 0.0 ? _1f : _x) : _x);", "    vec3 _1i = (_i + (_1g * _n));", ...gpuKernel4Lines.slice(96, 99), "  out_position.x = _1i.x;", "  out_position.y = _1i.y;", "  out_position.z = _1i.z;", "  out_velocity = in_velocity;", "  out_velocity.x = _1g.x;", "  out_velocity.y = _1g.y;", "  out_velocity.z = _1g.z;", "  }", "}", ""];
+const gpuKernel5Lines = [...gpuKernel3Lines.slice(0, 24), "uniform float _10;", ...gpuKernel3Lines.slice(24, 42), "    float _0 = length(vec3(0.0, 1.0, 0.0));", "    vec3 _1 = (vec3(0.0, 1.0, 0.0) / (_0 == 0.0 ? 1.0 : _0));", "    vec3 _2 = normalize(vec3((((_1).y * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).z) - ((_1).z * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).y)), (((_1).z * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).x) - ((_1).x * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).z)), (((_1).x * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).y) - ((_1).y * ((abs((_1).z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0))).x))));", "    vec3 _3 = vec3((((_1).y * (_2).z) - ((_1).z * (_2).y)), (((_1).z * (_2).x) - ((_1).x * (_2).z)), (((_1).x * (_2).y) - ((_1).y * (_2).x)));", "    float _4 = (fxNextRandom() * 6.2831853);", "    vec3 _5 = ((_2 * cos(_4)) + (_3 * sin(_4)));", "    float _6 = mix(cos(0.7), 1.0, fxNextRandom());", "    float _7 = sqrt(max(0.0, (1.0 - (_6 * _6))));", "    vec3 _8 = (((_1 * _6) + (_5 * _7)) * 3.2);", "    float _9 = mix(0.4, 0.9, fxNextRandom());", "    mat4 _a = fx_birthModelMatrix;", "    float _b = (fxNextRandom() * 6.2831853);", "    float _c = ((fxNextRandom() * 2.0) - 1.0);", "    float _d = sqrt(max(0.0, (1.0 - (_c * _c))));", "    float _e = (0.1 * pow(fxNextRandom(), 1.0 / 3.0));", "    vec3 _f = vec3(((vec3(0.0, 0.25, 0.0)).x + ((_d * cos(_b)) * _e)), ((vec3(0.0, 0.25, 0.0)).y + ((_d * sin(_b)) * _e)), ((vec3(0.0, 0.25, 0.0)).z + (_c * _e)));", "    vec4 _g = (_a * vec4(_f, 1.0));", "    vec3 _h = (_g).xyz;", "  out_lifecycle = vec3(0.0);", "  out_lifecycle.y = _9;", ...gpuKernel3Lines.slice(53, 56), "  out_position.x = _h.x;", "  out_position.y = _h.y;", "  out_position.z = _h.z;", "  out_velocity = vec3(0.0);", "  out_velocity.x = _8.x;", "  out_velocity.y = _8.y;", "  out_velocity.z = _8.z;", ...gpuKernel3Lines.slice(63, 68), "    vec3 _i = in_position;", "    vec3 _m = in_velocity;", "    float _n = u_fxDt;", "    vec3 _o = (_m + (vec3(0.0, -9.81, 0.0) * _n));", "    vec3 _q = (_o * _10);", "    float _r = length(vec3(0.0, 1.0, 0.0));", "    vec3 _s = (vec3(0.0, 1.0, 0.0) / (_r == 0.0 ? 1.0 : _r));", "    float _t = dot((_i - vec3(0.0, 0.0, 0.0)), _s);", "    float _u = dot(_q, _s);", "    vec3 _v = (_s * _u);", "    vec3 _w = (((_q - _v) * (1.0 - clamp(0.4, 0.0, 1.0))) - (_v * clamp(0.3, 0.0, 1.0)));", "    vec3 _x = (_t < 0.01 ? (_u < 0.0 ? _w : _q) : _q);", "    vec3 _z = (_i + (_x * _n));", ...gpuKernel3Lines.slice(70, 73), "  out_position.x = _z.x;", "  out_position.y = _z.y;", "  out_position.z = _z.z;", "  out_velocity = in_velocity;", "  out_velocity.x = _x.x;", "  out_velocity.y = _x.y;", "  out_velocity.z = _x.z;", "  }", "}", ""];
 
 const gpuKernel5: FXParticleKernelArtifact = {
   vertexSource: gpuKernel5Lines.join("\n"),
   fragmentSource: gpuKernel0.fragmentSource,
   buffers: [{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
   transformFeedbackVaryings: ["out_lifecycle","out_position","out_velocity"],
-  bindings: { "_1j": { value: 0 } },
-  volumes: {"_z":"CampCollider SDF"},
+  bindings: { "_10": { value: 0 } },
   compute(inputs, uniforms) {
     {
       const _p = (Math.exp((- (0.4 * inputs.deltaTime))));
-      uniforms["_1j"].value = _p;
+      uniforms["_10"].value = _p;
     }
   },
 };
@@ -1193,14 +985,14 @@ const SPEC: FXEffectSpec = {
       render: { baseline: render3Baseline, standard: render3Standard },
       behavior: behavior3,
       gpuBehavior: gpuKernel3,
-      expectedCapacity: 80,
-      maxLifetime: 5.5,
+      expectedCapacity: 13,
+      maxLifetime: 4.2,
       sortInterval: 10,
       externalSlots: ["tSmoke","tSmokeLight"],
       transform: {"position":[0,0,0],"rotation":[0,0,0,1],"scale":[1,1,1]},
       transformTracks: [],
       tracks: [],
-      events: [{"kind":"play","rate":14,"duration":0,"time":0}],
+      events: [{"kind":"play","rate":2.2,"duration":0,"time":0}],
       liveChannels: [],
       liveParams: [],
     },
@@ -1261,7 +1053,6 @@ export interface CampfireAssets {
   tGlow: FXExternalTexture;
   tSmoke: FXExternalTexture;
   tSmokeLight: FXExternalTexture;
-  "CampCollider SDF": Data3DTexture;
 }
 
 export class Campfire extends FXEffect {

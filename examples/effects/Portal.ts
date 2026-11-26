@@ -418,7 +418,7 @@ const trail1Baseline: FXRenderArtifact = {
   color: {
     varyings: [{"name":"_10","type":"float","interpolation":"smooth"},{"name":"_11","type":"float","interpolation":"smooth"}],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["vec2 _0 = p_uv;","float _1 = (_0).x;","float _2 = (_0).y;","float _3 = (0.03 + (((_1 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.004 - 0.03)));","_10 = _1;","_11 = _2;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform vec3 _y;","uniform float _z;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH], body: ["float _4 = 1.0;","vec4 _5 = vec4(0.0, 0.0, 0.0, 0.0);","float _6 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _7 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","vec4 _8 = mix(mix(mix(vec4(0.4, 0.8, 1.0, 0.0), vec4(0.85, 1.0, 1.0, 1.0), clamp(((_7 - 0.0) * 6.6666667), 0.0, 1.0)), vec4(0.4, 0.85, 1.0, 1.0), clamp(((_7 - 0.15) * 1.81818182), 0.0, 1.0)), vec4(0.2, 0.35, 1.0, 0.0), clamp(((_7 - 0.7) * 3.3333333), 0.0, 1.0));","vec4 _9 = mix(mix(mix(vec4(0.3, 0.5, 1.0, 0.0), vec4(0.85, 0.8, 1.0, 1.0), clamp(((_7 - 0.0) * 6.6666667), 0.0, 1.0)), vec4(0.8, 0.4, 1.0, 1.0), clamp(((_7 - 0.15) * 1.81818182), 0.0, 1.0)), vec4(0.45, 0.1, 0.85, 0.0), clamp(((_7 - 0.7) * 3.3333333), 0.0, 1.0));","vec4 _a = (_6 >= 0.75 ? _8 : _9);","float _b = (-1.0 + (((_11 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _c = abs(_b);","float _d = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _c);","float _e = mix(mix(mix(mix(mix(mix(mix(mix(2.2, 1.5325, clamp(((_10 - 0.0) * 6.6666667), 0.0, 1.0)), 1.2240625, clamp(((_10 - 0.15) * 13.333333), 0.0, 1.0)), 1.09832031, clamp(((_10 - 0.225) * 26.6666667), 0.0, 1.0)), 1.0, clamp(((_10 - 0.2625) * 26.6666667), 0.0, 1.0)), 0.8233203, clamp(((_10 - 0.3) * 11.4285714), 0.0, 1.0)), 0.6740625, clamp(((_10 - 0.3875) * 11.4285714), 0.0, 1.0)), 0.4325, clamp(((_10 - 0.475) * 5.714286), 0.0, 1.0)), 0.0, clamp(((_10 - 0.65) * 2.857143), 0.0, 1.0));","float _f = (_d * _e);","vec3 _g = PARTICLE_POSITION;","vec3 _o = (_g - _y);","float _p = length(_o);","float _u = (_p / _z);","float _v = smoothstep(0.2, (0.75 == 0.2 ? (0.2 + 0.000001) : 0.75), _u);","float _w = (_f * _v);","vec4 _x = mix(_5, _a, _w);"], particleReads: {"position":true,"lifecycle":true,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: ["uniform vec3 _y;","uniform float _z;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH], body: ["float _4 = 1.0;","vec4 _5 = vec4(0.0, 0.0, 0.0, 0.0);","float _6 = mix(0.0, 1.0, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _7 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","vec4 _8 = mix(mix(mix(vec4(0.4, 0.8, 1.0, 0.0), vec4(0.85, 1.0, 1.0, 1.0), clamp(((_7 - 0.0) * 6.6666667), 0.0, 1.0)), vec4(0.4, 0.85, 1.0, 1.0), clamp(((_7 - 0.15) * 1.81818182), 0.0, 1.0)), vec4(0.2, 0.35, 1.0, 0.0), clamp(((_7 - 0.7) * 3.3333333), 0.0, 1.0));","vec4 _9 = mix(mix(mix(vec4(0.3, 0.5, 1.0, 0.0), vec4(0.85, 0.8, 1.0, 1.0), clamp(((_7 - 0.0) * 6.6666667), 0.0, 1.0)), vec4(0.8, 0.4, 1.0, 1.0), clamp(((_7 - 0.15) * 1.81818182), 0.0, 1.0)), vec4(0.45, 0.1, 0.85, 0.0), clamp(((_7 - 0.7) * 3.3333333), 0.0, 1.0));","vec4 _a = (_6 >= 0.75 ? _8 : _9);","float _b = (-1.0 + (((_11 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _c = abs(_b);","float _d = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _c);","float _e = mix(mix(2.2, 1.0, clamp(((_10 - 0.0) * 3.3333333), 0.0, 1.0)), 0.0, clamp(((_10 - 0.3) * 1.42857143), 0.0, 1.0));","float _f = (_d * _e);","vec3 _g = PARTICLE_POSITION;","vec3 _o = (_g - _y);","float _p = length(_o);","float _u = (_p / _z);","float _v = smoothstep(0.2, (0.75 == 0.2 ? (0.2 + 0.000001) : 0.75), _u);","float _w = (_f * _v);","vec4 _x = mix(_5, _a, _w);"], particleReads: {"position":true,"lifecycle":true,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"albedo":"_x","additivity":"_4","width":"_3"},
   },
   uniforms: { "_y": { type: "vec3", value: [0, 0, 0] }, "_z": { type: "float", value: 0 } },
@@ -767,7 +767,7 @@ const trail2Baseline: FXRenderArtifact = {
   color: {
     varyings: [{"name":"_17","type":"float","interpolation":"smooth"},{"name":"_18","type":"float","interpolation":"smooth"}],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["vec2 _0 = p_uv;","float _1 = (_0).x;","float _2 = (_0).y;","float _3 = (0.03 + (((_1 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.004 - 0.03)));","_17 = _1;","_18 = _2;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform vec3 _15;","uniform float _16;"], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = vec4(0.0, 0.0, 0.0, 0.0);","float _6 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","vec4 _7 = mix(mix(mix(mix(mix(mix(mix(mix(vec4(0.02, 0.018, 0.016, 0.0), vec4(0.02, 0.018, 0.016, 1.0), clamp(((_6 - 0.0) * 25.0), 0.0, 1.0)), vec4(0.02, 0.018, 0.016, 1.0), clamp(((_6 - 0.04) * 12.5), 0.0, 1.0)), vec4(0.1, 0.012, 0.004, 1.0), clamp(((_6 - 0.12) * 8.333333), 0.0, 1.0)), vec4(0.22, 0.07, 0.012, 1.0), clamp(((_6 - 0.24) * 6.25), 0.0, 1.0)), vec4(0.22, 0.1, 0.05, 1.0), clamp(((_6 - 0.4) * 6.6666667), 0.0, 1.0)), vec4(0.2, 0.07, 0.2, 1.0), clamp(((_6 - 0.55) * 6.6666667), 0.0, 1.0)), vec4(0.15, 0.06, 0.22, 1.0), clamp(((_6 - 0.7) * 6.6666667), 0.0, 1.0)), vec4(0.1, 0.025, 0.2, 0.0), clamp(((_6 - 0.85) * 6.6666667), 0.0, 1.0));","float _8 = (-1.0 + (((_18 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _9 = abs(_8);","float _a = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _9);","float _b = mix(mix(mix(mix(mix(mix(mix(mix(2.2, 1.5325, clamp(((_17 - 0.0) * 6.6666667), 0.0, 1.0)), 1.2240625, clamp(((_17 - 0.15) * 13.333333), 0.0, 1.0)), 1.09832031, clamp(((_17 - 0.225) * 26.6666667), 0.0, 1.0)), 1.0, clamp(((_17 - 0.2625) * 26.6666667), 0.0, 1.0)), 0.8233203, clamp(((_17 - 0.3) * 11.4285714), 0.0, 1.0)), 0.6740625, clamp(((_17 - 0.3875) * 11.4285714), 0.0, 1.0)), 0.4325, clamp(((_17 - 0.475) * 5.714286), 0.0, 1.0)), 0.0, clamp(((_17 - 0.65) * 2.857143), 0.0, 1.0));","float _c = (_a * _b);","vec3 _d = PARTICLE_POSITION;","vec3 _l = (_d - _15);","float _m = length(_l);","float _r = (_m / _16);","float _s = smoothstep(0.2, (0.75 == 0.2 ? (0.2 + 0.000001) : 0.75), _r);","float _t = (_c * _s);","float _v = PARTICLE_AGE;","float _w = PARTICLE_LIFETIME;","float _y = (_17 * 0.6);","float _z = (_v - _y);","float _10 = (_w * 0.4);","float _11 = (_z - _10);","float _12 = smoothstep(0.0, (0.06 == 0.0 ? (0.0 + 0.000001) : 0.06), _11);","float _13 = (_t * _12);","vec4 _14 = mix(_5, _7, _13);"], particleReads: {"position":true,"lifecycle":true,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: ["uniform vec3 _15;","uniform float _16;"], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = vec4(0.0, 0.0, 0.0, 0.0);","float _6 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","vec4 _7 = mix(mix(mix(mix(mix(mix(mix(mix(vec4(0.02, 0.018, 0.016, 0.0), vec4(0.02, 0.018, 0.016, 1.0), clamp(((_6 - 0.0) * 25.0), 0.0, 1.0)), vec4(0.02, 0.018, 0.016, 1.0), clamp(((_6 - 0.04) * 12.5), 0.0, 1.0)), vec4(0.1, 0.012, 0.004, 1.0), clamp(((_6 - 0.12) * 8.333333), 0.0, 1.0)), vec4(0.22, 0.07, 0.012, 1.0), clamp(((_6 - 0.24) * 6.25), 0.0, 1.0)), vec4(0.22, 0.1, 0.05, 1.0), clamp(((_6 - 0.4) * 6.6666667), 0.0, 1.0)), vec4(0.2, 0.07, 0.2, 1.0), clamp(((_6 - 0.55) * 6.6666667), 0.0, 1.0)), vec4(0.15, 0.06, 0.22, 1.0), clamp(((_6 - 0.7) * 6.6666667), 0.0, 1.0)), vec4(0.1, 0.025, 0.2, 0.0), clamp(((_6 - 0.85) * 6.6666667), 0.0, 1.0));","float _8 = (-1.0 + (((_18 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _9 = abs(_8);","float _a = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _9);","float _b = mix(mix(2.2, 1.0, clamp(((_17 - 0.0) * 3.3333333), 0.0, 1.0)), 0.0, clamp(((_17 - 0.3) * 1.42857143), 0.0, 1.0));","float _c = (_a * _b);","vec3 _d = PARTICLE_POSITION;","vec3 _l = (_d - _15);","float _m = length(_l);","float _r = (_m / _16);","float _s = smoothstep(0.2, (0.75 == 0.2 ? (0.2 + 0.000001) : 0.75), _r);","float _t = (_c * _s);","float _v = PARTICLE_AGE;","float _w = PARTICLE_LIFETIME;","float _y = (_17 * 0.6);","float _z = (_v - _y);","float _10 = (_w * 0.4);","float _11 = (_z - _10);","float _12 = smoothstep(0.0, (0.06 == 0.0 ? (0.0 + 0.000001) : 0.06), _11);","float _13 = (_t * _12);","vec4 _14 = mix(_5, _7, _13);"], particleReads: {"position":true,"lifecycle":true,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"albedo":"_14","additivity":"_4","width":"_3"},
   },
   uniforms: { "_15": { type: "vec3", value: [0, 0, 0] }, "_16": { type: "float", value: 0 } },
@@ -1259,12 +1259,12 @@ const gpuKernel6: FXParticleKernelArtifact = {
 const meshRender0Baseline: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["mat4 _2n = modelMatrix;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform float _2o;","uniform float _2p;","uniform float _2q;","uniform float _2r;","uniform float _2s;","uniform float _2t;","uniform float _2u;","uniform float _2v;","uniform float _2w;","uniform float _2x;","uniform float _2y;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_NOISE, FX_GLSL_FBM_OCTAVES_2], body: ["float _0 = 0.15;","vec2 _1 = vec2(0.0, 0.0);","vec2 _2 = p_uv;","vec2 _5 = (_2 - vec2(0.5, 0.5));","vec2 _6 = vec2(((atan((_5).y, (_5).x) / 6.2831853) + 0.5), (length(_5) * 2.0));","float _8 = (_6).y;","float _9 = (_8 * -6.0);","float _a = (_2o + _9);","vec2 _b = (mat2(cos(_a), sin(_a), -sin(_a), cos(_a)) * (_2 - 0.5) + 0.5);","vec2 _c = vec2(0.5, 0.5);","vec2 _d = (_b - _c);","vec2 _j = mix(_1, _d, _2p);","float _m = fxFbmOctaves2(((_j + vec2(_2q, _2q)) * 3.2), 2.0, 0.5);","float _r = (_m * _2r);","vec2 _s = vec2(0.0, 0.0);","float _u = (_8 * -6.0);","float _v = (_2s + _u);","vec2 _w = (mat2(cos(_v), sin(_v), -sin(_v), cos(_v)) * (_2 - 0.5) + 0.5);","vec2 _x = vec2(0.5, 0.5);","vec2 _y = (_w - _x);","vec2 _14 = mix(_s, _y, _2t);","float _16 = fxFbmOctaves2(((_14 + vec2(_2u, _2u)) * 3.2), 2.0, 0.5);","float _1b = (_16 * _2v);","float _1c = (_r + _1b);","float _1e = (_8 * 3.5);","float _1f = (_2w + _1e);","vec2 _1g = (mat2(cos(_1f), sin(_1f), -sin(_1f), cos(_1f)) * (_2 - 0.5) + 0.5);","vec2 _1h = vec2(0.5, 0.5);","vec2 _1i = (_1g - _1h);","float _1k = fxFbmOctaves2(((_1i + vec2(_2x, _2x)) * 7.0), 2.0, 0.5);","float _1l = mix(_1c, _1k, 0.35);","float _1m = (0.0 + (((_1l - -0.55) / ((0.55 - -0.55) == 0.0 ? 0.000001 : (0.55 - -0.55))) * (1.0 - 0.0)));","float _1n = clamp(_1m, 0.0, 1.0);","float _1o = pow(_1n, 1.8);","float _1p = smoothstep(0.2, (0.92 == 0.2 ? (0.2 + 0.000001) : 0.92), _8);","float _1q = (0.0 + (((_1p - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - 0.0)));","float _1r = pow(_1q, 1.6);","float _1s = (_1o * _1r);","float _1t = (_1s * 0.72);","float _1u = smoothstep(0.66, (0.97 == 0.66 ? (0.66 + 0.000001) : 0.97), _8);","float _1v = (_1u * 0.22);","float _1w = (_1t + _1v);","vec4 _1x = mix(mix(mix(mix(mix(mix(vec4(0.003, 0.0, 0.012, 1.0), vec4(0.04, 0.005, 0.14, 1.0), clamp(((_1w - 0.0) * 4.5454545), 0.0, 1.0)), vec4(0.3, 0.05, 0.68, 1.0), clamp(((_1w - 0.22) * 4.347826), 0.0, 1.0)), vec4(0.72, 0.18, 0.8, 1.0), clamp(((_1w - 0.45) * 4.7619048), 0.0, 1.0)), vec4(1.0, 0.5, 0.8, 1.0), clamp(((_1w - 0.66) * 6.25), 0.0, 1.0)), vec4(0.62, 0.92, 1.0, 1.0), clamp(((_1w - 0.82) * 9.090909), 0.0, 1.0)), vec4(1.0, 1.0, 1.0, 1.0), clamp(((_1w - 0.93) * 14.285714), 0.0, 1.0));","vec3 _1y = (_1x).xyz;","vec3 _20 = vec3(0.0, 0.0, 0.0);","vec3 _21 = vec3(0.55, 0.2, 1.0);","float _22 = smoothstep(0.0, (0.3 == 0.0 ? (0.0 + 0.000001) : 0.3), _8);","float _23 = (1.0 - _22);","float _24 = pow(_23, 2.0);","float _28 = (_24 * _2y);","vec3 _29 = mix(_20, _21, _28);","vec3 _2a = (_1y + _29);","vec3 _2b = vec3(0.0, 0.0, 0.0);","vec3 _2c = vec3(0.45, 0.9, 1.0);","float _2d = (_8 - 0.945);","float _2e = abs(_2d);","float _2f = smoothstep(0.0, (0.035 == 0.0 ? (0.0 + 0.000001) : 0.035), _2e);","float _2g = (1.0 - _2f);","float _2h = (_2g * 0.6);","vec3 _2i = mix(_2b, _2c, _2h);","vec3 _2j = (_2a + _2i);","float _2k = smoothstep(0.96, (1.0 == 0.96 ? (0.96 + 0.000001) : 1.0), _8);","float _2l = (1.0 - _2k);","vec4 _2m = vec4(_2j, _2l);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: ["uniform float _2o;","uniform float _2p;","uniform float _2q;","uniform float _2r;","uniform float _2s;","uniform float _2t;","uniform float _2u;","uniform float _2v;","uniform float _2w;","uniform float _2x;","uniform float _2y;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_NOISE, FX_GLSL_FBM_OCTAVES_2], body: ["float _0 = 0.15;","vec2 _1 = vec2(0.0, 0.0);","vec2 _2 = p_uv;","vec2 _5 = (_2 - vec2(0.5, 0.5));","vec2 _6 = vec2(((atan((_5).y, (_5).x) / 6.2831853) + 0.5), (length(_5) * 2.0));","float _8 = (_6).y;","float _9 = (_8 * -6.0);","float _a = (_2o + _9);","vec2 _b = (mat2(cos(_a), sin(_a), -sin(_a), cos(_a)) * (_2 - 0.5) + 0.5);","vec2 _c = vec2(0.5, 0.5);","vec2 _d = (_b - _c);","vec2 _j = mix(_1, _d, _2p);","float _m = noise(((_j + vec2(_2q, _2q)) * 3.2));","float _r = (_m * _2r);","vec2 _s = vec2(0.0, 0.0);","float _u = (_8 * -6.0);","float _v = (_2s + _u);","vec2 _w = (mat2(cos(_v), sin(_v), -sin(_v), cos(_v)) * (_2 - 0.5) + 0.5);","vec2 _x = vec2(0.5, 0.5);","vec2 _y = (_w - _x);","vec2 _14 = mix(_s, _y, _2t);","float _16 = noise(((_14 + vec2(_2u, _2u)) * 3.2));","float _1b = (_16 * _2v);","float _1c = (_r + _1b);","float _1e = (_8 * 3.5);","float _1f = (_2w + _1e);","vec2 _1g = (mat2(cos(_1f), sin(_1f), -sin(_1f), cos(_1f)) * (_2 - 0.5) + 0.5);","vec2 _1h = vec2(0.5, 0.5);","vec2 _1i = (_1g - _1h);","float _1k = fxFbmOctaves2(((_1i + vec2(_2x, _2x)) * 7.0), 2.0, 0.5);","float _1l = mix(_1c, _1k, 0.35);","float _1m = (0.0 + (((_1l - -0.55) / ((0.55 - -0.55) == 0.0 ? 0.000001 : (0.55 - -0.55))) * (1.0 - 0.0)));","float _1n = clamp(_1m, 0.0, 1.0);","float _1o = pow(_1n, 1.8);","float _1p = smoothstep(0.2, (0.92 == 0.2 ? (0.2 + 0.000001) : 0.92), _8);","float _1q = (0.0 + (((_1p - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - 0.0)));","float _1r = pow(_1q, 1.6);","float _1s = (_1o * _1r);","float _1t = (_1s * 0.72);","float _1u = smoothstep(0.66, (0.97 == 0.66 ? (0.66 + 0.000001) : 0.97), _8);","float _1v = (_1u * 0.22);","float _1w = (_1t + _1v);","vec4 _1x = mix(mix(mix(mix(mix(mix(vec4(0.003, 0.0, 0.012, 1.0), vec4(0.04, 0.005, 0.14, 1.0), clamp(((_1w - 0.0) * 4.5454545), 0.0, 1.0)), vec4(0.3, 0.05, 0.68, 1.0), clamp(((_1w - 0.22) * 4.347826), 0.0, 1.0)), vec4(0.72, 0.18, 0.8, 1.0), clamp(((_1w - 0.45) * 4.7619048), 0.0, 1.0)), vec4(1.0, 0.5, 0.8, 1.0), clamp(((_1w - 0.66) * 6.25), 0.0, 1.0)), vec4(0.62, 0.92, 1.0, 1.0), clamp(((_1w - 0.82) * 9.090909), 0.0, 1.0)), vec4(1.0, 1.0, 1.0, 1.0), clamp(((_1w - 0.93) * 14.285714), 0.0, 1.0));","vec3 _1y = (_1x).xyz;","vec3 _20 = vec3(0.0, 0.0, 0.0);","vec3 _21 = vec3(0.55, 0.2, 1.0);","float _22 = smoothstep(0.0, (0.3 == 0.0 ? (0.0 + 0.000001) : 0.3), _8);","float _23 = (1.0 - _22);","float _24 = pow(_23, 2.0);","float _28 = (_24 * _2y);","vec3 _29 = mix(_20, _21, _28);","vec3 _2a = (_1y + _29);","vec3 _2b = vec3(0.0, 0.0, 0.0);","vec3 _2c = vec3(0.45, 0.9, 1.0);","float _2d = (_8 - 0.945);","float _2e = abs(_2d);","float _2f = smoothstep(0.0, (0.035 == 0.0 ? (0.0 + 0.000001) : 0.035), _2e);","float _2g = (1.0 - _2f);","float _2h = (_2g * 0.6);","vec3 _2i = mix(_2b, _2c, _2h);","vec3 _2j = (_2a + _2i);","float _2k = smoothstep(0.96, (1.0 == 0.96 ? (0.96 + 0.000001) : 1.0), _8);","float _2l = (1.0 - _2k);","vec4 _2m = vec4(_2j, _2l);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"vertexTransform":"_2n","albedo":"_2m","additivity":"_0"},
   },
   uniforms: { "_2o": { type: "float", value: 0 }, "_2p": { type: "float", value: 0 }, "_2q": { type: "float", value: 0 }, "_2r": { type: "float", value: 0 }, "_2s": { type: "float", value: 0 }, "_2t": { type: "float", value: 0 }, "_2u": { type: "float", value: 0 }, "_2v": { type: "float", value: 0 }, "_2w": { type: "float", value: 0 }, "_2x": { type: "float", value: 0 }, "_2y": { type: "float", value: 0 } },
@@ -1314,7 +1314,7 @@ const meshRender0Baseline: FXRenderArtifact = {
 const meshRender0Standard: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
@@ -1369,7 +1369,7 @@ const meshRender0Standard: FXRenderArtifact = {
 const meshRender1Baseline: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
@@ -1400,12 +1400,12 @@ const meshRender1Standard: FXRenderArtifact = meshRender1Baseline;
 const meshRender2Baseline: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["mat4 _15 = modelMatrix;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform float _16;","uniform float _17;","uniform float _18;","uniform float _19;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_NOISE, FX_GLSL_FBM_OCTAVES_2], body: ["float _0 = 1.0;","vec3 _1 = vec3(0.0, 0.0, 0.0);","vec3 _2 = vec3(0.95, 0.3, 1.0);","vec3 _3 = vec3(0.4, 0.85, 1.0);","vec2 _4 = p_uv;","vec2 _7 = (_4 - vec2(0.5, 0.5));","vec2 _8 = vec2(((atan((_7).y, (_7).x) / 6.2831853) + 0.5), (length(_7) * 2.0));","float _a = (_8).y;","float _b = (_a * 0.0);","float _c = (_16 + _b);","vec2 _d = (mat2(cos(_c), sin(_c), -sin(_c), cos(_c)) * (_4 - 0.5) + 0.5);","vec2 _e = vec2(0.5, 0.5);","vec2 _f = (_d - _e);","float _i = noise(((_f + vec2(_17, _17)) * 3.0));","float _j = (_i * 1.6);","float _k = (_j + 0.5);","float _l = clamp(_k, 0.0, 1.0);","vec3 _m = mix(_2, _3, _l);","float _n = (_a - 0.75757576);","float _o = abs(_n);","float _p = smoothstep(0.0, (0.09 == 0.0 ? (0.0 + 0.000001) : 0.09), _o);","float _q = (1.0 - _p);","float _r = pow(_q, 2.0);","float _t = (_a * 0.0);","float _u = (_18 + _t);","vec2 _v = (mat2(cos(_u), sin(_u), -sin(_u), cos(_u)) * (_4 - 0.5) + 0.5);","vec2 _w = vec2(0.5, 0.5);","vec2 _x = (_v - _w);","float _z = fxFbmOctaves2(((_x + vec2(_19, _19)) * 16.0), 2.0, 0.5);","float _10 = (0.15 + (((_z - -0.5) / ((0.5 - -0.5) == 0.0 ? 0.000001 : (0.5 - -0.5))) * (1.3 - 0.15)));","float _11 = (_r * _10);","float _12 = (_11 * 0.32);","vec3 _13 = mix(_1, _m, _12);","vec4 _14 = vec4(_13, _r);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: ["uniform float _16;","uniform float _17;","uniform float _18;","uniform float _19;"], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_NOISE], body: ["float _0 = 1.0;","vec3 _1 = vec3(0.0, 0.0, 0.0);","vec3 _2 = vec3(0.95, 0.3, 1.0);","vec3 _3 = vec3(0.4, 0.85, 1.0);","vec2 _4 = p_uv;","vec2 _7 = (_4 - vec2(0.5, 0.5));","vec2 _8 = vec2(((atan((_7).y, (_7).x) / 6.2831853) + 0.5), (length(_7) * 2.0));","float _a = (_8).y;","float _b = (_a * 0.0);","float _c = (_16 + _b);","vec2 _d = (mat2(cos(_c), sin(_c), -sin(_c), cos(_c)) * (_4 - 0.5) + 0.5);","vec2 _e = vec2(0.5, 0.5);","vec2 _f = (_d - _e);","float _i = noise(((_f + vec2(_17, _17)) * 3.0));","float _j = (_i * 1.6);","float _k = (_j + 0.5);","float _l = clamp(_k, 0.0, 1.0);","vec3 _m = mix(_2, _3, _l);","float _n = (_a - 0.75757576);","float _o = abs(_n);","float _p = smoothstep(0.0, (0.09 == 0.0 ? (0.0 + 0.000001) : 0.09), _o);","float _q = (1.0 - _p);","float _r = pow(_q, 2.0);","float _t = (_a * 0.0);","float _u = (_18 + _t);","vec2 _v = (mat2(cos(_u), sin(_u), -sin(_u), cos(_u)) * (_4 - 0.5) + 0.5);","vec2 _w = vec2(0.5, 0.5);","vec2 _x = (_v - _w);","float _z = noise(((_x + vec2(_19, _19)) * 16.0));","float _10 = (0.15 + (((_z - -0.5) / ((0.5 - -0.5) == 0.0 ? 0.000001 : (0.5 - -0.5))) * (1.3 - 0.15)));","float _11 = (_r * _10);","float _12 = (_11 * 0.32);","vec3 _13 = mix(_1, _m, _12);","vec4 _14 = vec4(_13, _r);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"vertexTransform":"_15","albedo":"_14","additivity":"_0"},
   },
   uniforms: { "_16": { type: "float", value: 0 }, "_17": { type: "float", value: 0 }, "_18": { type: "float", value: 0 }, "_19": { type: "float", value: 0 } },
@@ -1426,12 +1426,12 @@ const meshRender2Baseline: FXRenderArtifact = {
 const meshRender2Standard: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["mat4 _15 = modelMatrix;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: ["uniform float _16;","uniform float _17;","uniform float _18;","uniform float _19;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_NOISE, FX_GLSL_FBM_OCTAVES_2], body: [...meshRender2Baseline.color.fragment.body.slice(0, 34)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: ["uniform float _16;","uniform float _17;","uniform float _18;","uniform float _19;"], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_NOISE], body: [...meshRender2Baseline.color.fragment.body.slice(0, 34)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"vertexTransform":"_15","albedo":"_14","additivity":"_0"},
   },
   uniforms: { "_16": { type: "float", value: 0 }, "_17": { type: "float", value: 0 }, "_18": { type: "float", value: 0 }, "_19": { type: "float", value: 0 } },
@@ -1452,7 +1452,7 @@ const meshRender2Standard: FXRenderArtifact = {
 const meshRender3Baseline: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: true,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
@@ -1491,7 +1491,7 @@ const meshRender3Standard: FXRenderArtifact = meshRender3Baseline;
 const meshRender4Baseline: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
@@ -1518,7 +1518,7 @@ const meshRender4Standard: FXRenderArtifact = meshRender4Baseline;
 const meshRender5Baseline: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
@@ -1545,7 +1545,7 @@ const meshRender5Standard: FXRenderArtifact = meshRender5Baseline;
 const meshRender6Baseline: FXRenderArtifact = {
   lightingIntrinsics: [],
   sceneDepth: false,
-  geometry: {"type":"primitive","primitive":"plane"},
+  geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
     varyings: [],
@@ -1707,7 +1707,7 @@ const SPEC: FXEffectSpec = {
     {
       name: "Horizon",
       render: { baseline: meshRender0Baseline, standard: meshRender0Standard },
-      geometry: {"type":"primitive","primitive":"plane"},
+      geometry: {"type":"primitive","primitive":"octagon"},
       externalSlots: [],
       transform: {"position":[0,1.75,0],"rotation":[0,0,0,1],"scale":[2.5,2.5,1]},
       transformTracks: [],
@@ -1718,7 +1718,7 @@ const SPEC: FXEffectSpec = {
     {
       name: "Aura",
       render: { baseline: meshRender1Baseline, standard: meshRender1Standard },
-      geometry: {"type":"primitive","primitive":"plane"},
+      geometry: {"type":"primitive","primitive":"octagon"},
       externalSlots: ["tGlow"],
       transform: {"position":[0,1.75,-0.06],"rotation":[0,0,0,1],"scale":[6.2,6.2,1]},
       transformTracks: [],
@@ -1729,7 +1729,7 @@ const SPEC: FXEffectSpec = {
     {
       name: "Halo",
       render: { baseline: meshRender2Baseline, standard: meshRender2Standard },
-      geometry: {"type":"primitive","primitive":"plane"},
+      geometry: {"type":"primitive","primitive":"octagon"},
       externalSlots: [],
       transform: {"position":[0,1.75,0.01],"rotation":[0,0,0,1],"scale":[3.3000000000000003,3.3000000000000003,1]},
       transformTracks: [],
@@ -1740,7 +1740,7 @@ const SPEC: FXEffectSpec = {
     {
       name: "Surge",
       render: { baseline: meshRender3Baseline, standard: meshRender3Standard },
-      geometry: {"type":"primitive","primitive":"plane"},
+      geometry: {"type":"primitive","primitive":"octagon"},
       externalSlots: [],
       transform: {"position":[0,1.75,0.02],"rotation":[0,0,0,1],"scale":[5,5,1]},
       transformTracks: [],
@@ -1751,7 +1751,7 @@ const SPEC: FXEffectSpec = {
     {
       name: "Runes",
       render: { baseline: meshRender4Baseline, standard: meshRender4Standard },
-      geometry: {"type":"primitive","primitive":"plane"},
+      geometry: {"type":"primitive","primitive":"octagon"},
       externalSlots: ["tRunes"],
       transform: {"position":[0,1.75,0],"rotation":[0,0,0,1],"scale":[3.1,3.1,1]},
       transformTracks: [],
@@ -1762,7 +1762,7 @@ const SPEC: FXEffectSpec = {
     {
       name: "FloorRunes",
       render: { baseline: meshRender5Baseline, standard: meshRender5Standard },
-      geometry: {"type":"primitive","primitive":"plane"},
+      geometry: {"type":"primitive","primitive":"octagon"},
       externalSlots: ["tRunes"],
       transform: {"position":[0,0.02,0.4],"rotation":[-0.7071067811865475,0,0,0.7071067811865476],"scale":[4.4,4.4,1]},
       transformTracks: [],
@@ -1773,7 +1773,7 @@ const SPEC: FXEffectSpec = {
     {
       name: "GroundGlow",
       render: { baseline: meshRender6Baseline, standard: meshRender6Standard },
-      geometry: {"type":"primitive","primitive":"plane"},
+      geometry: {"type":"primitive","primitive":"octagon"},
       externalSlots: ["tGlow"],
       transform: {"position":[0,0.015,0.3],"rotation":[-0.7071067811865475,0,0,0.7071067811865476],"scale":[5.5,3.5,1]},
       transformTracks: [],

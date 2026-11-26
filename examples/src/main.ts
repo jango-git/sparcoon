@@ -4,6 +4,7 @@ import { FX_RUNTIME_VERSION, FXWorld } from "sparcoon";
 import "./style.css";
 import { EXAMPLES } from "./catalog";
 import { DepthPass } from "./depthPass";
+import { GpuTimer } from "./gpuTimer";
 import { EffectList } from "./effectList";
 import { Media } from "./media";
 import { Showcase } from "./showcase";
@@ -13,10 +14,12 @@ import { ViewRig } from "./viewRig";
 const canvas = document.querySelector<HTMLCanvasElement>("#stage")!;
 
 const renderer = new WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
+// Drawn once a frame, in the ground's pass, and used by the effects' pass after it.
+renderer.shadowMap.autoUpdate = false;
 renderer.debug.checkShaderErrors = false;
+const timer = new GpuTimer(renderer);
 
 const camera = new PerspectiveCamera(45, 1, 0.1, 200);
 const studio = new Studio();
@@ -28,8 +31,7 @@ const rig = new ViewRig(camera, canvas);
 function frameShown(): void {
   const shown = showcase.shown;
   if (shown !== undefined) {
-    const distance = rig.frame(shown.example.view, shown.effect.position);
-    studio.surround(shown.surroundings, shown.example.ground, distance);
+    studio.setGround(shown.example.ground, rig.frame(shown.example.view, shown.effect.position));
   }
 }
 
@@ -70,8 +72,10 @@ new ResizeObserver(() => {
 }).observe(canvas);
 
 const fps = document.querySelector("#fps")!;
-// Frames counted over each half second, shown as frames per second.
+// Frames counted over each half second, shown as frames per second, with each pass's GPU time
+// where the browser can measure it.
 const FPS_WINDOW_MS = 500;
+const PASSES = ["simulation", "depth", "scene", "effects"];
 let fpsWindowStart: number | undefined;
 let fpsFrames = 0;
 
@@ -84,7 +88,14 @@ function countFrame(now: number): void {
   fpsFrames += 1;
   const elapsed = now - fpsWindowStart;
   if (elapsed >= FPS_WINDOW_MS) {
-    fps.textContent = `${Math.round((fpsFrames * 1000) / elapsed).toString()} FPS`;
+    const times = timer.take();
+    const passes = PASSES.filter((pass) => times.has(pass)).map(
+      (pass) => `${pass} ${times.get(pass)!.toFixed(1)} ms`,
+    );
+    fps.textContent = [
+      `${Math.round((fpsFrames * 1000) / elapsed).toString()} FPS`,
+      ...passes,
+    ].join("\n");
     fpsWindowStart = now;
     fpsFrames = 0;
   }
@@ -102,9 +113,43 @@ renderer.setAnimationLoop((now: number) => {
     rig.follow(moved);
   }
   rig.update();
-  FXWorld.update(deltaSeconds);
+  timer.collect();
+  timer.measure("simulation", () => FXWorld.update(deltaSeconds));
   if (showcase.shown?.example.depth === true) {
-    depthPass.render(renderer, studio.scene, camera, effects);
+    timer.measure("depth", () => depthPass.render(renderer, studio.scene, camera, effects));
   }
-  renderer.render(studio.scene, camera);
+  renderPasses();
 });
+
+/** The layers the scene's pass and the effects' pass draw. Every object keeps layer 0 too, which the
+ *  sun's shadow camera and the depth pass see. Lights are on both, to light both. */
+const SCENE_LAYER = 1;
+const EFFECT_LAYER = 2;
+
+/** The scene with the shadows of all, then the effects over it, each timed on its own. */
+function renderPasses(): void {
+  for (const child of studio.scene.children) {
+    if (child !== effects) {
+      child.traverse((object) => {
+        object.layers.enable(SCENE_LAYER);
+        if ("isLight" in object) {
+          object.layers.enable(EFFECT_LAYER);
+        }
+      });
+    }
+  }
+  effects.traverse((object) => object.layers.enable(EFFECT_LAYER));
+
+  renderer.shadowMap.needsUpdate = true;
+  camera.layers.set(SCENE_LAYER);
+  timer.measure("scene", () => renderer.render(studio.scene, camera));
+  // Three clears for a colour background even with autoClear off, so the effects' pass has none.
+  const background = studio.scene.background;
+  studio.scene.background = null;
+  camera.layers.set(EFFECT_LAYER);
+  renderer.autoClear = false;
+  timer.measure("effects", () => renderer.render(studio.scene, camera));
+  renderer.autoClear = true;
+  studio.scene.background = background;
+  camera.layers.set(0);
+}

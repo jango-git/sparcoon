@@ -43,11 +43,8 @@ const render0Standard: FXRenderArtifact = render0Baseline;
 
 const behavior0: FXBehaviorArtifact = {
   buffers: [{"name":"core","stride":4},{"name":"tint","stride":4},{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
-  bindings: { "b_param_from_x": { value: 0.4 }, "b_param_from_y": { value: 0 }, "b_param_from_z": { value: 0 }, "b_param_core_x": { value: 0.85 }, "b_param_core_y": { value: 0.97 }, "b_param_core_z": { value: 1 }, "b_param_core_w": { value: 1 }, "b_param_tint_x": { value: 0.22 }, "b_param_tint_y": { value: 0.5 }, "b_param_tint_z": { value: 1 }, "b_param_tint_w": { value: 1 }, "b_param_launch_x": { value: 2 }, "b_param_launch_y": { value: 11.118181818181817 }, "b_param_launch_z": { value: -1.8181818181818181 } },
+  bindings: { "b_param_core_x": { value: 0.85 }, "b_param_core_y": { value: 0.97 }, "b_param_core_z": { value: 1 }, "b_param_core_w": { value: 1 }, "b_param_tint_x": { value: 0.22 }, "b_param_tint_y": { value: 0.5 }, "b_param_tint_z": { value: 1 }, "b_param_tint_w": { value: 1 }, "b_param_launch_x": { value: 2 }, "b_param_launch_y": { value: 11.118181818181817 }, "b_param_launch_z": { value: -1.8181818181818181 }, "b_param_from_x": { value: 0.4 }, "b_param_from_y": { value: 0 }, "b_param_from_z": { value: 0 } },
   spawn(slots, start, count, seed, bindings, emitter, inherited) {
-    const b_param_from_x = bindings["b_param_from_x"].value;
-    const b_param_from_y = bindings["b_param_from_y"].value;
-    const b_param_from_z = bindings["b_param_from_z"].value;
     const b_param_core_x = bindings["b_param_core_x"].value;
     const b_param_core_y = bindings["b_param_core_y"].value;
     const b_param_core_z = bindings["b_param_core_z"].value;
@@ -59,45 +56,48 @@ const behavior0: FXBehaviorArtifact = {
     const b_param_launch_x = bindings["b_param_launch_x"].value;
     const b_param_launch_y = bindings["b_param_launch_y"].value;
     const b_param_launch_z = bindings["b_param_launch_z"].value;
-    const world_matrix_out_x$1 = (emitter.worldMatrix[0]);
-    const world_matrix_out_y$2 = (emitter.worldMatrix[1]);
-    const world_matrix_out_z$3 = (emitter.worldMatrix[2]);
-    const world_matrix_out_w$4 = (emitter.worldMatrix[3]);
-    const world_matrix_out_m4$5 = (emitter.worldMatrix[4]);
-    const world_matrix_out_m5$6 = (emitter.worldMatrix[5]);
-    const world_matrix_out_m6$7 = (emitter.worldMatrix[6]);
-    const world_matrix_out_m7$8 = (emitter.worldMatrix[7]);
-    const world_matrix_out_m8$9 = (emitter.worldMatrix[8]);
-    const world_matrix_out_m9$10 = (emitter.worldMatrix[9]);
-    const world_matrix_out_m10$11 = (emitter.worldMatrix[10]);
-    const world_matrix_out_m11$12 = (emitter.worldMatrix[11]);
-    const world_matrix_out_m15$16 = (emitter.worldMatrix[15]);
-    const timeline_value_out_x$17 = (b_param_from_x);
-    const timeline_value_out_y$18 = (b_param_from_y);
-    const timeline_value_out_z$19 = (b_param_from_z);
-    const tp_h_w$23 = (((((world_matrix_out_w$4 * timeline_value_out_x$17) + (world_matrix_out_m7$8 * timeline_value_out_y$18)) + (world_matrix_out_m11$12 * timeline_value_out_z$19)) + (world_matrix_out_m15$16 * 1)));
-    const timeline_value_out_x$27 = (b_param_core_x);
-    const timeline_value_out_y$28 = (b_param_core_y);
-    const timeline_value_out_z$29 = (b_param_core_z);
-    const timeline_value_out_w$30 = (b_param_core_w);
-    const store_attribute_value_x$31 = (timeline_value_out_x$27);
-    const store_attribute_value_y$32 = (timeline_value_out_y$28);
-    const store_attribute_value_z$33 = (timeline_value_out_z$29);
-    const store_attribute_value_w$34 = (timeline_value_out_w$30);
-    const timeline_value_out_x$35 = (b_param_tint_x);
-    const timeline_value_out_y$36 = (b_param_tint_y);
-    const timeline_value_out_z$37 = (b_param_tint_z);
-    const timeline_value_out_w$38 = (b_param_tint_w);
-    const store_attribute_value_x$39 = (timeline_value_out_x$35);
-    const store_attribute_value_y$40 = (timeline_value_out_y$36);
-    const store_attribute_value_z$41 = (timeline_value_out_z$37);
-    const store_attribute_value_w$42 = (timeline_value_out_w$38);
-    const timeline_value_out_x$43 = (b_param_launch_x);
-    const timeline_value_out_y$44 = (b_param_launch_y);
-    const timeline_value_out_z$45 = (b_param_launch_z);
-    const store_attribute_value_x$46 = (timeline_value_out_x$43);
-    const store_attribute_value_y$47 = (timeline_value_out_y$44);
-    const store_attribute_value_z$48 = (timeline_value_out_z$45);
+    const b_param_from_x = bindings["b_param_from_x"].value;
+    const b_param_from_y = bindings["b_param_from_y"].value;
+    const b_param_from_z = bindings["b_param_from_z"].value;
+    const timeline_value_out_x$0 = (b_param_core_x);
+    const timeline_value_out_y$1 = (b_param_core_y);
+    const timeline_value_out_z$2 = (b_param_core_z);
+    const timeline_value_out_w$3 = (b_param_core_w);
+    const store_attribute_value_x$4 = (timeline_value_out_x$0);
+    const store_attribute_value_y$5 = (timeline_value_out_y$1);
+    const store_attribute_value_z$6 = (timeline_value_out_z$2);
+    const store_attribute_value_w$7 = (timeline_value_out_w$3);
+    const timeline_value_out_x$8 = (b_param_tint_x);
+    const timeline_value_out_y$9 = (b_param_tint_y);
+    const timeline_value_out_z$10 = (b_param_tint_z);
+    const timeline_value_out_w$11 = (b_param_tint_w);
+    const store_attribute_value_x$12 = (timeline_value_out_x$8);
+    const store_attribute_value_y$13 = (timeline_value_out_y$9);
+    const store_attribute_value_z$14 = (timeline_value_out_z$10);
+    const store_attribute_value_w$15 = (timeline_value_out_w$11);
+    const timeline_value_out_x$16 = (b_param_launch_x);
+    const timeline_value_out_y$17 = (b_param_launch_y);
+    const timeline_value_out_z$18 = (b_param_launch_z);
+    const store_attribute_value_x$19 = (timeline_value_out_x$16);
+    const store_attribute_value_y$20 = (timeline_value_out_y$17);
+    const store_attribute_value_z$21 = (timeline_value_out_z$18);
+    const world_matrix_out_x$23 = (emitter.worldMatrix[0]);
+    const world_matrix_out_y$24 = (emitter.worldMatrix[1]);
+    const world_matrix_out_z$25 = (emitter.worldMatrix[2]);
+    const world_matrix_out_w$26 = (emitter.worldMatrix[3]);
+    const world_matrix_out_m4$27 = (emitter.worldMatrix[4]);
+    const world_matrix_out_m5$28 = (emitter.worldMatrix[5]);
+    const world_matrix_out_m6$29 = (emitter.worldMatrix[6]);
+    const world_matrix_out_m7$30 = (emitter.worldMatrix[7]);
+    const world_matrix_out_m8$31 = (emitter.worldMatrix[8]);
+    const world_matrix_out_m9$32 = (emitter.worldMatrix[9]);
+    const world_matrix_out_m10$33 = (emitter.worldMatrix[10]);
+    const world_matrix_out_m11$34 = (emitter.worldMatrix[11]);
+    const world_matrix_out_m15$38 = (emitter.worldMatrix[15]);
+    const timeline_value_out_x$39 = (b_param_from_x);
+    const timeline_value_out_y$40 = (b_param_from_y);
+    const timeline_value_out_z$41 = (b_param_from_z);
+    const tp_h_w$45 = (((((world_matrix_out_w$26 * timeline_value_out_x$39) + (world_matrix_out_m7$30 * timeline_value_out_y$40)) + (world_matrix_out_m11$34 * timeline_value_out_z$41)) + (world_matrix_out_m15$38 * 1)));
     for (let i = start; i < start + count; i++) {
       const b_core = i * 17 + 0;
       const b_tint = i * 17 + 4;
@@ -105,31 +105,31 @@ const behavior0: FXBehaviorArtifact = {
       const b_position = i * 17 + 11;
       const b_velocity = i * 17 + 14;
     
-      const lifetime_value$0 = (fxMix(1.1, 1.1, fxRandom(slots[b_lifecycle + 2], seed, 0)));
-      const world_matrix_out_m12$13 = ((emitter.worldMatrix[12] - emitter.velocity[0] * slots[b_lifecycle + 0]));
-      const world_matrix_out_m13$14 = ((emitter.worldMatrix[13] - emitter.velocity[1] * slots[b_lifecycle + 0]));
-      const world_matrix_out_m14$15 = ((emitter.worldMatrix[14] - emitter.velocity[2] * slots[b_lifecycle + 0]));
-      const tp_h_x$20 = (((((world_matrix_out_x$1 * timeline_value_out_x$17) + (world_matrix_out_m4$5 * timeline_value_out_y$18)) + (world_matrix_out_m8$9 * timeline_value_out_z$19)) + (world_matrix_out_m12$13 * 1)));
-      const tp_h_y$21 = (((((world_matrix_out_y$2 * timeline_value_out_x$17) + (world_matrix_out_m5$6 * timeline_value_out_y$18)) + (world_matrix_out_m9$10 * timeline_value_out_z$19)) + (world_matrix_out_m13$14 * 1)));
-      const tp_h_z$22 = (((((world_matrix_out_z$3 * timeline_value_out_x$17) + (world_matrix_out_m6$7 * timeline_value_out_y$18)) + (world_matrix_out_m10$11 * timeline_value_out_z$19)) + (world_matrix_out_m14$15 * 1)));
-      const transform_point_out_x$24 = (tp_h_x$20);
-      const transform_point_out_y$25 = (tp_h_y$21);
-      const transform_point_out_z$26 = (tp_h_z$22);
-      slots[b_velocity + 0] = store_attribute_value_x$46;
-      slots[b_velocity + 1] = store_attribute_value_y$47;
-      slots[b_velocity + 2] = store_attribute_value_z$48;
-      slots[b_tint + 0] = store_attribute_value_x$39;
-      slots[b_tint + 1] = store_attribute_value_y$40;
-      slots[b_tint + 2] = store_attribute_value_z$41;
-      slots[b_tint + 3] = store_attribute_value_w$42;
-      slots[b_core + 0] = store_attribute_value_x$31;
-      slots[b_core + 1] = store_attribute_value_y$32;
-      slots[b_core + 2] = store_attribute_value_z$33;
-      slots[b_core + 3] = store_attribute_value_w$34;
-      slots[b_position + 0] = transform_point_out_x$24;
-      slots[b_position + 1] = transform_point_out_y$25;
-      slots[b_position + 2] = transform_point_out_z$26;
-      slots[b_lifecycle + 1] = lifetime_value$0;
+      const lifetime_value$22 = (fxMix(1.1, 1.1, fxRandom(slots[b_lifecycle + 2], seed, 0)));
+      const world_matrix_out_m12$35 = ((emitter.worldMatrix[12] - emitter.velocity[0] * slots[b_lifecycle + 0]));
+      const world_matrix_out_m13$36 = ((emitter.worldMatrix[13] - emitter.velocity[1] * slots[b_lifecycle + 0]));
+      const world_matrix_out_m14$37 = ((emitter.worldMatrix[14] - emitter.velocity[2] * slots[b_lifecycle + 0]));
+      const tp_h_x$42 = (((((world_matrix_out_x$23 * timeline_value_out_x$39) + (world_matrix_out_m4$27 * timeline_value_out_y$40)) + (world_matrix_out_m8$31 * timeline_value_out_z$41)) + (world_matrix_out_m12$35 * 1)));
+      const tp_h_y$43 = (((((world_matrix_out_y$24 * timeline_value_out_x$39) + (world_matrix_out_m5$28 * timeline_value_out_y$40)) + (world_matrix_out_m9$32 * timeline_value_out_z$41)) + (world_matrix_out_m13$36 * 1)));
+      const tp_h_z$44 = (((((world_matrix_out_z$25 * timeline_value_out_x$39) + (world_matrix_out_m6$29 * timeline_value_out_y$40)) + (world_matrix_out_m10$33 * timeline_value_out_z$41)) + (world_matrix_out_m14$37 * 1)));
+      const transform_point_out_x$46 = (tp_h_x$42);
+      const transform_point_out_y$47 = (tp_h_y$43);
+      const transform_point_out_z$48 = (tp_h_z$44);
+      slots[b_position + 0] = transform_point_out_x$46;
+      slots[b_position + 1] = transform_point_out_y$47;
+      slots[b_position + 2] = transform_point_out_z$48;
+      slots[b_lifecycle + 1] = lifetime_value$22;
+      slots[b_velocity + 0] = store_attribute_value_x$19;
+      slots[b_velocity + 1] = store_attribute_value_y$20;
+      slots[b_velocity + 2] = store_attribute_value_z$21;
+      slots[b_tint + 0] = store_attribute_value_x$12;
+      slots[b_tint + 1] = store_attribute_value_y$13;
+      slots[b_tint + 2] = store_attribute_value_z$14;
+      slots[b_tint + 3] = store_attribute_value_w$15;
+      slots[b_core + 0] = store_attribute_value_x$4;
+      slots[b_core + 1] = store_attribute_value_y$5;
+      slots[b_core + 2] = store_attribute_value_z$6;
+      slots[b_core + 3] = store_attribute_value_w$7;
     
     }
   },
@@ -180,7 +180,7 @@ const trail0Baseline: FXRenderArtifact = {
   color: {
     varyings: [{"name":"_c","type":"float","interpolation":"smooth"},{"name":"_d","type":"float","interpolation":"smooth"}],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["vec2 _0 = p_uv;","float _1 = (_0).x;","float _2 = (_0).y;","float _3 = (0.17 + (((_1 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.03 - 0.17)));","_c = _1;","_d = _2;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: [], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = mix(mix(mix(vec4(1.0, 0.95, 0.75, 1.0), vec4(1.0, 0.6, 0.2, 1.0), clamp(((_c - 0.0) * 4.0), 0.0, 1.0)), vec4(0.7, 0.18, 0.04, 1.0), clamp(((_c - 0.25) * 2.22222222), 0.0, 1.0)), vec4(0.0, 0.0, 0.0, 0.0), clamp(((_c - 0.7) * 3.3333333), 0.0, 1.0));","float _6 = (-1.0 + (((_d - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _7 = abs(_6);","float _8 = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _7);","float _9 = mix(mix(mix(mix(mix(mix(mix(mix(4.5, 3.35625, clamp(((_c - 0.0) * 6.6666667), 0.0, 1.0)), 2.8195313, clamp(((_c - 0.15) * 13.333333), 0.0, 1.0)), 2.59072266, clamp(((_c - 0.225) * 26.6666667), 0.0, 1.0)), 2.4, clamp(((_c - 0.2625) * 26.6666667), 0.0, 1.0)), 2.02822266, clamp(((_c - 0.3) * 11.4285714), 0.0, 1.0)), 1.69453125, clamp(((_c - 0.3875) * 11.4285714), 0.0, 1.0)), 1.10625, clamp(((_c - 0.475) * 5.714286), 0.0, 1.0)), 0.0, clamp(((_c - 0.65) * 2.857143), 0.0, 1.0));","float _a = (_8 * _9);","vec4 _b = (_5 * vec4(_a, _a, _a, _a));"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: [], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = mix(mix(mix(vec4(1.0, 0.95, 0.75, 1.0), vec4(1.0, 0.6, 0.2, 1.0), clamp(((_c - 0.0) * 4.0), 0.0, 1.0)), vec4(0.7, 0.18, 0.04, 1.0), clamp(((_c - 0.25) * 2.22222222), 0.0, 1.0)), vec4(0.0, 0.0, 0.0, 0.0), clamp(((_c - 0.7) * 3.3333333), 0.0, 1.0));","float _6 = (-1.0 + (((_d - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _7 = abs(_6);","float _8 = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _7);","float _9 = mix(mix(4.5, 2.4, clamp(((_c - 0.0) * 3.3333333), 0.0, 1.0)), 0.0, clamp(((_c - 0.3) * 1.42857143), 0.0, 1.0));","float _a = (_8 * _9);","vec4 _b = (_5 * vec4(_a, _a, _a, _a));"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"albedo":"_b","additivity":"_4","width":"_3"},
   },
   uniforms: {},
@@ -208,11 +208,8 @@ const render1Standard: FXRenderArtifact = render1Baseline;
 
 const behavior1: FXBehaviorArtifact = {
   buffers: [{"name":"core","stride":4},{"name":"tint","stride":4},{"name":"lifecycle","stride":3},{"name":"position","stride":3},{"name":"velocity","stride":3}],
-  bindings: { "b_param_from_x": { value: -0.6 }, "b_param_from_y": { value: 0 }, "b_param_from_z": { value: 0 }, "b_param_core_x": { value: 1 }, "b_param_core_y": { value: 0.85 }, "b_param_core_z": { value: 0.4 }, "b_param_core_w": { value: 1 }, "b_param_tint_x": { value: 1 }, "b_param_tint_y": { value: 0.18 }, "b_param_tint_z": { value: 0.32 }, "b_param_tint_w": { value: 1 }, "b_param_launch_x": { value: -2.3636363636363633 }, "b_param_launch_y": { value: 10.027272727272727 }, "b_param_launch_z": { value: -0.9090909090909091 } },
+  bindings: { "b_param_core_x": { value: 1 }, "b_param_core_y": { value: 0.85 }, "b_param_core_z": { value: 0.4 }, "b_param_core_w": { value: 1 }, "b_param_tint_x": { value: 1 }, "b_param_tint_y": { value: 0.18 }, "b_param_tint_z": { value: 0.32 }, "b_param_tint_w": { value: 1 }, "b_param_launch_x": { value: -2.3636363636363633 }, "b_param_launch_y": { value: 10.027272727272727 }, "b_param_launch_z": { value: -0.9090909090909091 }, "b_param_from_x": { value: -0.6 }, "b_param_from_y": { value: 0 }, "b_param_from_z": { value: 0 } },
   spawn(slots, start, count, seed, bindings, emitter, inherited) {
-    const b_param_from_x = bindings["b_param_from_x"].value;
-    const b_param_from_y = bindings["b_param_from_y"].value;
-    const b_param_from_z = bindings["b_param_from_z"].value;
     const b_param_core_x = bindings["b_param_core_x"].value;
     const b_param_core_y = bindings["b_param_core_y"].value;
     const b_param_core_z = bindings["b_param_core_z"].value;
@@ -224,45 +221,48 @@ const behavior1: FXBehaviorArtifact = {
     const b_param_launch_x = bindings["b_param_launch_x"].value;
     const b_param_launch_y = bindings["b_param_launch_y"].value;
     const b_param_launch_z = bindings["b_param_launch_z"].value;
-    const world_matrix_out_x$1 = (emitter.worldMatrix[0]);
-    const world_matrix_out_y$2 = (emitter.worldMatrix[1]);
-    const world_matrix_out_z$3 = (emitter.worldMatrix[2]);
-    const world_matrix_out_w$4 = (emitter.worldMatrix[3]);
-    const world_matrix_out_m4$5 = (emitter.worldMatrix[4]);
-    const world_matrix_out_m5$6 = (emitter.worldMatrix[5]);
-    const world_matrix_out_m6$7 = (emitter.worldMatrix[6]);
-    const world_matrix_out_m7$8 = (emitter.worldMatrix[7]);
-    const world_matrix_out_m8$9 = (emitter.worldMatrix[8]);
-    const world_matrix_out_m9$10 = (emitter.worldMatrix[9]);
-    const world_matrix_out_m10$11 = (emitter.worldMatrix[10]);
-    const world_matrix_out_m11$12 = (emitter.worldMatrix[11]);
-    const world_matrix_out_m15$16 = (emitter.worldMatrix[15]);
-    const timeline_value_out_x$17 = (b_param_from_x);
-    const timeline_value_out_y$18 = (b_param_from_y);
-    const timeline_value_out_z$19 = (b_param_from_z);
-    const tp_h_w$23 = (((((world_matrix_out_w$4 * timeline_value_out_x$17) + (world_matrix_out_m7$8 * timeline_value_out_y$18)) + (world_matrix_out_m11$12 * timeline_value_out_z$19)) + (world_matrix_out_m15$16 * 1)));
-    const timeline_value_out_x$27 = (b_param_core_x);
-    const timeline_value_out_y$28 = (b_param_core_y);
-    const timeline_value_out_z$29 = (b_param_core_z);
-    const timeline_value_out_w$30 = (b_param_core_w);
-    const store_attribute_value_x$31 = (timeline_value_out_x$27);
-    const store_attribute_value_y$32 = (timeline_value_out_y$28);
-    const store_attribute_value_z$33 = (timeline_value_out_z$29);
-    const store_attribute_value_w$34 = (timeline_value_out_w$30);
-    const timeline_value_out_x$35 = (b_param_tint_x);
-    const timeline_value_out_y$36 = (b_param_tint_y);
-    const timeline_value_out_z$37 = (b_param_tint_z);
-    const timeline_value_out_w$38 = (b_param_tint_w);
-    const store_attribute_value_x$39 = (timeline_value_out_x$35);
-    const store_attribute_value_y$40 = (timeline_value_out_y$36);
-    const store_attribute_value_z$41 = (timeline_value_out_z$37);
-    const store_attribute_value_w$42 = (timeline_value_out_w$38);
-    const timeline_value_out_x$43 = (b_param_launch_x);
-    const timeline_value_out_y$44 = (b_param_launch_y);
-    const timeline_value_out_z$45 = (b_param_launch_z);
-    const store_attribute_value_x$46 = (timeline_value_out_x$43);
-    const store_attribute_value_y$47 = (timeline_value_out_y$44);
-    const store_attribute_value_z$48 = (timeline_value_out_z$45);
+    const b_param_from_x = bindings["b_param_from_x"].value;
+    const b_param_from_y = bindings["b_param_from_y"].value;
+    const b_param_from_z = bindings["b_param_from_z"].value;
+    const timeline_value_out_x$0 = (b_param_core_x);
+    const timeline_value_out_y$1 = (b_param_core_y);
+    const timeline_value_out_z$2 = (b_param_core_z);
+    const timeline_value_out_w$3 = (b_param_core_w);
+    const store_attribute_value_x$4 = (timeline_value_out_x$0);
+    const store_attribute_value_y$5 = (timeline_value_out_y$1);
+    const store_attribute_value_z$6 = (timeline_value_out_z$2);
+    const store_attribute_value_w$7 = (timeline_value_out_w$3);
+    const timeline_value_out_x$8 = (b_param_tint_x);
+    const timeline_value_out_y$9 = (b_param_tint_y);
+    const timeline_value_out_z$10 = (b_param_tint_z);
+    const timeline_value_out_w$11 = (b_param_tint_w);
+    const store_attribute_value_x$12 = (timeline_value_out_x$8);
+    const store_attribute_value_y$13 = (timeline_value_out_y$9);
+    const store_attribute_value_z$14 = (timeline_value_out_z$10);
+    const store_attribute_value_w$15 = (timeline_value_out_w$11);
+    const timeline_value_out_x$16 = (b_param_launch_x);
+    const timeline_value_out_y$17 = (b_param_launch_y);
+    const timeline_value_out_z$18 = (b_param_launch_z);
+    const store_attribute_value_x$19 = (timeline_value_out_x$16);
+    const store_attribute_value_y$20 = (timeline_value_out_y$17);
+    const store_attribute_value_z$21 = (timeline_value_out_z$18);
+    const world_matrix_out_x$23 = (emitter.worldMatrix[0]);
+    const world_matrix_out_y$24 = (emitter.worldMatrix[1]);
+    const world_matrix_out_z$25 = (emitter.worldMatrix[2]);
+    const world_matrix_out_w$26 = (emitter.worldMatrix[3]);
+    const world_matrix_out_m4$27 = (emitter.worldMatrix[4]);
+    const world_matrix_out_m5$28 = (emitter.worldMatrix[5]);
+    const world_matrix_out_m6$29 = (emitter.worldMatrix[6]);
+    const world_matrix_out_m7$30 = (emitter.worldMatrix[7]);
+    const world_matrix_out_m8$31 = (emitter.worldMatrix[8]);
+    const world_matrix_out_m9$32 = (emitter.worldMatrix[9]);
+    const world_matrix_out_m10$33 = (emitter.worldMatrix[10]);
+    const world_matrix_out_m11$34 = (emitter.worldMatrix[11]);
+    const world_matrix_out_m15$38 = (emitter.worldMatrix[15]);
+    const timeline_value_out_x$39 = (b_param_from_x);
+    const timeline_value_out_y$40 = (b_param_from_y);
+    const timeline_value_out_z$41 = (b_param_from_z);
+    const tp_h_w$45 = (((((world_matrix_out_w$26 * timeline_value_out_x$39) + (world_matrix_out_m7$30 * timeline_value_out_y$40)) + (world_matrix_out_m11$34 * timeline_value_out_z$41)) + (world_matrix_out_m15$38 * 1)));
     for (let i = start; i < start + count; i++) {
       const b_core = i * 17 + 0;
       const b_tint = i * 17 + 4;
@@ -270,31 +270,31 @@ const behavior1: FXBehaviorArtifact = {
       const b_position = i * 17 + 11;
       const b_velocity = i * 17 + 14;
     
-      const lifetime_value$0 = (fxMix(1.1, 1.1, fxRandom(slots[b_lifecycle + 2], seed, 0)));
-      const world_matrix_out_m12$13 = ((emitter.worldMatrix[12] - emitter.velocity[0] * slots[b_lifecycle + 0]));
-      const world_matrix_out_m13$14 = ((emitter.worldMatrix[13] - emitter.velocity[1] * slots[b_lifecycle + 0]));
-      const world_matrix_out_m14$15 = ((emitter.worldMatrix[14] - emitter.velocity[2] * slots[b_lifecycle + 0]));
-      const tp_h_x$20 = (((((world_matrix_out_x$1 * timeline_value_out_x$17) + (world_matrix_out_m4$5 * timeline_value_out_y$18)) + (world_matrix_out_m8$9 * timeline_value_out_z$19)) + (world_matrix_out_m12$13 * 1)));
-      const tp_h_y$21 = (((((world_matrix_out_y$2 * timeline_value_out_x$17) + (world_matrix_out_m5$6 * timeline_value_out_y$18)) + (world_matrix_out_m9$10 * timeline_value_out_z$19)) + (world_matrix_out_m13$14 * 1)));
-      const tp_h_z$22 = (((((world_matrix_out_z$3 * timeline_value_out_x$17) + (world_matrix_out_m6$7 * timeline_value_out_y$18)) + (world_matrix_out_m10$11 * timeline_value_out_z$19)) + (world_matrix_out_m14$15 * 1)));
-      const transform_point_out_x$24 = (tp_h_x$20);
-      const transform_point_out_y$25 = (tp_h_y$21);
-      const transform_point_out_z$26 = (tp_h_z$22);
-      slots[b_velocity + 0] = store_attribute_value_x$46;
-      slots[b_velocity + 1] = store_attribute_value_y$47;
-      slots[b_velocity + 2] = store_attribute_value_z$48;
-      slots[b_tint + 0] = store_attribute_value_x$39;
-      slots[b_tint + 1] = store_attribute_value_y$40;
-      slots[b_tint + 2] = store_attribute_value_z$41;
-      slots[b_tint + 3] = store_attribute_value_w$42;
-      slots[b_core + 0] = store_attribute_value_x$31;
-      slots[b_core + 1] = store_attribute_value_y$32;
-      slots[b_core + 2] = store_attribute_value_z$33;
-      slots[b_core + 3] = store_attribute_value_w$34;
-      slots[b_position + 0] = transform_point_out_x$24;
-      slots[b_position + 1] = transform_point_out_y$25;
-      slots[b_position + 2] = transform_point_out_z$26;
-      slots[b_lifecycle + 1] = lifetime_value$0;
+      const lifetime_value$22 = (fxMix(1.1, 1.1, fxRandom(slots[b_lifecycle + 2], seed, 0)));
+      const world_matrix_out_m12$35 = ((emitter.worldMatrix[12] - emitter.velocity[0] * slots[b_lifecycle + 0]));
+      const world_matrix_out_m13$36 = ((emitter.worldMatrix[13] - emitter.velocity[1] * slots[b_lifecycle + 0]));
+      const world_matrix_out_m14$37 = ((emitter.worldMatrix[14] - emitter.velocity[2] * slots[b_lifecycle + 0]));
+      const tp_h_x$42 = (((((world_matrix_out_x$23 * timeline_value_out_x$39) + (world_matrix_out_m4$27 * timeline_value_out_y$40)) + (world_matrix_out_m8$31 * timeline_value_out_z$41)) + (world_matrix_out_m12$35 * 1)));
+      const tp_h_y$43 = (((((world_matrix_out_y$24 * timeline_value_out_x$39) + (world_matrix_out_m5$28 * timeline_value_out_y$40)) + (world_matrix_out_m9$32 * timeline_value_out_z$41)) + (world_matrix_out_m13$36 * 1)));
+      const tp_h_z$44 = (((((world_matrix_out_z$25 * timeline_value_out_x$39) + (world_matrix_out_m6$29 * timeline_value_out_y$40)) + (world_matrix_out_m10$33 * timeline_value_out_z$41)) + (world_matrix_out_m14$37 * 1)));
+      const transform_point_out_x$46 = (tp_h_x$42);
+      const transform_point_out_y$47 = (tp_h_y$43);
+      const transform_point_out_z$48 = (tp_h_z$44);
+      slots[b_position + 0] = transform_point_out_x$46;
+      slots[b_position + 1] = transform_point_out_y$47;
+      slots[b_position + 2] = transform_point_out_z$48;
+      slots[b_lifecycle + 1] = lifetime_value$22;
+      slots[b_velocity + 0] = store_attribute_value_x$19;
+      slots[b_velocity + 1] = store_attribute_value_y$20;
+      slots[b_velocity + 2] = store_attribute_value_z$21;
+      slots[b_tint + 0] = store_attribute_value_x$12;
+      slots[b_tint + 1] = store_attribute_value_y$13;
+      slots[b_tint + 2] = store_attribute_value_z$14;
+      slots[b_tint + 3] = store_attribute_value_w$15;
+      slots[b_core + 0] = store_attribute_value_x$4;
+      slots[b_core + 1] = store_attribute_value_y$5;
+      slots[b_core + 2] = store_attribute_value_z$6;
+      slots[b_core + 3] = store_attribute_value_w$7;
     
     }
   },
@@ -345,7 +345,7 @@ const trail1Baseline: FXRenderArtifact = {
   color: {
     varyings: [{"name":"_c","type":"float","interpolation":"smooth"},{"name":"_d","type":"float","interpolation":"smooth"}],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["vec2 _0 = p_uv;","float _1 = (_0).x;","float _2 = (_0).y;","float _3 = (0.17 + (((_1 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.03 - 0.17)));","_c = _1;","_d = _2;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: [], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = mix(mix(mix(vec4(1.0, 0.95, 0.75, 1.0), vec4(1.0, 0.6, 0.2, 1.0), clamp(((_c - 0.0) * 4.0), 0.0, 1.0)), vec4(0.7, 0.18, 0.04, 1.0), clamp(((_c - 0.25) * 2.22222222), 0.0, 1.0)), vec4(0.0, 0.0, 0.0, 0.0), clamp(((_c - 0.7) * 3.3333333), 0.0, 1.0));","float _6 = (-1.0 + (((_d - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _7 = abs(_6);","float _8 = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _7);","float _9 = mix(mix(mix(mix(mix(mix(mix(mix(4.5, 3.35625, clamp(((_c - 0.0) * 6.6666667), 0.0, 1.0)), 2.8195313, clamp(((_c - 0.15) * 13.333333), 0.0, 1.0)), 2.59072266, clamp(((_c - 0.225) * 26.6666667), 0.0, 1.0)), 2.4, clamp(((_c - 0.2625) * 26.6666667), 0.0, 1.0)), 2.02822266, clamp(((_c - 0.3) * 11.4285714), 0.0, 1.0)), 1.69453125, clamp(((_c - 0.3875) * 11.4285714), 0.0, 1.0)), 1.10625, clamp(((_c - 0.475) * 5.714286), 0.0, 1.0)), 0.0, clamp(((_c - 0.65) * 2.857143), 0.0, 1.0));","float _a = (_8 * _9);","vec4 _b = (_5 * vec4(_a, _a, _a, _a));"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: [], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = mix(mix(mix(vec4(1.0, 0.95, 0.75, 1.0), vec4(1.0, 0.6, 0.2, 1.0), clamp(((_c - 0.0) * 4.0), 0.0, 1.0)), vec4(0.7, 0.18, 0.04, 1.0), clamp(((_c - 0.25) * 2.22222222), 0.0, 1.0)), vec4(0.0, 0.0, 0.0, 0.0), clamp(((_c - 0.7) * 3.3333333), 0.0, 1.0));","float _6 = (-1.0 + (((_d - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _7 = abs(_6);","float _8 = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _7);","float _9 = mix(mix(4.5, 2.4, clamp(((_c - 0.0) * 3.3333333), 0.0, 1.0)), 0.0, clamp(((_c - 0.3) * 1.42857143), 0.0, 1.0));","float _a = (_8 * _9);","vec4 _b = (_5 * vec4(_a, _a, _a, _a));"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"albedo":"_b","additivity":"_4","width":"_3"},
   },
   uniforms: {},
@@ -986,7 +986,7 @@ const trail5Baseline: FXRenderArtifact = {
   color: {
     varyings: [{"name":"_c","type":"float","interpolation":"smooth"},{"name":"_d","type":"float","interpolation":"smooth"}],
     vertex: { uniformDeclarations: [], helperFunctions: [], body: ["vec2 _0 = p_uv;","float _1 = (_0).x;","float _2 = (_0).y;","float _3 = (0.07 + (((_1 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.015 - 0.07)));","_c = _1;","_d = _2;"], particleReads: {"position":false,"lifecycle":false,"attributes":[]} },
-    fragment: { uniformDeclarations: [], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = mix(mix(vec4(1.0, 0.8, 0.4, 1.0), vec4(0.9, 0.42, 0.1, 1.0), clamp(((_c - 0.0) * 2.5), 0.0, 1.0)), vec4(0.3, 0.06, 0.0, 1.0), clamp(((_c - 0.4) * 1.66666667), 0.0, 1.0));","float _6 = (-1.0 + (((_d - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _7 = abs(_6);","float _8 = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _7);","float _9 = mix(mix(mix(mix(mix(mix(mix(mix(2.2, 1.6575, clamp(((_c - 0.0) * 6.6666667), 0.0, 1.0)), 1.4021875, clamp(((_c - 0.15) * 13.333333), 0.0, 1.0)), 1.2924609, clamp(((_c - 0.225) * 26.6666667), 0.0, 1.0)), 1.2, clamp(((_c - 0.2625) * 26.6666667), 0.0, 1.0)), 1.017461, clamp(((_c - 0.3) * 11.4285714), 0.0, 1.0)), 0.8521875, clamp(((_c - 0.3875) * 11.4285714), 0.0, 1.0)), 0.5575, clamp(((_c - 0.475) * 5.714286), 0.0, 1.0)), 0.0, clamp(((_c - 0.65) * 2.857143), 0.0, 1.0));","float _a = (_8 * _9);","vec4 _b = (_5 * vec4(_a, _a, _a, _a));"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    fragment: { uniformDeclarations: [], helperFunctions: [], body: ["float _4 = 1.0;","vec4 _5 = mix(mix(vec4(1.0, 0.8, 0.4, 1.0), vec4(0.9, 0.42, 0.1, 1.0), clamp(((_c - 0.0) * 2.5), 0.0, 1.0)), vec4(0.3, 0.06, 0.0, 1.0), clamp(((_c - 0.4) * 1.66666667), 0.0, 1.0));","float _6 = (-1.0 + (((_d - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (1.0 - -1.0)));","float _7 = abs(_6);","float _8 = smoothstep(1.0, (0.0 == 1.0 ? (1.0 + 0.000001) : 0.0), _7);","float _9 = mix(mix(2.2, 1.2, clamp(((_c - 0.0) * 3.3333333), 0.0, 1.0)), 0.0, clamp(((_c - 0.3) * 1.42857143), 0.0, 1.0));","float _a = (_8 * _9);","vec4 _b = (_5 * vec4(_a, _a, _a, _a));"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
     outputs: {"albedo":"_b","additivity":"_4","width":"_3"},
   },
   uniforms: {},
@@ -1197,10 +1197,10 @@ const render8Baseline: FXRenderArtifact = {
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_10","type":"vec3","interpolation":"flat"},{"name":"_11","type":"vec3","interpolation":"flat"},{"name":"_12","type":"float","interpolation":"flat"},{"name":"_13","type":"float","interpolation":"flat"}],
-    vertex: { uniformDeclarations: [], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_TRANSPOSE, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _0 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _l = mix(0.0, 6.283, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _m = cos(_l);","float _n = sin(_l);","mat3 _o = fxTranspose(mat3(viewMatrix));","vec3 _p = (_o * vec3(0.0, 0.0, 1.0));","vec3 _q = (_o * vec3(1.0, 0.0, 0.0));","vec3 _r = (_o * vec3(0.0, 1.0, 0.0));","mat3 _s = mat3(((_q * _m) + (_r * _n)), ((_r * _m) - (_q * _n)), _p);","float _t = (3.0 + (((_0 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (4.6 - 3.0)));","float _u = (_t * 0.6612);","vec3 _v = vec3(_u, _t, 1.0);","mat4 _w = mat4(vec4((_v).x, 0.0, 0.0, 0.0), vec4(0.0, (_v).y, 0.0, 0.0), vec4(0.0, 0.0, (_v).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _x = mat4(_s);","mat4 _y = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_s * (_v * vec3(0.0, 0.0, 0.0)))), 1.0));","mat4 _z = ((_y * _x) * _w);","float _1 = (0.35 + (((_0 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.71 - 0.35)));","vec3 _2 = fxAnimatedFrameOnce(_1, (0.0 > 0.5 ? floor(0.0 + 0.5) : 8.0 * 8.0));","vec4 _9 = p_fx_tint;","vec3 _a = (_9).xyz;","vec3 _c = (_a * vec3(0.75, 0.75, 0.75));","vec3 _d = vec3(0.2, 0.21, 0.25);","float _e = smoothstep(0.05, (0.5625 == 0.05 ? (0.05 + 0.000001) : 0.5625), _0);","vec3 _f = mix(_c, _d, _e);","float _h = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.08927083, clamp(((_0 - 0.0) * 64.0), 0.0, 1.0)), 0.19, clamp(((_0 - 0.015625) * 64.0), 0.0, 1.0)), 0.39833333, clamp(((_0 - 0.03125) * 32.0), 0.0, 1.0)), 0.4921875, clamp(((_0 - 0.0625) * 64.0), 0.0, 1.0)), 0.57, clamp(((_0 - 0.078125) * 64.0), 0.0, 1.0)), 0.60074219, clamp(((_0 - 0.09375) * 128.0), 0.0, 1.0)), 0.6248958, clamp(((_0 - 0.1015625) * 128.0), 0.0, 1.0)), 0.64160156, clamp(((_0 - 0.109375) * 128.0), 0.0, 1.0)), 0.65, clamp(((_0 - 0.1171875) * 128.0), 0.0, 1.0)), 0.6660631, clamp(((_0 - 0.125) * 25.6), 0.0, 1.0)), 0.6750521, clamp(((_0 - 0.1640625) * 25.6), 0.0, 1.0)), 0.67754185, clamp(((_0 - 0.203125) * 25.6), 0.0, 1.0)), 0.67410714, clamp(((_0 - 0.2421875) * 25.6), 0.0, 1.0)), 0.6517634, clamp(((_0 - 0.28125) * 12.8), 0.0, 1.0)), 0.61261905, clamp(((_0 - 0.359375) * 12.8), 0.0, 1.0)), 0.5612723, clamp(((_0 - 0.4375) * 12.8), 0.0, 1.0)), 0.5023214, clamp(((_0 - 0.515625) * 12.8), 0.0, 1.0)), 0.38, clamp(((_0 - 0.59375) * 6.4), 0.0, 1.0)), 0.35109375, clamp(((_0 - 0.75) * 32.0), 0.0, 1.0)), 0.31232143, clamp(((_0 - 0.78125) * 32.0), 0.0, 1.0)), 0.26595982, clamp(((_0 - 0.8125) * 32.0), 0.0, 1.0)), 0.21428571, clamp(((_0 - 0.84375) * 32.0), 0.0, 1.0)), 0.10410714, clamp(((_0 - 0.875) * 16.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.9375) * 16.0), 0.0, 1.0));","float _k = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.8, 0.69453125, clamp(((_0 - 0.0) * 16.0), 0.0, 1.0)), 0.58125, clamp(((_0 - 0.0625) * 16.0), 0.0, 1.0)), 0.35, clamp(((_0 - 0.125) * 8.0), 0.0, 1.0)), 0.24140625, clamp(((_0 - 0.25) * 16.0), 0.0, 1.0)), 0.14375, clamp(((_0 - 0.3125) * 16.0), 0.0, 1.0)), 0.06171875, clamp(((_0 - 0.375) * 16.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.4375) * 16.0), 0.0, 1.0)), -0.03828125, clamp(((_0 - 0.5) * 16.0), 0.0, 1.0)), -0.05625, clamp(((_0 - 0.5625) * 16.0), 0.0, 1.0)), -0.05859375, clamp(((_0 - 0.625) * 16.0), 0.0, 1.0)), -0.05, clamp(((_0 - 0.6875) * 16.0), 0.0, 1.0)), -0.01875, clamp(((_0 - 0.75) * 8.0), 0.0, 1.0)), -0.00546875, clamp(((_0 - 0.875) * 16.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.9375) * 16.0), 0.0, 1.0));","_10 = _2;","_11 = _f;","_12 = _h;","_13 = _k;"], particleReads: {"position":false,"lifecycle":true,"attributes":["tint"]} },
-    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tSmoke;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["vec2 _3 = fxFlipbookFrameUV(p_uv, _10.x, 8.0, 8.0);","vec4 _6 = fxSample_u_param_tSmoke(_3);","vec3 _7 = (_6).xyz;","float _8 = (_6).w;","vec3 _g = (_7 * _11);","float _i = (_8 * _12);","vec4 _j = vec4(_g, _i);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
-    outputs: {"particleTransform":"_z","additivity":"_13","albedo":"_j"},
+    varyings: [{"name":"_10","type":"float","interpolation":"flat"},{"name":"_11","type":"vec3","interpolation":"flat"},{"name":"_12","type":"vec3","interpolation":"flat"},{"name":"_13","type":"float","interpolation":"flat"}],
+    vertex: { uniformDeclarations: [], helperFunctions: [FX_GLSL_BASELINE_HASH, FX_GLSL_BASELINE_SEED_HASH, FX_GLSL_TRANSPOSE, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["float _0 = clamp((PARTICLE_AGE / PARTICLE_LIFETIME), 0.0, 1.0);","float _l = mix(0.0, 6.283, fxSeedHash1(vec3(RANDOM_SEED, RANDOM_SEED, RANDOM_SEED), 0.0));","float _m = cos(_l);","float _n = sin(_l);","mat3 _o = fxTranspose(mat3(viewMatrix));","vec3 _p = (_o * vec3(0.0, 0.0, 1.0));","vec3 _q = (_o * vec3(1.0, 0.0, 0.0));","vec3 _r = (_o * vec3(0.0, 1.0, 0.0));","mat3 _s = mat3(((_q * _m) + (_r * _n)), ((_r * _m) - (_q * _n)), _p);","float _t = (3.0 + (((_0 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (4.6 - 3.0)));","float _u = (_t * 0.6612);","vec3 _v = vec3(_u, _t, 1.0);","mat4 _w = mat4(vec4((_v).x, 0.0, 0.0, 0.0), vec4(0.0, (_v).y, 0.0, 0.0), vec4(0.0, 0.0, (_v).z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));","mat4 _x = mat4(_s);","mat4 _y = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4((vec3(0.0, 0.0, 0.0) - (_s * (_v * vec3(0.0, 0.0, 0.0)))), 1.0));","mat4 _z = ((_y * _x) * _w);","float _1 = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.8, 0.69453125, clamp(((_0 - 0.0) * 16.0), 0.0, 1.0)), 0.58125, clamp(((_0 - 0.0625) * 16.0), 0.0, 1.0)), 0.35, clamp(((_0 - 0.125) * 8.0), 0.0, 1.0)), 0.24140625, clamp(((_0 - 0.25) * 16.0), 0.0, 1.0)), 0.14375, clamp(((_0 - 0.3125) * 16.0), 0.0, 1.0)), 0.06171875, clamp(((_0 - 0.375) * 16.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.4375) * 16.0), 0.0, 1.0)), -0.03828125, clamp(((_0 - 0.5) * 16.0), 0.0, 1.0)), -0.05625, clamp(((_0 - 0.5625) * 16.0), 0.0, 1.0)), -0.05859375, clamp(((_0 - 0.625) * 16.0), 0.0, 1.0)), -0.05, clamp(((_0 - 0.6875) * 16.0), 0.0, 1.0)), -0.01875, clamp(((_0 - 0.75) * 8.0), 0.0, 1.0)), -0.00546875, clamp(((_0 - 0.875) * 16.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.9375) * 16.0), 0.0, 1.0));","float _2 = (0.35 + (((_0 - 0.0) / ((1.0 - 0.0) == 0.0 ? 0.000001 : (1.0 - 0.0))) * (0.71 - 0.35)));","vec3 _3 = fxAnimatedFrameOnce(_2, (0.0 > 0.5 ? floor(0.0 + 0.5) : 8.0 * 8.0));","vec4 _a = p_fx_tint;","vec3 _b = (_a).xyz;","vec3 _d = (_b * vec3(0.75, 0.75, 0.75));","vec3 _e = vec3(0.2, 0.21, 0.25);","float _f = smoothstep(0.05, (0.5625 == 0.05 ? (0.05 + 0.000001) : 0.5625), _0);","vec3 _g = mix(_d, _e, _f);","float _i = mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(mix(0.0, 0.08927083, clamp(((_0 - 0.0) * 64.0), 0.0, 1.0)), 0.19, clamp(((_0 - 0.015625) * 64.0), 0.0, 1.0)), 0.39833333, clamp(((_0 - 0.03125) * 32.0), 0.0, 1.0)), 0.4921875, clamp(((_0 - 0.0625) * 64.0), 0.0, 1.0)), 0.57, clamp(((_0 - 0.078125) * 64.0), 0.0, 1.0)), 0.60074219, clamp(((_0 - 0.09375) * 128.0), 0.0, 1.0)), 0.6248958, clamp(((_0 - 0.1015625) * 128.0), 0.0, 1.0)), 0.64160156, clamp(((_0 - 0.109375) * 128.0), 0.0, 1.0)), 0.65, clamp(((_0 - 0.1171875) * 128.0), 0.0, 1.0)), 0.6660631, clamp(((_0 - 0.125) * 25.6), 0.0, 1.0)), 0.6750521, clamp(((_0 - 0.1640625) * 25.6), 0.0, 1.0)), 0.67754185, clamp(((_0 - 0.203125) * 25.6), 0.0, 1.0)), 0.67410714, clamp(((_0 - 0.2421875) * 25.6), 0.0, 1.0)), 0.6517634, clamp(((_0 - 0.28125) * 12.8), 0.0, 1.0)), 0.61261905, clamp(((_0 - 0.359375) * 12.8), 0.0, 1.0)), 0.5612723, clamp(((_0 - 0.4375) * 12.8), 0.0, 1.0)), 0.5023214, clamp(((_0 - 0.515625) * 12.8), 0.0, 1.0)), 0.38, clamp(((_0 - 0.59375) * 6.4), 0.0, 1.0)), 0.35109375, clamp(((_0 - 0.75) * 32.0), 0.0, 1.0)), 0.31232143, clamp(((_0 - 0.78125) * 32.0), 0.0, 1.0)), 0.26595982, clamp(((_0 - 0.8125) * 32.0), 0.0, 1.0)), 0.21428571, clamp(((_0 - 0.84375) * 32.0), 0.0, 1.0)), 0.10410714, clamp(((_0 - 0.875) * 16.0), 0.0, 1.0)), 0.0, clamp(((_0 - 0.9375) * 16.0), 0.0, 1.0));","_10 = _1;","_11 = _3;","_12 = _g;","_13 = _i;"], particleReads: {"position":false,"lifecycle":true,"attributes":["tint"]} },
+    fragment: { uniformDeclarations: ["uniform sampler2D u_param_tSmoke;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: ["vec2 _4 = fxFlipbookFrameUV(p_uv, _11.x, 8.0, 8.0);","vec4 _7 = fxSample_u_param_tSmoke(_4);","vec3 _8 = (_7).xyz;","float _9 = (_7).w;","vec3 _h = (_8 * _12);","float _j = (_9 * _13);","vec4 _k = vec4(_h, _j);"], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
+    outputs: {"particleTransform":"_z","albedo":"_k","additivity":"_10"},
   },
   uniforms: { "u_param_tSmoke": { type: "sampler2D", external: "u_param_tSmoke" } },
   attributeReads: [{"name":"tint","components":4}],
@@ -1212,10 +1212,10 @@ const render8Standard: FXRenderArtifact = {
   geometry: {"type":"primitive","primitive":"octagon"},
   options: { renderMode: "blending" },
   color: {
-    varyings: [{"name":"_10","type":"vec3","interpolation":"flat"},{"name":"_11","type":"vec3","interpolation":"flat"},{"name":"_12","type":"float","interpolation":"flat"},{"name":"_13","type":"float","interpolation":"flat"}],
+    varyings: [{"name":"_10","type":"float","interpolation":"flat"},{"name":"_11","type":"vec3","interpolation":"flat"},{"name":"_12","type":"vec3","interpolation":"flat"},{"name":"_13","type":"float","interpolation":"flat"}],
     vertex: { uniformDeclarations: [], helperFunctions: [FX_GLSL_STANDARD_HASH, FX_GLSL_STANDARD_SEED_HASH, FX_GLSL_TRANSPOSE, FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render8Baseline.color.vertex.body.slice(0, 30)], particleReads: {"position":false,"lifecycle":true,"attributes":["tint"]} },
     fragment: { uniformDeclarations: ["uniform sampler2D u_param_tSmoke;"], helperFunctions: [FX_GLSL_FLIPBOOK_FRAME_ONCE, FX_GLSL_FLIPBOOK_FRAME_UV], body: [...render8Baseline.color.fragment.body.slice(0, 7)], particleReads: {"position":false,"lifecycle":false,"attributes":[]}, surfaceReads: {"normal":false,"tangent":false,"position":false} },
-    outputs: {"particleTransform":"_z","additivity":"_13","albedo":"_j"},
+    outputs: {"particleTransform":"_z","albedo":"_k","additivity":"_10"},
   },
   uniforms: { "u_param_tSmoke": { type: "sampler2D", external: "u_param_tSmoke" } },
   attributeReads: [{"name":"tint","components":4}],
