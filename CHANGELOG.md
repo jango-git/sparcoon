@@ -5,15 +5,19 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
-## Unreleased
+## 0.26.0 - 2026-11-26
+
+### Added
+
+- Ribbons play the editor's Section option, so one emitter draws a separate ribbon per section of
+  particles, such as a bolt per burst.
 
 ### Changed
 
 - `private` class members and members marked `@internal` are emitted with a `_private_` prefix,
-  so that a minifier can shorten them. Add a property mangling rule for the prefix to the
-  minifier of the app (terser `mangle: { properties: { regex: /^_private_/ } }`, esbuild
-  `--mangle-props=^_private_`). Without the rule the minified code is larger than before. Code
-  that reached into such members by name stops working. Effects need no new export.
+  which a minifier shortens given the rule in [Requirements](README.md#requirements). Without the
+  rule the minified code is larger than before. Code that reached into such members by name stops
+  working.
 
 ## 0.25.1 - 2026-11-20
 

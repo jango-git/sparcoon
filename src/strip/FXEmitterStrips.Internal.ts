@@ -5,7 +5,12 @@ import type { FXEmitterDriver } from "../emitter/FXEmitterDriver.Internal.js";
 import type { FXArtifactMaterial } from "../render/FXArtifactMaterial.js";
 import type { FXExternalTexture } from "../render/FXExternalTexture.js";
 import { fxBudgetOverruns, type FXRenderBudget } from "../render/FXRenderBudget.js";
-import { assertValidRibbonOptions, FXRibbon, ribbonTileOf } from "../ribbon/FXRibbon.js";
+import {
+  assertValidRibbonOptions,
+  FXRibbon,
+  ribbonSectionOf,
+  ribbonTileOf,
+} from "../ribbon/FXRibbon.js";
 import { assertValidTrailOptions, FXTrail } from "../trail/FXTrail.js";
 import type { FXParticleStrip, FXStripFrame } from "./FXStrip.Internal.js";
 import { stripReadFields } from "./FXStripLayout.Internal.js";
@@ -41,6 +46,7 @@ const STRIP_KINDS: {
     build: (driver, options, textures) => {
       const points = driver.createRibbonPoints(stripReadFields(options.render), {
         tile: ribbonTileOf(options),
+        section: ribbonSectionOf(options),
         head: options.head === true,
       });
       try {

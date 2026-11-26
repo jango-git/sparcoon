@@ -252,14 +252,19 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
 
   public createRibbonPoints(
     reads: Readonly<Record<string, GLTypeInfo>>,
-    { tile, head }: FXRibbonPointOptions,
+    { tile, section, head }: FXRibbonPointOptions,
   ): FXCPURibbonPoints {
     const probe = head
       ? new FXCPUBirthProbe(this.mesh.slot.stride, (slot, transform, inherited) => {
           this.seedProbe(slot, transform, inherited);
         })
       : undefined;
-    return new FXCPURibbonPoints(this.mesh, stripLayout("cpu", reads, this.mesh.slot), tile, probe);
+    return new FXCPURibbonPoints(
+      this.mesh,
+      stripLayout("cpu", reads, this.mesh.slot),
+      { tile, section },
+      probe,
+    );
   }
 
   public destroy(): void {

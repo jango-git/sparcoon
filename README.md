@@ -12,7 +12,7 @@ the timeline.
 
 <table>
   <tr>
-    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/campfire.webp" width="400" alt="Campfire" /><br /><b>Campfire</b><br /><sub>flipbook, Half-Lit, ground collision</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/campfire.webp" width="400" alt="Campfire" /><br /><b>Campfire</b><br /><sub>flipbook, Half-Lit, SDF collision</sub></td>
     <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/lightning-crack.webp" width="400" alt="Lightning Crack" /><br /><b>Lightning Crack</b><br /><sub>mesh particles, shadows, soft particles</sub></td>
   </tr>
   <tr>
@@ -24,8 +24,8 @@ the timeline.
     <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/destruction.webp" width="400" alt="Destruction" /><br /><b>Destruction</b><br /><sub>mesh particles, shadows, lighting, collisions</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/fireflies.webp" width="400" alt="Fireflies" /><br /><b>Fireflies</b><br /><sub>spawn on a mesh, curl noise</sub></td>
-    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/sparks.webp" width="400" alt="Sparks" /><br /><b>Sparks</b><br /><sub>GPU simulation, collision, shadows</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/fireflies.webp" width="400" alt="Fireflies" /><br /><b>Fireflies</b><br /><sub>spawn on a mesh, curl noise, SDF avoidance</sub></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/gallery/sparks.webp" width="400" alt="Sparks" /><br /><b>Sparks</b><br /><sub>GPU simulation, scene depth collision, shadows</sub></td>
   </tr>
   <tr>
     <td colspan="2" align="center"><img src="https://raw.githubusercontent.com/jango-git/sparcoon-editor/main/assets/editor.webp" width="100%" alt="The Portal preset in the editor" /><br /><b>Portal in the editor</b></td>

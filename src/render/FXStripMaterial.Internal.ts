@@ -76,11 +76,13 @@ export interface FXRibbonUniforms {
   /** Particles per repeat of `p_uv.x` along the ribbon, or 0: `p_uv.x` is each point's age over
    *  its lifetime. */
   readonly tile: { value: number };
+  /** Particles per section, or 0: one ribbon through every particle (see `FXRibbonOptions`). */
+  readonly section: { value: number };
 }
 
-/** A ribbon's uniforms for `tile` particles per repeat (0: none). */
-export function createRibbonUniforms(tile: number): FXRibbonUniforms {
-  return { tile: { value: tile } };
+/** A ribbon's uniforms for `tile` particles per repeat and `section` per section (0: none). */
+export function createRibbonUniforms(tile: number, section: number): FXRibbonUniforms {
+  return { tile: { value: tile }, section: { value: section } };
 }
 
 /**
@@ -189,12 +191,15 @@ function trailPrologue(kind: "cpu" | "gpu"): string[] {
 const TRAIL_STRIP_U = "float fxStripU = clamp(p_trailAge / max(u_trailSpan, 1e-6), 0.0, 1.0);";
 
 /**
- * Whether particle id `b` was born right after id `a` (see `FX_PARTICLE_ID_RANGE`): the last id is
- * followed by the first.
+ * Whether particle id `b` was born right after id `a` (see `FX_PARTICLE_ID_RANGE`: the last id is
+ * followed by the first) and in the same section: with `u_ribbonSection` particles per section, `b`
+ * starts a new one where it is a multiple of it. The section is a power of two, so the float
+ * remainder is exact.
  */
 const RIBBON_FOLLOWS = [
   "bool fxRibbonFollows(float a, float b) {",
-  `  return abs(b - a - 1.0) < 0.5 || (a > ${String(FX_PARTICLE_ID_RANGE - 1)}.0 - 0.5 && b < 0.5);`,
+  `  bool next = abs(b - a - 1.0) < 0.5 || (a > ${String(FX_PARTICLE_ID_RANGE - 1)}.0 - 0.5 && b < 0.5);`,
+  "  return next && (u_ribbonSection < 0.5 || mod(b, u_ribbonSection) > 0.5);",
   "}",
 ].join("\n");
 
@@ -421,10 +426,13 @@ export function buildRibbonArtifactMaterial(
   return buildStripMaterial(render, layout, slots, {
     kind: "ribbon",
     name: "FXRibbonArtifactMaterial",
-    declarations: ["uniform float u_ribbonTile;"],
+    declarations: ["uniform float u_ribbonTile;", "uniform float u_ribbonSection;"],
     helpers: [RIBBON_FOLLOWS, ...(layout.kind === "gpu" ? [RIBBON_GPU_U] : [])],
     prologue: ribbonPrologue(layout.kind),
-    uniforms: { ["u_ribbonTile"]: ribbonUniforms.tile },
+    uniforms: {
+      ["u_ribbonTile"]: ribbonUniforms.tile,
+      ["u_ribbonSection"]: ribbonUniforms.section,
+    },
   });
 }
 

@@ -94,16 +94,19 @@ export const EXAMPLES: readonly Example[] = [
   example({
     id: "portal",
     title: "Portal",
-    tags: "vortex, soft particles",
+    tags: "vortex, soft particles, mesh particles",
     module: async () => (await import("../effects/Portal")).Portal,
     assets: {
       tGlow: "T_Glow.webp",
+      tGrit: "T_Grit.webp",
       tLightning: "T_Lightning.webp",
       tRunes: "T_Runes.webp",
       tSmoke: "T_Smoke.webp",
+      ChunkA: "ChunkA.glb",
+      ChunkC: "ChunkC.glb",
     },
-    view: { position: [0, 2.3, 8.4], target: [0, 1.3, 0], fov: 42 },
-    ground: false,
+    view: { position: [2.87, 2.3, 7.89], target: [0, 1.3, 0], fov: 42 },
+    ground: true,
     depth: true,
   }),
   example({

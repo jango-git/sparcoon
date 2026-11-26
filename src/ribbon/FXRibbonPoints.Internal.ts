@@ -32,8 +32,9 @@ import {
  * Consecutive slots hold consecutive births on both backends, so a point's particle was born right
  * after the previous point's - while the two ids follow each other (see `FX_PARTICLE_ID_RANGE`).
  * Where they do not (a slot not reused yet, a burst past the ring, a particle that died before its
- * neighbours), the shader leaves the segment out. The head takes the next birth's id, so it links
- * to the newest particle by the same rule.
+ * neighbours), and before a particle that starts a section (see `FXRibbonOptions.section`), the
+ * shader leaves the segment out. The head takes the next birth's id, so it links to the newest
+ * particle by the same rule.
  *
  * Laid out by `stripLayout`, as a trail's history of one frame would be, so the two share their
  * packing and budget:
@@ -75,13 +76,14 @@ export class FXCPURibbonPoints implements FXRibbonPoints {
 
   /**
    * @param layout - A `"cpu"` `stripLayout` over `mesh`'s slot.
-   * @param tile - Particles per repeat of `p_uv.x`, or 0 for each point's age over its lifetime.
+   * @param counts - `tile`: particles per repeat of `p_uv.x`, or 0 for each point's age over its
+   *   lifetime; `section`: particles per section, or 0 for none (see `FXRibbonOptions`).
    * @param probe - The head, seeded over `mesh`'s slot; none for a ribbon without one.
    */
   constructor(
     private readonly mesh: FXInstancedParticle,
     public readonly layout: FXStripLayout,
-    private readonly tile: number,
+    private readonly counts: { readonly tile: number; readonly section: number },
     private readonly probe: FXCPUBirthProbe | undefined,
   ) {
     if (layout.kind !== "cpu") {
@@ -146,9 +148,10 @@ export class FXCPURibbonPoints implements FXRibbonPoints {
   public destroy(): void {}
 
   // Point `point` from the particle whose slot starts at float `base` of `source`, linked to the
-  // point before when that one holds the particle born right before.
+  // point before when that one holds the particle born right before, in the same section.
   private writePoint(point: number, source: Float32Array, base: number): void {
-    const { array, stride, tile } = this;
+    const { array, stride } = this;
+    const { tile, section } = this.counts;
     const { core } = this.mesh;
     const at = point * stride;
     const lifecycle = base + core.lifecycle;
@@ -158,7 +161,11 @@ export class FXCPURibbonPoints implements FXRibbonPoints {
     const alive = age < lifetime;
     // The point before holds its particle's id + 1 (0 when dead, or when there is none).
     const before = point > 0 ? stripPointTag(array, at - stride) : 0;
-    const linked = alive && before > 0 && before % FX_PARTICLE_ID_RANGE === id ? at - stride : -1;
+    const sectionStart = section > 0 && id % section === 0;
+    const linked =
+      alive && !sectionStart && before > 0 && before % FX_PARTICLE_ID_RANGE === id
+        ? at - stride
+        : -1;
     const u = tile > 0 ? (tile - (id % tile)) / tile : alive ? age / lifetime : 1;
     writeStripPoint(array, at, source, base + core.position, alive ? id + 1 : 0, linked, u);
   }

@@ -562,7 +562,7 @@ const STRIP_BUDGET_MATERIALS: Readonly<
   trail: (render, layout, slots) =>
     buildTrailArtifactMaterial(render, layout, slots, createTrailUniforms(2, 1)),
   ribbon: (render, layout, slots) =>
-    buildRibbonArtifactMaterial(render, layout, slots, createRibbonUniforms(0)),
+    buildRibbonArtifactMaterial(render, layout, slots, createRibbonUniforms(0, 0)),
 };
 
 /**

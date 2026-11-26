@@ -329,6 +329,31 @@ describe("ribbon - JS backend", () => {
     }
   });
 
+  it("breaks before each particle starting a section, leaving the rest joined", () => {
+    const emitter = cpuEmitter(ribbonOptions({ section: 2 }), 4);
+    try {
+      for (let birth = 0; birth < 4; birth++) {
+        emitter.burst(1);
+        tickEmitter(emitter, 0.1);
+      }
+      // Ids 0..3 in slots 0..3, each a step behind the one before: 1 follows 0 and 3 follows 2,
+      // but 2 starts a section, so it has no joint to 1.
+      expect(point(emitter, 1)).toMatchObject({ tag: 2, tangentX: -1 });
+      expect(point(emitter, 2)).toMatchObject({ tag: 3, tangentX: 0 });
+      expect(point(emitter, 3)).toMatchObject({ tag: 4, tangentX: -1 });
+      const material = ribbonOf(emitter).mesh.material as ShaderMaterial;
+      expect(material.uniforms["u_ribbonSection"].value).toBe(2);
+      expect(material.vertexShader).toContain("mod(b, u_ribbonSection) > 0.5");
+    } finally {
+      emitter.destroy();
+    }
+  });
+
+  it("rejects a section that is not a power of two", () => {
+    expect(() => cpuEmitter(ribbonOptions({ section: 3 }))).toThrow(/section/);
+    expect(() => cpuEmitter(ribbonOptions({ section: 1 }))).toThrow(/section/);
+  });
+
   it("rejects a tile that is not a whole number of particles", () => {
     expect(() => cpuEmitter(ribbonOptions({ uv: { mode: "tile", particles: 0.5 } }))).toThrow(
       /uv\.particles/,

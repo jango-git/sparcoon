@@ -30,11 +30,22 @@ export interface FXRibbonOptions {
    * the spawn's shape and randomness. default false
    */
   readonly head?: boolean;
+  /**
+   * Particles per section, a power of two: the ribbon breaks before every particle whose id is a
+   * multiple of it, so each run of that many births draws a ribbon of its own - as long as every
+   * spawn births a multiple of it. default none: one ribbon through every particle
+   */
+  readonly section?: number;
 }
 
 /** Particles per repeat of `p_uv.x` for `options`, 0 for none. */
 export function ribbonTileOf(options: FXRibbonOptions): number {
   return options.uv?.mode === "tile" ? options.uv.particles : 0;
+}
+
+/** Particles per section for `options`, 0 for none. */
+export function ribbonSectionOf(options: FXRibbonOptions): number {
+  return options.section ?? 0;
 }
 
 /**
@@ -44,6 +55,17 @@ export function ribbonTileOf(options: FXRibbonOptions): number {
 export function assertValidRibbonOptions(options: FXRibbonOptions, context: string): void {
   if (options.head !== undefined && typeof options.head !== "boolean") {
     throw new TypeError(`${context}.head: expected a boolean`);
+  }
+  const section = options.section;
+  // A power of two divides the id range, so sections stay aligned where ids wrap, and its float
+  // remainder is exact in a WebGL1 shader.
+  if (
+    section !== undefined &&
+    !(Number.isInteger(section) && section >= 2 && (section & (section - 1)) === 0)
+  ) {
+    throw new RangeError(
+      `${context}.section: expected a power of two >= 2, got ${String(section)}`,
+    );
   }
   const uv = options.uv;
   if (uv === undefined || uv.mode === "stretch") {
@@ -80,7 +102,10 @@ export class FXRibbon implements FXParticleStrip {
     this.strip = new FXStripMesh(
       "FXRibbon",
       material,
-      material.buildThreeRibbonMaterial(points.layout, createRibbonUniforms(ribbonTileOf(options))),
+      material.buildThreeRibbonMaterial(
+        points.layout,
+        createRibbonUniforms(ribbonTileOf(options), ribbonSectionOf(options)),
+      ),
       (geometry) => {
         points.mount(geometry);
       },

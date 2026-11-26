@@ -135,6 +135,8 @@ export interface FXEmitterDriver {
 export interface FXRibbonPointOptions {
   /** Particles per repeat of `p_uv.x`, 0 for each point's age over its lifetime. */
   readonly tile: number;
+  /** Particles per section, 0 for one ribbon through every particle (see `FXRibbonOptions`). */
+  readonly section: number;
   /** Whether the points end at a birth probe (see `FXBirthProbe`): the ribbon's head. */
   readonly head: boolean;
 }
