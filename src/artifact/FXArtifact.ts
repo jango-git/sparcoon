@@ -229,10 +229,41 @@ export type FXGLSLRenderTier = "baseline" | "standard";
 export type FXRenderArtifactsByGLSLTier = Readonly<Record<FXGLSLRenderTier, FXRenderArtifact>>;
 
 /**
+ * The app's assets a kernel samples, by the binding of the JS kernel or the sampler uniform of the
+ * GPU program it reads each through: each field names the assets of one kind, absent when none. The
+ * runtime reads each from the field of the same kind in `FXFromArtifactsOptions` and adds its
+ * inputs, none of the artifact's bindings, so no value scrub reaches them:
+ *
+ * - `meshSurfaces`: the table of the geometry named (`geometries`), a shape, laid out as
+ *   `surfaceTableLayout.ts` says.
+ * - `objectSurfaces`: the table of the mesh named (`meshes`), an object of the scene, and the
+ *   entries of its pose `fxObjectInputNames` names, set every tick.
+ * - `skinnedSurfaces`: the skinned table of the skinned mesh named (`meshes`), and the inputs of
+ *   its pose `fxObjectInputNames` names - its entries, its bone matrices (three's bone texture on
+ *   the GPU) and those of its previous pose - set every tick.
+ * - `volumes`: the R8 3D texture named (`volumes`), laid out as `volumeTableLayout.ts` says.
+ *
+ * `movingSurfaces` lists the object surfaces, by the name they are read under, whose previous pose
+ * the kernel reads for the velocity of their points. The runtime keeps a previous pose only for
+ * these.
+ */
+export interface FXKernelResourceNames {
+  readonly meshSurfaces?: Readonly<Record<string, string>>;
+  readonly objectSurfaces?: Readonly<Record<string, string>>;
+  readonly skinnedSurfaces?: Readonly<Record<string, string>>;
+  readonly volumes?: Readonly<Record<string, string>>;
+  readonly movingSurfaces?: readonly string[];
+}
+
+/** A field of {@link FXKernelResourceNames} naming the assets of one kind of resource. */
+export type FXKernelResourceField =
+  "meshSurfaces" | "objectSurfaces" | "skinnedSurfaces" | "volumes";
+
+/**
  * Behavior half of an emitted effect: authored spawn/update functions mutating the particle slots,
  * plus the slot's layout and live bindings. Its math helpers come from `sparcoon/helpers`.
  */
-export interface FXBehaviorArtifact {
+export interface FXBehaviorArtifact extends FXKernelResourceNames {
   /**
    * The particle slot: its fields back to back in this order (`slotLayout`), core `position` and
    * `lifecycle` included - the layout `spawn`/`update` index by literal offsets, and every field the
@@ -242,19 +273,6 @@ export interface FXBehaviorArtifact {
   readonly buffers: readonly FXBufferLayout[];
   /** number, or Float32Array (a curve LUT). */
   readonly bindings: Record<string, FXValueSlot<number | Float32Array>>;
-  /**
-   * The mesh surfaces its kernels sample, by binding: the runtime adds each binding, valued with
-   * the table of the geometry named here (`FXFromArtifactsOptions.geometries`), laid out as
-   * `surfaceTableLayout.ts` says. None of {@link bindings}, so no value scrub reaches it. Absent
-   * when none.
-   */
-  readonly meshSurfaces?: Readonly<Record<string, string>>;
-  /**
-   * The volumes its kernels sample, by binding - the runtime adds each binding, valued with the table
-   * of the 3D texture named here (`FXFromArtifactsOptions.volumes`), laid out as
-   * `volumeTableLayout.ts` says. None of {@link bindings}. Absent when none.
-   */
-  readonly volumes?: Readonly<Record<string, string>>;
   /** What its newborns take from a dying particle; absent when nothing (`stride` 0). The emitter's
    *  GPU kernel, when it has one, reads the same layout. */
   readonly inherit?: FXInheritLayout;
@@ -305,7 +323,7 @@ export interface FXBehaviorArtifact {
  * pass, so spawn and update are not split. Present only when the graph opted into GPU simulation.
  * Every emitter also has the JS {@link FXBehaviorArtifact}.
  */
-export interface FXParticleKernelArtifact {
+export interface FXParticleKernelArtifact extends FXKernelResourceNames {
   readonly vertexSource: string;
   readonly fragmentSource: string;
   /** State buffers this program's `in`/`out` pairs cover, in declaration order - a buffer's index
@@ -319,21 +337,10 @@ export interface FXParticleKernelArtifact {
    * uniforms {@link compute} fills (declared and seeded, at zero, like any other). The fixed
    * contract uniforms in `behaviorTransformFeedbackLayout.ts` are the runtime's own to set every
    * pass, not part of this map. Each uploads by the type the program declares it as.
-   * A sampler is no binding - the program's resources are listed in {@link meshSurfaces} and
-   * {@link volumes}.
+   * A sampler is no binding - the program's resources are listed in its
+   * {@link FXKernelResourceNames} fields.
    */
   readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
-  /**
-   * The mesh surfaces the program samples, by `sampler2D` uniform: each binds the texture of the
-   * table of the geometry named here (`FXFromArtifactsOptions.geometries`), laid out as
-   * `surfaceTableLayout.ts` says. Absent when none.
-   */
-  readonly meshSurfaces?: Readonly<Record<string, string>>;
-  /**
-   * The volumes the program samples, by `sampler3D` uniform - each binds the R8 3D texture of the one
-   * named here (`FXFromArtifactsOptions.volumes`). Absent when none.
-   */
-  readonly volumes?: Readonly<Record<string, string>>;
   /**
    * Whether the program reads the scene depth through the scene-depth uniforms of
    * `behaviorTransformFeedbackLayout.ts` - the depth of the emitter's camera (see

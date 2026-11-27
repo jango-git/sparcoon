@@ -18,6 +18,7 @@ import { ownValue } from "../artifact/FXValueSlots.Internal.js";
 import type { FXEmitterSortOptions } from "../emitter/FXEmitter.Internal.js";
 import { asParticleEventKind } from "../emitter/FXEmitter.Internal.js";
 import { cameraUseOf, FXEmitter } from "../emitter/FXEmitter.js";
+import type { FXAppAssets } from "../emitter/FXFromArtifactsOptions.js";
 import { assertValidInheritCopies } from "../emitter/FXInheritance.js";
 import { whenProgramsSettle } from "../emitter/FXLinkedProgram.Internal.js";
 import { FXObjectMotionTracker } from "../emitter/FXObjectMotion.Internal.js";
@@ -95,20 +96,30 @@ function resolveRenderArtifact(
 }
 
 /** One asset slot, one of: an external texture (whole, or a region of one), an external geometry (per
- *  {@link FXGeometrySource}, or a mesh surface) or a 3D texture a behavior samples, keyed by the
- *  same flat `assets` namespace. */
-type FXEffectAsset = FXExternalTexture | BufferGeometry | Data3DTexture;
+ *  {@link FXGeometrySource}, or a mesh surface sampled as a shape), a mesh of the scene a behavior
+ *  samples, or a 3D texture, keyed by the same flat `assets` namespace. */
+type FXEffectAsset = FXExternalTexture | BufferGeometry | Mesh | Data3DTexture;
 
-// Duck-typed, not `instanceof`: the app's `three` and this package's peer-dep `three` can be two
-// separate module instances (e.g. hoisted differently across a workspace), which would make
-// `instanceof Texture`/`instanceof BufferGeometry` false for a perfectly good asset. Every `three`
-// object of these kinds carries this own-property flag regardless of which module instance built it.
-function isBufferGeometry(asset: FXEffectAsset): asset is BufferGeometry {
-  return (asset as { isBufferGeometry?: boolean }).isBufferGeometry === true;
-}
-
-function isData3DTexture(asset: FXEffectAsset): asset is Data3DTexture {
-  return (asset as { isData3DTexture?: boolean }).isData3DTexture === true;
+/**
+ * Where `asset` is looked up from: a texture is none of these. Duck-typed, not `instanceof`: the
+ * app's `three` and this package's peer-dep `three` can be two separate module instances (e.g.
+ * hoisted differently across a workspace), which would make `instanceof` false for a perfectly
+ * good asset. Every `three` object of these kinds carries its own-property flag regardless of which
+ * module instance built it.
+ */
+function namedKindOf(asset: FXEffectAsset): keyof FXAppAssets | undefined {
+  const flags = asset as {
+    isBufferGeometry?: boolean;
+    isMesh?: boolean;
+    isData3DTexture?: boolean;
+  };
+  if (flags.isBufferGeometry === true) {
+    return "geometries";
+  }
+  if (flags.isMesh === true) {
+    return "meshes";
+  }
+  return flags.isData3DTexture === true ? "volumes" : undefined;
 }
 
 function texturesForSlots(
@@ -118,32 +129,29 @@ function texturesForSlots(
   const textures: Record<string, FXExternalTexture> = {};
   for (const name of slots) {
     const asset = assets[name];
-    // Anything but a geometry or a 3D texture - a whole texture or a region of one.
-    if (!isBufferGeometry(asset) && !isData3DTexture(asset)) {
-      textures[PARAMETER_UNIFORM_PREFIX + name] = asset;
+    if (namedKindOf(asset) === undefined) {
+      textures[PARAMETER_UNIFORM_PREFIX + name] = asset as FXExternalTexture;
     }
   }
   return textures;
 }
 
-/** The geometries and the 3D textures of `assets`, each by its name - what a geometry source and a
- *  behavior's resources look up - by a single name, not a per-shader-uniform slot list like
- *  textures. */
-function namedAssets(assets: Record<string, FXEffectAsset>): {
-  readonly geometries: Record<string, BufferGeometry>;
-  readonly volumes: Record<string, Data3DTexture>;
-} {
-  const geometries: Record<string, BufferGeometry> = {};
-  const volumes: Record<string, Data3DTexture> = {};
+/** The geometries, meshes and 3D textures of `assets`, each by its name - what a geometry source and
+ *  a behavior's resources look up - by a single name, not a per-shader-uniform slot list like
+ *  textures. A mesh's geometry is among the geometries under its name. */
+function namedAssets(assets: Record<string, FXEffectAsset>): FXAppAssets {
+  const named: FXAppAssets = { geometries: {}, meshes: {}, volumes: {} };
   for (const name in assets) {
     const asset = assets[name];
-    if (isBufferGeometry(asset)) {
-      geometries[name] = asset;
-    } else if (isData3DTexture(asset)) {
-      volumes[name] = asset;
+    const kind = namedKindOf(asset);
+    if (kind !== undefined) {
+      (named[kind] as Record<string, FXEffectAsset>)[name] = asset;
+    }
+    if (kind === "meshes") {
+      named.geometries[name] = (asset as Mesh).geometry;
     }
   }
-  return { geometries, volumes };
+  return named;
 }
 
 /**
@@ -304,7 +312,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
     this.specification = specification;
     this.world = options.world ?? FXWorld.getDefault();
     applyTransform(this, specification.transform);
-    const { geometries, volumes } = namedAssets(assets);
+    const { geometries, meshes, volumes } = namedAssets(assets);
     if (options.renderer !== undefined) {
       requireWebGLRenderer(options.renderer);
     }
@@ -351,6 +359,7 @@ export abstract class FXEffect extends Group<FXEffectEventMap> {
           ...(render === undefined ? {} : { particles: render }),
           textures,
           geometries,
+          meshes,
           volumes,
           expectedCapacity: emitterSpec.expectedCapacity,
           ...(emitterSpec.maxLifetime === undefined

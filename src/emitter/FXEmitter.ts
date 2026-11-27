@@ -53,7 +53,7 @@ import {
   FX_PARTICLE_EVENT_KINDS,
 } from "./FXEmitter.Internal.js";
 import type { FXEmitterDriver, FXParticleDraw } from "./FXEmitterDriver.Internal.js";
-import type { FXFromArtifactsOptions } from "./FXFromArtifactsOptions.js";
+import type { FXAppAssets, FXFromArtifactsOptions } from "./FXFromArtifactsOptions.js";
 import { FXGPUEmitterDriver } from "./FXGPUEmitterDriver.Internal.js";
 import { assertValidInherited, inheritDefaultsOf } from "./FXInheritance.js";
 import { FXJSEmitterDriver } from "./FXJSEmitterDriver.Internal.js";
@@ -329,7 +329,11 @@ export class FXEmitter extends Object3D {
 
     // Before anything owns a GPU resource - a missing or unreadable asset throws on either backend.
     const geometries = options.geometries ?? {};
-    const assets = { geometries, volumes: options.volumes ?? {} };
+    const assets: FXAppAssets = {
+      geometries,
+      meshes: options.meshes ?? {},
+      volumes: options.volumes ?? {},
+    };
     const resources = kernelResourcesOf(behavior, assets);
     const gpuResources =
       options.gpuKernel === undefined ? {} : kernelResourcesOf(options.gpuKernel, assets);
@@ -889,6 +893,7 @@ export class FXEmitter extends Object3D {
     this.emitterTransform.angularVelocity[2] = motion.angularVelocity[2];
     // Sampling the motion updated `matrixWorld`; a settled emitter's draw stage reads the pose too.
     const transform = this.copyWorldMatrix();
+    this.driver.advance(deltaTime);
 
     if (this.isSettled) {
       return;

@@ -5,6 +5,16 @@ Every notable change to sparcoon, as it affects a game playing effects exported 
 major is 0, a minor release may change what an exported effect is made of, and an effect plays only
 on the minor it was built for - after such an update, re-export every effect.
 
+## Unreleased
+
+### Added
+
+- Particles can sample the surface of a mesh of your scene, a skinned one in the pose three last
+  rendered it in, in the world, where three draws it, with the surface's velocity there, so a
+  newborn leaves it with its motion. An effect takes the `Mesh` or `SkinnedMesh` among its assets,
+  and `FXEmitter.fromArtifacts` takes it in `meshes`. The runtime keeps the previous pose only for
+  an effect that reads the velocity. See [Meshes of the scene](README.md#meshes-of-the-scene).
+
 ## 0.26.0 - 2026-11-26
 
 ### Added

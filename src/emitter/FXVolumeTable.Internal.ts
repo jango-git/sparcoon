@@ -25,28 +25,10 @@ interface FXVolumeTableEntry {
 const tables = new WeakMap<Data3DTexture, FXVolumeTableEntry>();
 
 /**
- * @internal The tables of `volumes` (a kernel's `volumes`) by binding, each of the texture it names
- * in `textures`.
- * @throws When a named texture is missing or is not R8 (`RedFormat`, `UnsignedByteType`) with its
- * texels on the CPU.
+ * @internal The table of `texture`, the asset `name`.
+ * @throws When it is not R8 (`RedFormat`, `UnsignedByteType`) with its texels on the CPU.
  */
-export function volumeTablesOf(
-  volumes: Readonly<Record<string, string>> | undefined,
-  textures: Readonly<Record<string, Data3DTexture>>,
-): Record<string, FXVolumeTable> {
-  const result: Record<string, FXVolumeTable> = {};
-  for (const binding in volumes) {
-    const name = volumes[binding];
-    const texture = textures[name] as Data3DTexture | undefined;
-    if (texture === undefined) {
-      throw new Error(`FXEmitter.fromArtifacts: no 3D texture "${name}" for the volume it samples`);
-    }
-    result[binding] = volumeTableOf(texture, name);
-  }
-  return result;
-}
-
-function volumeTableOf(texture: Data3DTexture, name: string): FXVolumeTable {
+export function volumeTableOf(texture: Data3DTexture, name: string): FXVolumeTable {
   const known = tables.get(texture);
   if (known?.version === texture.version) {
     return known.table;

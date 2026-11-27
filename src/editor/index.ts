@@ -21,7 +21,7 @@ export type {
   FXSpawnOrigin,
 } from "../emitter/FXEmitter.Internal.js";
 export { FXEmitter } from "../emitter/FXEmitter.js";
-export type { FXFromArtifactsOptions } from "../emitter/FXFromArtifactsOptions.js";
+export type { FXAppAssets, FXFromArtifactsOptions } from "../emitter/FXFromArtifactsOptions.js";
 
 // A GPU kernel's program built ahead of the emitter that runs it, so a rebuilt preview emitter
 // starts without waiting for it.

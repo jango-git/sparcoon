@@ -173,6 +173,10 @@ export class FXGPUEmitterDriver implements FXEmitterDriver {
     this.gpuSpawnRangeStart = this.mesh.nextSlot;
   }
 
+  public advance(deltaTime: number): void {
+    this.simulation.advance(deltaTime);
+  }
+
   public beginTick(): void {
     this.ticking = true;
   }

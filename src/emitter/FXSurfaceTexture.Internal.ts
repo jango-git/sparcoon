@@ -2,10 +2,9 @@ import type { WebGLRenderer } from "three";
 
 import {
   createDataTexture,
-  dataTextureRows,
   dataTextureSize,
+  uploadDataTexels,
 } from "../render/FXDataTexture.Internal.js";
-import { FX_SURFACE_TEXEL_FLOATS } from "../surfaceTableLayout.js";
 import { type FXContextLease, FXContextLeases } from "./FXContextLeases.Internal.js";
 import type { FXSurfaceTable } from "./FXSurfaceTable.Internal.js";
 
@@ -33,20 +32,7 @@ function uploadSurfaceTexture(
 ): WebGLTexture {
   const size = dataTextureSize(gl, table.texels, "FXSurfaceTexture: a surface");
   const texture = createDataTexture(gl, gl.RGBA32F, size);
-  for (const rows of dataTextureRows(table.texels, size)) {
-    gl.texSubImage2D(
-      gl.TEXTURE_2D,
-      0,
-      0,
-      rows.y,
-      rows.width,
-      rows.height,
-      gl.RGBA,
-      gl.FLOAT,
-      table.data,
-      rows.first * FX_SURFACE_TEXEL_FLOATS,
-    );
-  }
+  uploadDataTexels(gl, size, table.texels, table.data);
   // Built outside the world's tick, possibly right before a draw.
   renderer.resetState();
   return texture;

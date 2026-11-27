@@ -43,7 +43,8 @@ screen and press **Load**.
 
 - Effects made of particle emitters and meshes under a shared timeline.
 - Billboard and mesh particles, particle trails and ribbons.
-- Random points on the surface of a mesh, evenly by area.
+- Random points on the surface of a mesh, evenly by area, as a shape of the effect or on a mesh of
+  your scene, a skinned one in its current pose.
 - Collisions with planes, boxes, spheres, cones, signed distance fields (SDF) baked from meshes and
   the depth of the rendered scene.
 - Particle birth and death events for reactions between emitters and for listeners in your code,
@@ -419,6 +420,47 @@ function sdfFromSlices(image: HTMLImageElement, width: number, height: number, d
 - Keep `image.data` after loading. The CPU simulation reads it, and the GPU simulation uploads its
   own copy, filtered linearly.
 - Only the simulation reads the field. Materials do not.
+
+### Meshes of the scene
+
+An effect samples a mesh's surface in one of two ways, as its graph says:
+
+- As a shape of the effect: points in the mesh's own space, which the effect takes where it goes.
+  The effect asks for a `BufferGeometry`.
+- As an object of your scene: points in the world, where three draws the mesh, wherever the effect
+  is. The effect asks for the `Mesh` or `SkinnedMesh` your scene draws. A skinned mesh is bound to
+  its skeleton, with `skinIndex` and `skinWeight` in its geometry.
+
+```ts
+const assets: MyEffectAssets = {
+  rock: level.getObjectByName("Rock") as Mesh,
+  hero: heroModel.getObjectByName("Body") as SkinnedMesh,
+};
+```
+
+A mesh's points are taken through its world matrix. A skinned mesh's are posed by the bone
+matrices three computes for it, so they land where three draws the body, whatever nodes it hangs
+under (a glTF armature scaled by 0.01 included) and whatever their scale. That holds in three's
+default `attached` bind mode. A mesh in `detached` mode is drawn through its own world matrix and
+inverse bind matrix as well, which its points are not taken through.
+
+- three updates world matrices and poses skeletons while it renders the scene. A simulation step
+  before the frame's render reads the previous frame's place and pose, and a mesh three skips,
+  hidden or frustum-culled, keeps its last pose. To spawn on this frame's, update the scene's world
+  matrices and call a skinned mesh's `skeleton.update()` before the step. Before its first render a
+  skinned mesh's surface keeps its unposed shape, taken through its bind matrix.
+- A point's velocity is its move from the previous place and pose to the current one over the
+  simulation time between them, the move of the whole mesh included. It is zero before a second
+  pose, and once the pose has gone unchanged for twice its last interval (a mesh standing still, a
+  hidden mesh, a paused animation). The runtime keeps the previous pose, for a skinned mesh a copy
+  of its bone matrices and a texture of its own on the GPU, only for an effect that reads the
+  velocity.
+- Points are drawn by the areas of the unposed triangles, so a stretched part of a pose gets fewer
+  points per area and a squashed part more.
+- Morph targets do not move the surface.
+- The surface's triangles are read when the effect is built, the place and pose on every step.
+- A mesh serves as the geometry wherever the effect also draws or samples it as a shape, so the
+  effect asks for it once.
 
 ## Checks
 

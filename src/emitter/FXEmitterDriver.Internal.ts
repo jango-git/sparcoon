@@ -84,6 +84,10 @@ export interface FXEmitterDriver {
    *   it was seeded from.
    */
   watch(kind: FXParticleEventKind, sink: FXParticleEventSink | undefined): void;
+  /** Moves what the simulation reads that changes with time on its own, not with the particles -
+   *  an object surface's pose - on by `deltaTime`. Every tick, a paused or settled one too, before
+   *  any birth. */
+  advance(deltaTime: number): void;
   /** Runs before this tick's scheduled bursts/plays: JS updates every existing slot, then ages
    *  it; GPU starts gathering this tick's spawns into its pass. */
   beginTick(deltaTime: number, transform: FXEmitterTransform): void;

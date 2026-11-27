@@ -27,15 +27,20 @@ import { type FXSlotLayout, particleSlotLayout } from "../instancedParticle/FXPa
 import type { FXTransformFeedbackParticle } from "../instancedParticle/FXTransformFeedbackParticle.js";
 import { deferStateReset } from "../render/FXDeferredStateReset.Internal.js";
 import { gpuLimit } from "../render/FXGPULimits.Internal.js";
+import { fxObjectInputNames } from "../surfaceTableLayout.js";
 import type { FXAgedBirths } from "./FXBirthAges.Internal.js";
 import type { FXCameraView } from "./FXCameraView.Internal.js";
 import type { FXContextLease } from "./FXContextLeases.Internal.js";
 import { acquireKernelProgram } from "./FXKernelProgramCache.Internal.js";
-import type { FXKernelResource, FXKernelResources } from "./FXKernelResources.Internal.js";
+import type { FXKernelResources } from "./FXKernelResources.Internal.js";
+import {
+  type FXTextureBinding,
+  type FXTextureSource,
+  kernelTextureSources,
+  releaseTextureSources,
+} from "./FXKernelTextures.Internal.js";
 import { type FXLinkedProgram, FXProgramBinding } from "./FXLinkedProgram.Internal.js";
-import { FXSceneDepthBinding } from "./FXSceneDepthBinding.Internal.js";
-import { acquireSurfaceTexture } from "./FXSurfaceTexture.Internal.js";
-import { acquireVolumeTexture } from "./FXVolumeTexture.Internal.js";
+import { type FXObjectPose, FXObjectPoses } from "./FXObjectPose.Internal.js";
 
 /**
  * @internal A pass's births under the ring's cursor/overwrite scheme: `count` slots from `start`, the
@@ -70,8 +75,11 @@ export class FXTransformFeedbackSimulationHolder {
   private readonly vao: WebGLVertexArrayObject;
   // This emitter's own bindings - its parameters and draw uniforms - never the shared artifact's.
   private readonly bindings: Record<string, FXValueSlot<FXKernelUniformValue>>;
-  /** The texture of every resource the kernel declares, uploaded before its program is built. */
-  private readonly resourceTextures: readonly FXResourceTexture[];
+  /** The poses of the kernel's object surfaces, which {@link advance} moves on. */
+  private readonly poses: FXObjectPoses;
+  /** Every texture the kernel may read, in unit order, its tables uploaded before its program is
+   *  built. */
+  private readonly textures: readonly FXTextureSource[];
   /** Where the program reads its inputs, found on its first pass; no pass runs without it. */
   private readonly binding: FXProgramBinding<FXKernelProgramBinding>;
   // Filled in place each pass (see setUniforms).
@@ -113,24 +121,27 @@ export class FXTransformFeedbackSimulationHolder {
         "FXTransformFeedbackSimulationHolder: the kernel reads the scene depth - give it a view",
       );
     }
-    assertFitsTextureUnits(
-      gl,
-      Object.keys(resources).length + (artifact.sceneDepth === true ? 1 : 0),
+    this.poses = new FXObjectPoses(resources, artifact.movingSurfaces);
+    this.textures = kernelTextureSources(
+      renderer,
+      resources,
+      this.poses,
+      artifact.sceneDepth === true ? view : undefined,
     );
-    this.resourceTextures = resourceTextures(renderer, gl, resources);
     this.bindings = ownSlots(artifact.bindings);
     this.compute = artifact.compute;
 
     // Shared by every holder of this kernel: safe, as every pass sets all of its uniforms. Last,
     // so the checks above never wait for its build.
     try {
+      assertFitsTextureUnits(gl, this.textures.length);
       this.programLease = acquireKernelProgram(gl, artifact);
     } catch (error) {
-      releaseTextures(this.resourceTextures);
+      releaseTextureSources(this.textures);
       throw error;
     }
     this.binding = new FXProgramBinding(this.programLease.resource, (program) =>
-      bindProgram(gl, program, this.bindings, this.resourceTextures, view),
+      bindProgram(gl, program, this.bindings, this.poses, this.textures),
     );
 
     // Own VAO, separate from three's, so raw attribute setup cannot corrupt its cache. The state
@@ -270,8 +281,13 @@ export class FXTransformFeedbackSimulationHolder {
     deferStateReset(this.renderer);
   }
 
+  /** Moves the object surfaces' poses on by a tick of `deltaTime`, before its passes. */
+  public advance(deltaTime: number): void {
+    this.poses.advance(deltaTime);
+  }
+
   public destroy(): void {
-    releaseTextures(this.resourceTextures);
+    releaseTextureSources(this.textures);
     this.programLease.release();
     this.gl.deleteVertexArray(this.vao);
   }
@@ -413,13 +429,12 @@ export class FXTransformFeedbackSimulationHolder {
     for (const entry of binding.uploads) {
       entry.upload(gl, entry.location, entry.slot.value);
     }
-    binding.samplers.forEach((sampler, unit) => {
-      // Through three's state, so its texture cache stays true to the context.
-      this.renderer.state.activeTexture(gl.TEXTURE0 + unit);
-      this.renderer.state.bindTexture(sampler.texture.target, sampler.texture.lease.resource);
-      gl.uniform1i(sampler.location, unit);
+    for (const { location, pose } of binding.poses) {
+      gl.uniform4fv(location, pose.entriesBound(this.renderer));
+    }
+    binding.textures.forEach((texture, unit) => {
+      texture.bind(this.renderer, unit);
     });
-    binding.sceneDepth?.bind(this.renderer, binding.samplers.length);
   }
 }
 
@@ -550,35 +565,24 @@ function bindingUploads(
   return uploads;
 }
 
-/** The texture of one resource the kernel declares, by its sampler uniform. */
-interface FXResourceTexture {
-  readonly name: string;
-  readonly target: number;
-  readonly lease: FXContextLease<WebGLTexture>;
-}
-
-/** A resource the program samples: where its sampler is, and the texture it binds there. */
-interface FXSamplerBinding {
-  readonly location: WebGLUniformLocation;
-  readonly texture: FXResourceTexture;
-}
-
 /** Where a built program reads its inputs. */
 interface FXKernelProgramBinding {
   readonly uniformLocations: Readonly<Record<string, WebGLUniformLocation | null>>;
   /** Each binding the program uses, resolved once: a pass only walks this. */
   readonly uploads: readonly FXBindingUpload[];
-  /** The textures the program samples, texture unit `i` for entry `i`. */
-  readonly samplers: readonly FXSamplerBinding[];
-  /** The scene depth the program reads, on the unit after the samplers'; `undefined` for none. */
-  readonly sceneDepth: FXSceneDepthBinding | undefined;
+  /** The entries uniform of each object surface's pose the program reads. */
+  readonly poses: readonly {
+    readonly location: WebGLUniformLocation;
+    readonly pose: FXObjectPose;
+  }[];
+  /** The textures the program reads, texture unit `i` for entry `i`. */
+  readonly textures: readonly FXTextureBinding[];
 }
 
 /**
- * Throws when `units` textures - every resource the kernel declares, and its scene depth - take
- * more texture units than this GPU's vertex stage has. Counted from the artifact, before the
- * program is built: a sampler the driver compiles away would take none, but which ones it drops
- * is known only once the build has ended.
+ * Throws when `units` textures (see `kernelTextureSources`) take more texture units than this
+ * GPU's vertex stage has. Counted before the program is built: a sampler the driver compiles away
+ * would take none, but which ones it drops is known only once the build has ended.
  */
 function assertFitsTextureUnits(gl: WebGL2RenderingContext, units: number): void {
   const maxUnits = gpuLimit(gl, gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS);
@@ -590,70 +594,28 @@ function assertFitsTextureUnits(gl: WebGL2RenderingContext, units: number): void
   }
 }
 
-/** The texture of each of `resources`, uploaded now. */
-function resourceTextures(
-  renderer: WebGLRenderer,
-  gl: WebGL2RenderingContext,
-  resources: FXKernelResources,
-): FXResourceTexture[] {
-  const textures: FXResourceTexture[] = [];
-  try {
-    for (const name in resources) {
-      textures.push({ name, ...resourceTexture(renderer, gl, resources[name]) });
-    }
-  } catch (error) {
-    releaseTextures(textures);
-    throw error;
-  }
-  return textures;
-}
-
-function releaseTextures(textures: readonly FXResourceTexture[]): void {
-  for (const texture of textures) {
-    texture.lease.release();
-  }
-}
-
 /**
- * Where the built `program` reads its inputs. A binding, resource or scene depth it does not use
- * (compiled away) is left out.
+ * Where the built `program` reads its inputs. A binding, resource, pose or scene depth it does not
+ * use (compiled away) is left out.
  */
 function bindProgram(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
   bindings: Readonly<Record<string, FXValueSlot<FXKernelUniformValue>>>,
-  textures: readonly FXResourceTexture[],
-  view: FXCameraView | undefined,
+  poses: FXObjectPoses,
+  textures: readonly FXTextureSource[],
 ): FXKernelProgramBinding {
   const uniformLocations: Record<string, WebGLUniformLocation | null> = {};
   for (const name of FIXED_UNIFORM_NAMES) {
     uniformLocations[name] = gl.getUniformLocation(program, name);
   }
-  const samplers: FXSamplerBinding[] = [];
-  for (const texture of textures) {
-    const location = gl.getUniformLocation(program, texture.name);
-    if (location !== null) {
-      samplers.push({ location, texture });
-    }
-  }
   return {
     uniformLocations,
     uploads: bindingUploads(gl, program, bindings),
-    samplers,
-    sceneDepth: view === undefined ? undefined : FXSceneDepthBinding.of(gl, program, view),
+    poses: Object.entries(poses.byName).flatMap(([name, pose]) => {
+      const location = gl.getUniformLocation(program, fxObjectInputNames(name).entries);
+      return location === null ? [] : [{ location, pose }];
+    }),
+    textures: textures.flatMap((texture) => texture.bindingIn(gl, program) ?? []),
   };
-}
-
-/** The texture `resource` is sampled from, and the target it binds to. */
-function resourceTexture(
-  renderer: WebGLRenderer,
-  gl: WebGL2RenderingContext,
-  resource: FXKernelResource,
-): Pick<FXResourceTexture, "target" | "lease"> {
-  switch (resource.kind) {
-    case "surface":
-      return { target: gl.TEXTURE_2D, lease: acquireSurfaceTexture(renderer, resource.table) };
-    case "volume":
-      return { target: gl.TEXTURE_3D, lease: acquireVolumeTexture(renderer, resource.table) };
-  }
 }

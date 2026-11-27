@@ -1,4 +1,4 @@
-import type { BufferGeometry, Data3DTexture, WebGLRenderer } from "three";
+import type { BufferGeometry, Data3DTexture, Mesh, WebGLRenderer } from "three";
 
 import type { FXParticleKernelArtifact, FXRenderArtifact } from "../artifact/FXArtifact.js";
 import type { FXExternalTexture } from "../render/FXExternalTexture.js";
@@ -11,10 +11,11 @@ import type { FXEmitterOptions } from "./FXEmitter.Internal.js";
  *
  * `textures` binds `{ type: "sampler2D", external }` uniforms (a `Texture` or a {@link
  * FXTextureRegion}). `geometries` resolves custom geometry sources and every mesh surface the
- * behavior samples (`meshSurfaces`, required, a missing one throws). `volumes` holds the 3D
- * textures it samples (required likewise). A surface or volume is read from its asset when the
- * emitter is built, so a later change reaches the next emitter built from it. The app owns all of
- * these and the runtime never disposes them.
+ * behavior samples as a shape (`meshSurfaces`, required, a missing one throws). `meshes` holds the
+ * objects of the scene whose surfaces it samples, and `volumes` the 3D textures (both required
+ * likewise). A surface or volume is read from its asset when the emitter is built, so a later
+ * change reaches the next emitter built from it. An object's pose is read anew every tick. The
+ * app owns all of these and the runtime never disposes them.
  */
 export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
   /**
@@ -25,6 +26,12 @@ export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
   readonly particles?: FXRenderArtifact;
   readonly textures?: Record<string, FXExternalTexture>;
   readonly geometries?: Record<string, BufferGeometry>;
+  /**
+   * The objects of the scene, meshes and skinned meshes, whose surfaces the behavior samples
+   * (`objectSurfaces`, `skinnedSurfaces`), by name, as the README's "Meshes of the scene"
+   * section describes.
+   */
+  readonly meshes?: Record<string, Mesh>;
   /**
    * The 3D textures the behavior samples (an SDF, for one), by name. Each is R8 - `RedFormat` and
    * `UnsignedByteType` (`Data3DTexture` defaults to `RGBAFormat`), with its texels in `image.data`,
@@ -54,3 +61,9 @@ export interface FXFromArtifactsOptions extends Partial<FXEmitterOptions> {
    */
   readonly ribbon?: FXRibbonOptions;
 }
+
+/** The app's assets the runtime looks up by name, by kind: what an artifact's
+ *  `FXKernelResourceNames` and its custom geometry sources name. */
+export type FXAppAssets = Required<
+  Pick<FXFromArtifactsOptions, "geometries" | "meshes" | "volumes">
+>;

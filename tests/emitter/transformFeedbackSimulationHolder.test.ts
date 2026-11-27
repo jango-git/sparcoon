@@ -2,6 +2,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   DepthTexture,
+  Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
   WebGLRenderTarget,
@@ -520,6 +521,44 @@ describe("FXTransformFeedbackSimulationHolder", () => {
       ).toThrow(/texture units/);
       expect(callsNamed(mock.gl, "linkProgram")).toEqual([]);
       expect(mock.gl.liveTextures.size).toBe(0);
+    });
+  });
+  describe("mesh of the scene surfaces", () => {
+    const table: FXSurfaceTable = { data: new Float32Array(7 * 4), texels: 7 };
+    const sampling = (): FXParticleKernelArtifact => ({
+      ...minimalArtifact(),
+      vertexSource:
+        "#version 300 es\nuniform highp sampler2D u_o;\nuniform vec4 u_o_object[12];\nvoid main(){}",
+      objectSurfaces: { u_o: "rock" },
+    });
+
+    it("takes a texture unit for its table alone, and sets its entries every pass", () => {
+      const mock = mockRenderer({ maxVertexTextureUnits: 1 });
+      const rock = new Mesh(baseQuad());
+      rock.position.x = 3;
+      rock.updateMatrixWorld();
+      const holder = new FXTransformFeedbackSimulationHolder(mock.renderer, sampling(), {
+        u_o: { kind: "objectSurface", table, mesh: rock },
+      });
+      const mesh = meshFor(mock, holder);
+      try {
+        holder.advance(1 / 60);
+        holder.tick(
+          mesh,
+          1 / 60,
+          { start: 0, count: 0 },
+          IDENTITY_EMITTER_TRANSFORM,
+          NOTHING_INHERITED,
+        );
+        expect(callsNamed(mock.gl, "state.bindTexture")).toHaveLength(1);
+        const entries = callsNamed(mock.gl, "uniform4fv")
+          .map((call) => call.args[1] as Float32Array)
+          .find((values) => values.length === 12 * 4);
+        expect(entries?.[12]).toBe(3);
+      } finally {
+        holder.destroy();
+        mesh.destroy();
+      }
     });
   });
   describe("volumes", () => {

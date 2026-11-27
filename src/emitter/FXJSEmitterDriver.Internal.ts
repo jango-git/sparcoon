@@ -177,6 +177,10 @@ export class FXJSEmitterDriver implements FXEmitterDriver {
     }
   }
 
+  public advance(deltaTime: number): void {
+    this.simulation.advance(deltaTime);
+  }
+
   public beginTick(deltaTime: number, transform: FXEmitterTransform): void {
     const slotCount = this.mesh.instanceCount;
     // Nothing alive (or nothing ever born): see the class doc.

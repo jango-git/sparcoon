@@ -11,6 +11,9 @@ import { gpuLimit } from "./FXGPULimits.Internal.js";
  * `renderer.resetState()`, or `deferStateReset` inside the world's tick.
  */
 
+/** Floats of an RGBA32F texel. */
+const RGBA_FLOATS = 4;
+
 export interface FXDataTextureSize {
   readonly width: number;
   readonly height: number;
@@ -78,6 +81,31 @@ export function createDataTexture(
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   prepareDataUpload(gl);
   return texture;
+}
+
+/** Uploads the `texels` RGBA32F values of `data` into the texture of `size` bound to
+ *  `TEXTURE_2D`. */
+export function uploadDataTexels(
+  gl: WebGL2RenderingContext,
+  size: FXDataTextureSize,
+  texels: number,
+  data: Float32Array,
+): void {
+  prepareDataUpload(gl);
+  for (const rows of dataTextureRows(texels, size)) {
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      rows.y,
+      rows.width,
+      rows.height,
+      gl.RGBA,
+      gl.FLOAT,
+      data,
+      rows.first * RGBA_FLOATS,
+    );
+  }
 }
 
 /**

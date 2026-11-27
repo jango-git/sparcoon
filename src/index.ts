@@ -11,6 +11,8 @@ export type {
   FXGeometrySource,
   FXInheritLayout,
   FXKernelDrawInputs,
+  FXKernelResourceField,
+  FXKernelResourceNames,
   FXKernelUniformValue,
   FXParticleKernelArtifact,
   FXParticleReads,
@@ -65,15 +67,29 @@ export type {
   FXRenderMode,
 } from "./render/FXMaterialOptions.js";
 export {
+  FX_BONE_TEXELS,
+  FX_OBJECT_ENTRIES,
+  FX_OBJECT_FRAME,
+  FX_OBJECT_NORMAL_FRAME,
+  FX_OBJECT_PREVIOUS_FRAME,
+  FX_OBJECT_STATE,
+  FX_SKINNED_SURFACE_TEXELS_PER_TRIANGLE,
   FX_SURFACE_HEADER_TEXELS,
   FX_SURFACE_NORMAL_A,
   FX_SURFACE_NORMAL_B,
   FX_SURFACE_NORMAL_C,
+  FX_SURFACE_SKIN_INDEX_A,
+  FX_SURFACE_SKIN_INDEX_B,
+  FX_SURFACE_SKIN_INDEX_C,
+  FX_SURFACE_SKIN_WEIGHT_A,
+  FX_SURFACE_SKIN_WEIGHT_B,
+  FX_SURFACE_SKIN_WEIGHT_C,
   FX_SURFACE_TEXEL_FLOATS,
   FX_SURFACE_TEXELS_PER_TRIANGLE,
   FX_SURFACE_VERTEX_A,
   FX_SURFACE_VERTEX_B,
   FX_SURFACE_VERTEX_C,
+  fxObjectInputNames,
 } from "./surfaceTableLayout.js";
 export { FX_VOLUME_HEADER_FLOATS } from "./volumeTableLayout.js";
 
